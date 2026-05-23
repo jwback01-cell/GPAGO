@@ -763,17 +763,13 @@ function computeStats(items, terms, baseKw) {
   // 1행 — 각 모드별 상위 상품 개수
   _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
 
-  // 상품명 가중치 — 전체 상품명에서 각 텀의 등장 횟수를 모두 카운트
+  // 상품명 가중치 — 각 텀이 포함된 상품의 개수 (1개 상품당 최대 1개로 카운트)
   const termCounts = terms.map(t => {
     let cnt = 0;
     const tLower = t.toLowerCase();
     items.forEach(it => {
       const title = _stripHtml(it.title).toLowerCase();
-      let idx = 0;
-      while ((idx = title.indexOf(tLower, idx)) !== -1) {
-        cnt++;
-        idx += tLower.length;
-      }
+      if (title.includes(tLower)) cnt++;
     });
     return { term: t, count: cnt };
   });
