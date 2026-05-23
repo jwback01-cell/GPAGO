@@ -4165,11 +4165,8 @@ function closeAppAlert() {
 
 // ════════════════════════════════════════
 // 상품 정제 (sourcing) — GPLAN에서 이식
+// (SRC_FAV_KEY/_srcResults 등은 키워드 순위 블록에 이미 정의됨 — 중복 제거)
 // ════════════════════════════════════════
-const SRC_FAV_KEY = 'src_favorites';
-let _srcResults = [];
-let _srcDataSource = 'sample';
-let _srcPeriod = 30, _srcType = 'all';
 
 // ── 네이버 검색광고 API 키 관리 ──
 function _loadSaKeys() {
