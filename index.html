@@ -729,7 +729,7 @@ async function runAnalysis() {
     document.getElementById('total-count').textContent = (data.total || items.length).toLocaleString('ko-KR');
 
     // 통계 계산
-    computeStats(items, terms, baseKw);
+    computeStats(items, terms, baseKw, filterKw);
 
     // 결과 렌더링
     renderAnalysisResults();
@@ -757,7 +757,7 @@ function _fillCell(id, html) {
   else el.classList.remove('filled');
 }
 
-function computeStats(items, terms, baseKw) {
+function computeStats(items, terms, baseKw, filterKw) {
   if (!items.length) return;
   const topN = Math.min(10, items.length);
   // 1행 — 각 모드별 상위 상품 개수
