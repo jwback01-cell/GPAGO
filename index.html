@@ -763,7 +763,7 @@ function _fillCell(id, html) {
 
 function computeStats(items, terms, baseKw) {
   if (!items.length) return;
-  const topN = Math.min(40, items.length);
+  const topN = Math.min(10, items.length);
   // 1행 — 각 모드별 상위 상품 개수
   _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
 
