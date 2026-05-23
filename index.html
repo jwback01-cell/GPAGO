@@ -8232,7 +8232,15 @@ function prodsrcRenderDetail() {
       theadHtml += '<th class="p-3 text-right font-bold w-40 text-brand-gray">데이터 없음</th>';
     } else {
       dateCols.forEach(d => {
-        theadHtml += `<th class="p-3 text-right font-bold w-28">${_prodsrcEsc(d)}</th>`;
+        const esc = _prodsrcEsc(d);
+        theadHtml += `<th class="p-3 text-right font-bold w-28">
+          <div class="flex items-center justify-end gap-1.5">
+            <span>${esc}</span>
+            <button onclick="prodsrcDeleteDate('${esc}')" title="이 날짜 데이터 삭제" class="w-5 h-5 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </th>`;
       });
     }
     theadHtml += '<th class="p-3 pr-4 text-right font-semibold">상세</th>';
@@ -8262,6 +8270,37 @@ function prodsrcRenderDetail() {
       <td class="p-3 pr-4 text-xs text-right">${urlCell}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="${colCount}" class="p-8 text-center text-brand-gray text-sm">키워드가 없습니다</td></tr>`;
+}
+
+// 특정 날짜의 데이터 삭제 (모든 행의 history에서 해당 날짜 제거)
+function prodsrcDeleteDate(date) {
+  if (!date) return;
+  const cat = _prodsrcCurrentCategory;
+  const apply = () => {
+    let removedCount = 0;
+    (_prodsrcState.rows || []).forEach(r => {
+      if ((r.folderName || r.category) !== cat) return;
+      const hist = _prodsrcGetHistory(r);
+      const filtered = hist.filter(h => h.date !== date);
+      if (filtered.length !== hist.length) {
+        removedCount++;
+        if (Array.isArray(r.history)) r.history = filtered;
+        // 최신 totalSearch 동기화 (남은 마지막 날짜의 값으로)
+        if (filtered.length) {
+          const sorted = filtered.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          r.totalSearch = sorted[sorted.length - 1].totalSearch;
+        }
+      }
+    });
+    _prodsrcSave();
+    prodsrcRenderDetail();
+    if (typeof toast === 'function') toast(`'${date}' 데이터 ${removedCount}개 행에서 삭제됨`);
+  };
+  if (typeof showAppConfirm === 'function') {
+    showAppConfirm('날짜 데이터 삭제', `'${date}' 날짜의 데이터를 이 폴더에서 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`, apply, { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' });
+  } else {
+    if (confirm(`'${date}' 날짜 데이터를 삭제할까요?`)) apply();
+  }
 }
 
 function prodsrcClearAll() {
