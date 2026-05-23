@@ -1460,7 +1460,8 @@ PBT키캡	1180
       </section>
 
       <!-- 카테고리 폴더 그리드 -->
-      <section id="prodsrc-folder-section" class="hidden bg-white rounded-4xl panel p-6">
+      <section id="prodsrc-folder-section" class="hidden bg-white rounded-4xl panel p-6"
+        ondragover="prodsrcCatDragOver(event)" ondragleave="prodsrcCatDragLeave(event)" ondrop="prodsrcCatDrop(event)">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 class="font-bold text-base">카테고리 폴더 <span id="prodsrc-cat-count" class="text-brand-gray font-normal text-sm ml-1">(0개)</span></h3>
           <div class="text-xs text-brand-gray" id="prodsrc-last-uploaded"></div>
@@ -8366,7 +8367,8 @@ function _prodsrcRenderFavorites() {
   wrap.innerHTML = validFavs.map(name => {
     const c = cats.get(name) || { count: 0, totalSearch: 0 };
     const safeName = _prodsrcEsc(name).replace(/'/g, "\\'");
-    return `<div class="relative bg-amber-50 hover:bg-white border border-amber-300 hover:border-amber-500 rounded-2xl p-4 transition-all">
+    return `<div draggable="true" ondragstart="prodsrcFavDragStart(event, '${safeName}')" ondragend="prodsrcFavDragEnd(event)"
+      class="relative bg-amber-50 hover:bg-white border border-amber-300 hover:border-amber-500 rounded-2xl p-4 transition-all cursor-grab active:cursor-grabbing" title="드래그하여 카테고리 폴더로 내릴 수 있습니다">
       <button onclick="event.stopPropagation(); prodsrcRemoveFavorite('${safeName}')" title="주요 폴더에서 제거" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-white border border-brand-border text-brand-gray hover:text-brand-pink hover:border-brand-pink flex items-center justify-center text-xs">×</button>
       <div onclick="prodsrcOpenCategory('${safeName}')" class="cursor-pointer">
         <div class="mb-2 flex items-center gap-1.5">
@@ -8389,13 +8391,55 @@ function prodsrcAddFavorite(name) {
   _prodsrcRender();
 }
 
-// 드래그 앤 드롭 — 카테고리 폴더 → 주요 폴더
+// 드래그 앤 드롭 — 카테고리 폴더 ↔ 주요 폴더 양방향
 let _prodsrcDragging = null;
+let _prodsrcDragSource = null; // 'cat' (카테고리 → 즐겨찾기) | 'fav' (즐겨찾기 → 카테고리)
 function prodsrcCatDragStart(e, name) {
   _prodsrcDragging = name;
+  _prodsrcDragSource = 'cat';
   try { e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'move'; } catch(_){}
-  // 드래그 중 시각 효과
   if (e.currentTarget) e.currentTarget.style.opacity = '0.5';
+}
+function prodsrcFavDragStart(e, name) {
+  _prodsrcDragging = name;
+  _prodsrcDragSource = 'fav';
+  try { e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'move'; } catch(_){}
+  if (e.currentTarget) e.currentTarget.style.opacity = '0.5';
+}
+function prodsrcFavDragEnd(e) {
+  _prodsrcDragging = null;
+  _prodsrcDragSource = null;
+  if (e.currentTarget) e.currentTarget.style.opacity = '';
+  const catSec = document.getElementById('prodsrc-folder-section');
+  if (catSec) catSec.classList.remove('ring-2','ring-inset','ring-brand-blue','bg-brand-blue-light/30');
+}
+// 카테고리 폴더 영역에 드롭 — 즐겨찾기에서 온 것일 때만 처리 (즐겨찾기 제거)
+function prodsrcCatDragOver(e) {
+  if (_prodsrcDragSource !== 'fav' || !_prodsrcDragging) return;
+  e.preventDefault();
+  try { e.dataTransfer.dropEffect = 'move'; } catch(_){}
+  const catSec = document.getElementById('prodsrc-folder-section');
+  if (catSec) catSec.classList.add('ring-2','ring-inset','ring-brand-blue','bg-brand-blue-light/30');
+}
+function prodsrcCatDragLeave(e) {
+  const catSec = document.getElementById('prodsrc-folder-section');
+  if (!catSec) return;
+  const rect = catSec.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+    catSec.classList.remove('ring-2','ring-inset','ring-brand-blue','bg-brand-blue-light/30');
+  }
+}
+function prodsrcCatDrop(e) {
+  if (_prodsrcDragSource !== 'fav') return;
+  e.preventDefault();
+  const catSec = document.getElementById('prodsrc-folder-section');
+  if (catSec) catSec.classList.remove('ring-2','ring-inset','ring-brand-blue','bg-brand-blue-light/30');
+  let name = _prodsrcDragging;
+  if (!name) { try { name = e.dataTransfer.getData('text/plain'); } catch(_){} }
+  if (!name) return;
+  prodsrcRemoveFavorite(name);
+  _prodsrcDragging = null;
+  _prodsrcDragSource = null;
 }
 function prodsrcCatDragEnd(e) {
   _prodsrcDragging = null;
