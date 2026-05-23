@@ -2162,53 +2162,24 @@ function computeStats(items, terms, baseKw, filterKw) {
     return { term: t, count: cnt, missingRank };
   });
 
-  function _fmtTermStat(tc) {
-    const head = `<b>${escapeHtml(tc.term)}</b> <span class="text-brand-blue font-black">${tc.count}</span> 개`;
-    if (tc.missingRank > 0) {
-      return `${head} <span class="text-brand-gray text-[10px] ml-1">· 미포함 <b class="text-brand-pink">${tc.missingRank}</b>등</span>`;
-    }
-    return `${head} <span class="text-brand-green text-[10px] ml-1 font-bold">· 전체 포함</span>`;
-  }
-
-  // 텀 1, 2를 2/5 셀에 표시
-  if (termCounts[0]) _fillCell('stat-cell-2', _fmtTermStat(termCounts[0]));
+  // 상품명 가중치는 카운트만 표시
+  if (termCounts[0]) _fillCell('stat-cell-2', `<b>${escapeHtml(termCounts[0].term)}</b> <span class="text-brand-blue font-black">${termCounts[0].count}</span> 개`);
   else _fillCell('stat-cell-2', '-');
 
-  if (termCounts[1]) _fillCell('stat-cell-5', _fmtTermStat(termCounts[1]));
+  if (termCounts[1]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
   else _fillCell('stat-cell-5', '-');
 
-  // 파트 가중치 — FITER+ 값을 포함하지 않는 가장 높은 순위 (= 가장 위쪽 상품)
-  // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
-  const filterKwNoSpace = (filterKw || '').trim().toLowerCase().replace(/\s+/g, '');
-  if (filterKwNoSpace) {
-    let missingRank = -1, missingTitle = '';
-    for (let i = 0; i < items.length; i++) {
-      const titleNoSpace = _stripHtml(items[i].title || '').toLowerCase().replace(/\s+/g, '');
-      if (!titleNoSpace.includes(filterKwNoSpace)) {
-        missingRank = i + 1;
-        missingTitle = _stripHtml(items[i].title || '');
-        break;
-      }
+  // 파트 가중치 — 각 텀이 미포함된 첫 상품의 순위 (모든 텀 표시)
+  function _fmtMiss(tc) {
+    if (tc.missingRank > 0) {
+      return `<b>${escapeHtml(tc.term)}</b> 미포함 - <b class="text-brand-pink">${tc.missingRank}</b>등`;
     }
-    if (missingRank > 0) {
-      const shortTitle = missingTitle.length > 18 ? missingTitle.slice(0, 18) + '…' : missingTitle;
-      _fillCell('stat-cell-3', `<b>${escapeHtml(filterKw)}</b> 없음 - <b class="text-brand-blue">${missingRank}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(shortTitle)}]</span>`);
-    } else {
-      _fillCell('stat-cell-3', `<b>${escapeHtml(filterKw)}</b> 모두 포함 <span class="text-brand-gray text-[10px] ml-1">(전체)</span>`);
-    }
-  } else {
-    _fillCell('stat-cell-3', '<span class="text-brand-gray text-[11px]">FITER+ 값 없음</span>');
+    return `<b>${escapeHtml(tc.term)}</b> <span class="text-brand-green font-bold">전체 포함</span>`;
   }
-
-  // 스토어 순위 (stat-cell-6에 유지)
-  const storeCounts = {};
-  items.slice(0, topN).forEach(it => {
-    if (it.mallName) storeCounts[it.mallName] = (storeCounts[it.mallName] || 0) + 1;
-  });
-  const topStore = Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0];
-  if (topStore) {
-    _fillCell('stat-cell-6', `스토어 - <b class="text-brand-blue">${topStore[1]}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(topStore[0])}]</span>`);
-  } else _fillCell('stat-cell-6', '-');
+  if (termCounts[0]) _fillCell('stat-cell-3', _fmtMiss(termCounts[0]));
+  else _fillCell('stat-cell-3', '-');
+  if (termCounts[1]) _fillCell('stat-cell-6', _fmtMiss(termCounts[1]));
+  else _fillCell('stat-cell-6', '-');
 
   // 위치 가중치 - 1위 상품
   const top1 = items[0];
