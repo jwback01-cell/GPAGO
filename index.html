@@ -1027,7 +1027,7 @@
             <span id="sp-status-badge" class="text-[10px] font-bold text-brand-gray bg-brand-bg px-2 py-0.5 rounded-full">대기중</span>
           </div>
           <div class="flex flex-col sm:flex-row gap-2">
-            <input id="sp-keyword" type="text" placeholder="예: 버즈4 케이스, 아이폰 케이스 (쉼표로 여러 키워드 동시 조회 가능)" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black" onkeydown="if(event.key==='Enter')fetchSrcProdApi()">
+            <input id="srcprod-keyword" type="text" placeholder="예: 버즈4 케이스, 아이폰 케이스 (쉼표로 여러 키워드 동시 조회 가능)" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black" onkeydown="if(event.key==='Enter')fetchSrcProdApi()">
             <input id="sp-display" type="number" min="10" max="100" value="80" class="sm:w-24 bg-brand-bg border border-brand-border rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-brand-black" title="가져올 상품 개수 (최대 100)">
             <button onclick="fetchSrcProdApi()" class="bg-brand-green text-white px-6 py-3 rounded-xl font-bold text-sm hover:opacity-90 flex items-center justify-center gap-2 whitespace-nowrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -5092,7 +5092,7 @@ async function _fetchOneKeyword(kw, display) {
 }
 
 async function fetchSrcProdApi() {
-  const raw = (document.getElementById('sp-keyword').value || '').trim();
+  const raw = (document.getElementById('srcprod-keyword').value || '').trim();
   if (!raw) { alert('분석할 키워드를 입력해주세요.'); return; }
   // 쉼표로 여러 키워드 분리
   const keywords = raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -5195,7 +5195,7 @@ async function fetchSrcProdApi() {
 
 function parseSrcProdJson() {
   const raw = (document.getElementById('sp-json').value || '').trim();
-  const kw = (document.getElementById('sp-keyword').value || '').trim();
+  const kw = (document.getElementById('srcprod-keyword').value || '').trim();
   if (!raw) { alert('shoppingResult JSON을 붙여넣어 주세요.'); return; }
 
   const badge = document.getElementById('sp-status-badge');
