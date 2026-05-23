@@ -651,7 +651,7 @@
             <button class="pill-btn pill-btn-light" onclick="document.getElementById('tool-json-input').value=''">초기화</button>
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
+        <div class="flex flex-col gap-5 mt-5">
           <div>
             <div class="text-xs font-bold text-brand-gray mb-1.5">Terms (네이버 검색 분해)</div>
             <div id="tool-json-terms" class="border-2 border-dashed border-brand-border rounded-2xl p-4 min-h-[80px] text-sm text-brand-gray text-center flex items-center justify-center">
@@ -2802,21 +2802,19 @@ function parseShopJson() {
     tagsBox.innerHTML = '<span class="text-brand-gray">manuTag가 있는 상품이 없습니다</span>';
     return;
   }
-  // manuTag 상위 25개 막대 차트
-  const top = sorted.slice(0, 25);
-  const max = top[0][1];
-  const meta = `<div class="text-[11px] text-brand-gray mb-2">${products.length}개 상품 중 ${totalProducts}개에서 manuTag 발견 · 고유 태그 ${sorted.length}개</div>`;
+  // manuTag — ROPAGO 스타일 그리드 (회수 · 퍼센트 · 태그명)
+  const top = sorted.slice(0, 40);
+  const meta = `<div class="text-[11px] text-brand-gray mb-3">${products.length}개 상품 중 ${totalProducts}개에서 manuTag 발견 · 고유 태그 ${sorted.length}개</div>`;
   const html = top.map(([t, c]) => {
     const pct = Math.round(c / totalProducts * 100);
-    const barPct = Math.max(8, Math.round(c / max * 100));
-    return `<div class="flex items-center gap-3 mb-2">
-      <span class="text-brand-blue font-bold w-32 truncate text-xs" title="${escapeHtml(t)}">${escapeHtml(t)}</span>
-      <div class="flex-1 h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-green rounded-full" style="width:${barPct}%"></div></div>
-      <span class="text-brand-gray text-[10px] w-10 text-right">${c}회</span>
-      <span class="font-black w-10 text-right text-xs text-brand-green">${pct}%</span>
+    return `<div class="flex items-center gap-2 py-1.5 text-xs">
+      <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
+      <span class="text-brand-blue font-black w-8 text-right shrink-0">${pct}%</span>
+      <span class="w-1 h-1 rounded-full bg-brand-orange shrink-0"></span>
+      <span class="font-semibold text-brand-black truncate" title="${escapeHtml(t)}">${escapeHtml(t)}</span>
     </div>`;
   }).join('');
-  tagsBox.innerHTML = meta + html;
+  tagsBox.innerHTML = meta + '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4">' + html + '</div>';
 }
 
 // 유틸
