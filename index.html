@@ -190,10 +190,9 @@
               <button class="weight-chip" data-mode="order">순서 고정</button>
               <button class="weight-chip" data-mode="name">상품명 가중치</button>
               <button class="weight-chip weight-chip-active" data-mode="part">파트 가중치</button>
-              <div class="empty-bar" id="stat-cell-1">-</div>
+              <div class="empty-bar row-span-2 flex items-center justify-center" id="stat-cell-1">-</div>
               <div class="empty-bar" id="stat-cell-2">-</div>
               <div class="empty-bar" id="stat-cell-3">-</div>
-              <div class="empty-bar" id="stat-cell-4">-</div>
               <div class="empty-bar" id="stat-cell-5">-</div>
               <div class="empty-bar" id="stat-cell-6">-</div>
             </div>
@@ -778,14 +777,11 @@ function computeStats(items, terms, baseKw) {
     return { term: t, count: cnt };
   });
 
-  // 텀 1, 2, 3을 2~6 셀에 분산 표시
+  // 텀 1, 2를 2/5 셀에 표시
   if (termCounts[0]) _fillCell('stat-cell-2', `<b>${escapeHtml(termCounts[0].term)}</b> <span class="text-brand-blue font-black">${termCounts[0].count}</span> 개`);
   else _fillCell('stat-cell-2', '-');
 
-  if (termCounts[1]) _fillCell('stat-cell-4', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
-  else _fillCell('stat-cell-4', '-');
-
-  if (termCounts[2]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[2].term)}</b> <span class="text-brand-blue font-black">${termCounts[2].count}</span> 개`);
+  if (termCounts[1]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
   else _fillCell('stat-cell-5', '-');
 
   // 카테고리·스토어 순위
@@ -819,7 +815,7 @@ function computeStats(items, terms, baseKw) {
 
 // 통계 초기화 (분석 전 빈 상태)
 function _resetStats() {
-  ['stat-cell-1','stat-cell-2','stat-cell-3','stat-cell-4','stat-cell-5','stat-cell-6'].forEach(id => {
+  ['stat-cell-1','stat-cell-2','stat-cell-3','stat-cell-5','stat-cell-6'].forEach(id => {
     _fillCell(id, '-');
   });
   const pb = document.getElementById('position-bar');
