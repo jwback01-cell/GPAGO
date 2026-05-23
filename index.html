@@ -8279,8 +8279,8 @@ function prodsrcRenderDetail() {
   // 1) 신규 키워드 + 검색량 1000 이상 → 최상단
   // 2) 그 외는 총검색수 내림차순 (null은 맨 아래)
   rows.sort((a, b) => {
-    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 1000);
-    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 1000);
+    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 500);
+    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 500);
     if (aHotNew && !bHotNew) return -1;
     if (!aHotNew && bHotNew) return 1;
     const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
@@ -8367,8 +8367,8 @@ function prodsrcExportExcel() {
   if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
   // 정렬 (화면과 동일)
   rows.sort((a, b) => {
-    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 1000);
-    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 1000);
+    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 500);
+    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 500);
     if (aHotNew && !bHotNew) return -1;
     if (!aHotNew && bHotNew) return 1;
     const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
