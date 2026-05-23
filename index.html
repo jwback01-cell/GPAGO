@@ -233,8 +233,10 @@
             <div class="flex items-center gap-2">
               <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm shrink-0">N</span>
               <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
-                <span id="kw-naver-label" class="text-sm text-brand-gray flex-1 truncate">키워드 없음</span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') runAnalysisWithNaverKw()">
+                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysisWithNaverKw()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
               </div>
             </div>
             <div class="flex items-center gap-2 flex-wrap" id="match-mode">
@@ -665,6 +667,18 @@ let _lastAnalysisItems = []; // raw API 결과 캐시
 let _lastBaseKw = '';
 let _lastFilterKw = '';
 
+// N 키워드 박스에 직접 입력한 값으로 바로 분석
+async function runAnalysisWithNaverKw() {
+  const naverKw = (document.getElementById('kw-naver').value || '').trim();
+  if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
+  // 입력된 N 키워드를 기준 키워드로 사용 (FITER+ 는 비움)
+  const baseEl = document.getElementById('kw-base');
+  const filterEl = document.getElementById('kw-filter');
+  if (baseEl) baseEl.value = naverKw;
+  if (filterEl) filterEl.value = '';
+  return runAnalysis();
+}
+
 async function runAnalysis() {
   const baseKw = (document.getElementById('kw-base').value || '').trim();
   const filterKw = (document.getElementById('kw-filter').value || '').trim();
@@ -716,7 +730,8 @@ async function runAnalysis() {
     // 텀즈 표시 + N 라벨
     const terms = _extractTerms(baseKw, filterKw);
     document.getElementById('terms-display').textContent = terms.join(',') || '-';
-    document.getElementById('kw-naver-label').textContent = query || '키워드 없음';
+    const naverEl = document.getElementById('kw-naver');
+    if (naverEl) naverEl.value = query || '';
     document.getElementById('total-count').textContent = (data.total || items.length).toLocaleString('ko-KR');
 
     // 통계 계산
