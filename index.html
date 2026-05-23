@@ -2726,6 +2726,12 @@ function parseShopJson() {
     totalEl.textContent = '0';
     return;
   }
+  // 배송/교환 관련 운영 태그는 제외 (마케팅 태그가 아니므로)
+  const MANUTAG_EXCLUDE = new Set([
+    '오늘출발','오늘발송','당일출발','당일발송','내일발송','내일도착',
+    '무료교환','무료반품','무료교환반품','무료반품교환','무료배송','무료반품교환',
+    '쿠팡배송','당일출고','당일배송','새벽배송','로켓배송'
+  ]);
   const tagCounts = {};
   let totalProducts = 0;
   products.forEach(p => {
@@ -2733,6 +2739,7 @@ function parseShopJson() {
     if (!tagStr) return;
     totalProducts++;
     tagStr.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(t => {
+      if (MANUTAG_EXCLUDE.has(t)) return;  // 운영성 태그는 집계 제외
       tagCounts[t] = (tagCounts[t] || 0) + 1;
     });
   });
