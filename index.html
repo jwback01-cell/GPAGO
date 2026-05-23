@@ -2260,16 +2260,33 @@ function renderAnalysisResults() {
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const isPriceCompare = String(it.productType) === '1';
     const isNaverPay = ['2','3'].includes(String(it.productType));
-    // 해외 상품 감지 (카테고리/스토어/타이틀 다중 신호)
+    // 해외 상품 감지 (카테고리/스토어/타이틀/브랜드 다중 신호)
     const allCatLower = cat.toLowerCase();
     const mallLower = (it.mallName || '').toLowerCase();
     const titleLower = title.toLowerCase();
+    const brandLower = (it.brand || '').toLowerCase();
+    const makerLower = (it.maker || '').toLowerCase();
+    // 일반적으로 네이버가 '해외'로 분류하는 외국 브랜드/키워드
+    const OVERSEAS_BRANDS = [
+      'oppo','오포','xiaomi','샤오미','redmi','레드미',
+      'huawei','화웨이','honor','아너',
+      'realme','리얼미','vivo','비보',
+      'lenovo','레노버','asus','에이수스','acer','에이서',
+      'msi','dell','델','hp','sony','소니',
+      'amazfit','어매즈핏','anker','앤커','앵커',
+      'baseus','베이스어스','ugreen','유그린',
+      'aliexpress','알리','aliexp','temu','테무','큐텐','qoo10','shein','쉬인'
+    ];
+    const hasOverseasBrand = OVERSEAS_BRANDS.some(b =>
+      titleLower.includes(b) || brandLower.includes(b) || makerLower.includes(b)
+    );
     const isOverseas =
       allCatLower.includes('해외') ||
       mallLower.includes('해외') || mallLower.includes('글로벌') || mallLower.includes('global') ||
       mallLower.includes('aliexpress') || mallLower.includes('알리') || mallLower.includes('큐텐') ||
       /^\s*\[?해외/.test(title) ||
-      titleLower.includes('해외배송') || titleLower.includes('직구');
+      titleLower.includes('해외배송') || titleLower.includes('직구') ||
+      hasOverseasBrand;
     const overseasBadge = isOverseas
       ? '<span class="inline-block text-[10px] font-black bg-brand-blue-light text-brand-blue px-2.5 py-0.5 rounded-full">해외</span> '
       : '';
