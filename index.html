@@ -1660,9 +1660,8 @@ PBT키캡	1180
     <div id="kw-detail-canvas" class="overflow-auto flex-1"></div>
   </div>
 </div>
-<!-- 이카운트 전송 오류 상세 모달 -->
 <!-- 공용 알림 모달 (native alert 대체) -->
-<div id="app-alert-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onclick="if(event.target===this)closeAppAlert()">
+<div id="app-alert-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeAppAlert()">
   <div class="bg-white rounded-3xl panel w-[90%] max-w-md overflow-hidden flex flex-col">
     <div class="px-6 py-5 flex items-start gap-4">
       <div id="app-alert-icon" class="w-12 h-12 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
@@ -1676,6 +1675,25 @@ PBT키캡	1180
     </div>
     <div class="px-6 py-4 border-t border-brand-border flex justify-end">
       <button onclick="closeAppAlert()" class="px-5 py-2.5 rounded-full bg-brand-black text-white text-sm font-bold hover:bg-[#333]">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 공용 확인 모달 (native confirm 대체) -->
+<div id="app-confirm-modal" class="hidden fixed inset-0 z-[71] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeAppConfirm(false)">
+  <div class="bg-white rounded-3xl panel w-[90%] max-w-md overflow-hidden flex flex-col">
+    <div class="px-6 py-5 flex items-start gap-4">
+      <div id="app-confirm-icon" class="w-12 h-12 rounded-2xl bg-brand-pink-light flex items-center justify-center shrink-0">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E91E63" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div id="app-confirm-title" class="font-bold text-base">확인</div>
+        <div id="app-confirm-msg" class="text-sm text-brand-gray mt-1 leading-relaxed whitespace-pre-line"></div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-brand-border flex justify-end gap-2">
+      <button id="app-confirm-cancel" onclick="closeAppConfirm(false)" class="px-5 py-2.5 rounded-full bg-white border border-brand-border text-brand-black text-sm font-bold hover:bg-brand-bg">취소</button>
+      <button id="app-confirm-ok" onclick="closeAppConfirm(true)" class="px-5 py-2.5 rounded-full bg-brand-pink text-white text-sm font-bold hover:opacity-90">삭제</button>
     </div>
   </div>
 </div>
@@ -4637,6 +4655,40 @@ function showAppAlert(title, msg, type, extra) {
 function closeAppAlert() {
   const modal = document.getElementById('app-alert-modal');
   if (modal) modal.classList.add('hidden');
+}
+
+// 공용 확인 모달 (native confirm 대체)
+let _appConfirmCb = null;
+function showAppConfirm(title, msg, onConfirm, options) {
+  options = options || {};
+  const modal = document.getElementById('app-confirm-modal');
+  if (!modal) {
+    if (confirm((title ? title + '\n' : '') + msg)) onConfirm && onConfirm();
+    return;
+  }
+  document.getElementById('app-confirm-title').textContent = title || '확인';
+  document.getElementById('app-confirm-msg').textContent = msg || '';
+  const okBtn = document.getElementById('app-confirm-ok');
+  const cancelBtn = document.getElementById('app-confirm-cancel');
+  if (okBtn) okBtn.textContent = options.confirmText || '확인';
+  if (cancelBtn) cancelBtn.textContent = options.cancelText || '취소';
+  // 스타일 (danger / default)
+  if (okBtn) {
+    if (options.confirmStyle === 'danger' || options.type === 'danger') {
+      okBtn.className = 'px-5 py-2.5 rounded-full bg-brand-pink text-white text-sm font-bold hover:opacity-90';
+    } else {
+      okBtn.className = 'px-5 py-2.5 rounded-full bg-brand-black text-white text-sm font-bold hover:bg-[#333]';
+    }
+  }
+  _appConfirmCb = onConfirm || null;
+  modal.classList.remove('hidden');
+}
+function closeAppConfirm(ok) {
+  const modal = document.getElementById('app-confirm-modal');
+  if (modal) modal.classList.add('hidden');
+  const cb = _appConfirmCb;
+  _appConfirmCb = null;
+  if (ok && cb) try { cb(); } catch (_) {}
 }
 
 // ════════════════════════════════════════
