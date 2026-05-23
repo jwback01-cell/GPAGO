@@ -2141,6 +2141,16 @@ function _fillCell(id, html) {
   else el.classList.remove('filled');
 }
 
+// 지정한 순위의 상품 행으로 스크롤 + 강조
+function scrollToRank(rank) {
+  const row = document.getElementById('row-rank-' + rank);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.style.transition = 'background-color .4s';
+  row.style.backgroundColor = '#FFF3E0';
+  setTimeout(() => { row.style.backgroundColor = ''; }, 1600);
+}
+
 function computeStats(items, terms, baseKw, filterKw) {
   if (!items.length) return;
   const topN = Math.min(10, items.length);
@@ -2169,12 +2179,14 @@ function computeStats(items, terms, baseKw, filterKw) {
   if (termCounts[1]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
   else _fillCell('stat-cell-5', '-');
 
-  // 파트 가중치 — 각 텀이 미포함된 모든 상품 순위 표시
+  // 파트 가중치 — 각 텀이 미포함된 모든 상품 순위 표시 (클릭하면 해당 행으로 이동)
   function _fmtMiss(tc) {
     if (tc.missingRanks.length === 0) {
       return `<b>${escapeHtml(tc.term)}</b> <span class="text-brand-green font-bold">전체 포함</span>`;
     }
-    const ranksStr = tc.missingRanks.map(r => `<b class="text-brand-pink">${r}</b>`).join(', ');
+    const ranksStr = tc.missingRanks.map(r =>
+      `<b class="text-brand-pink cursor-pointer hover:underline" onclick="event.stopPropagation();scrollToRank(${r})" title="${r}등 상품으로 이동">${r}</b>`
+    ).join(', ');
     return `<b>${escapeHtml(tc.term)}</b> 미포함 - ${ranksStr}등 <span class="text-brand-gray text-[10px] ml-1">(${tc.missingRanks.length}개)</span>`;
   }
   if (termCounts[0]) _fillCell('stat-cell-3', _fmtMiss(termCounts[0]));
@@ -2245,7 +2257,7 @@ function renderAnalysisResults() {
     // 속성·태그 — 상품명에서 풍부하게 추출
     const attrText = _extractAttributes(it);
     const tagText = _extractTagsFromTitle(it);
-    return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
+    return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
       <td class="px-3 py-3.5 text-sm align-middle">
