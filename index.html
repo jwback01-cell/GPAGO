@@ -135,6 +135,10 @@
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="archive">기록 보관소</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="tools">키워드 도구</a>
       </div>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="keywords">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        키워드 순위
+      </a>
     </nav>
     <div class="mt-auto pt-6 border-t border-brand-border">
       <div class="bg-brand-bg rounded-[20px] p-4 text-sm">
@@ -526,14 +530,515 @@
       <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">키워드 스크랩 — 곧 추가됩니다</section>
     </section>
 
+<div id="page-keywords" class="page">
+      <!-- Title -->
+      <section class="pl-2 pt-2 pb-2">
+        <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">키워드 순위 추적</h1>
+        <p class="text-brand-gray text-base md:text-[1.1rem]">검색 키워드로 내 상품의 네이버 쇼핑 순위를 실시간으로 확인하세요.</p>
+      </section>
+
+      <!-- 탭 네비게이션 -->
+      <div class="flex">
+        <div class="bg-white p-1.5 rounded-full panel inline-flex gap-1">
+          <button id="kw-tab-btn-trend" type="button" onclick="setKwTab('trend')" class="px-6 py-2.5 rounded-full text-sm font-bold bg-brand-black text-white transition-all">순위 변동 추이</button>
+          <button id="kw-tab-btn-track" type="button" onclick="setKwTab('track')" class="px-6 py-2.5 rounded-full text-sm font-medium text-brand-gray hover:text-brand-black transition-all">순위 추적</button>
+          <button id="kw-tab-btn-settings" type="button" onclick="setKwTab('settings')" class="px-6 py-2.5 rounded-full text-sm font-medium text-brand-gray hover:text-brand-black transition-all">설정</button>
+        </div>
+      </div>
+
+      <!-- 탭: 순위 추적 -->
+      <div id="kw-tab-track" class="hidden space-y-6">
+
+      <!-- Row 1: 조회 폼 + 결과 -->
+      <div class="flex flex-col gap-6 xl:flex-row">
+        <!-- 키워드 순위 조회 -->
+        <section class="bg-white p-6 md:p-8 rounded-4xl panel xl:w-[400px] shrink-0 flex flex-col">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-2 h-6 bg-brand-black rounded-full"></div>
+            <h2 class="text-[1.35rem] font-bold">키워드 순위 조회</h2>
+          </div>
+
+          <div class="flex flex-col gap-5 flex-1">
+            <div>
+              <label class="block text-[0.95rem] font-bold mb-2">검색 키워드</label>
+              <textarea id="kw-keywords" class="w-full bg-brand-bg border border-brand-border rounded-2xl px-4 py-3 text-[0.95rem] focus:outline-none focus:border-brand-black transition-colors resize-none h-[100px]" placeholder="예: 오버핏 티셔츠, 캔버스 토트백"></textarea>
+              <p class="text-brand-gray text-xs mt-2 flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                쉼표(,) 또는 줄바꿈(엔터)으로 구분하면 여러 키워드를 한 번에 조회할 수 있습니다.
+              </p>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-[0.95rem] font-bold">조회할 상품</label>
+                <button type="button" onclick="openKwAddProductModal()" class="text-xs font-bold text-brand-blue hover:underline flex items-center gap-1">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  새 상품 추가
+                </button>
+              </div>
+              <div class="relative">
+                <select id="kw-product-select" class="w-full bg-brand-bg border border-brand-border rounded-2xl px-4 py-3.5 text-[0.95rem] focus:outline-none focus:border-brand-black transition-colors appearance-none cursor-pointer text-brand-gray">
+                  <option value="" disabled selected>순위를 확인할 상품을 선택하세요</option>
+                </select>
+                <svg class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-brand-gray" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <div class="flex justify-end mt-2">
+                <button id="kw-delete-selected-product" type="button" onclick="deleteSelectedKwExtra()" class="hidden text-xs font-bold text-brand-pink hover:underline flex items-center gap-1">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  선택한 상품 삭제
+                </button>
+              </div>
+              <div id="kw-extra-products" class="hidden"></div>
+            </div>
+
+            <div>
+              <label class="block text-[0.95rem] font-bold mb-3">조회 범위</label>
+              <div class="flex flex-col gap-3">
+                <label class="kw-radio cursor-pointer group relative flex items-center gap-3 w-fit">
+                  <input type="radio" name="kw-range" value="50" class="peer sr-only">
+                  <div class="w-5 h-5 rounded-full border-2 border-[#E5E5EA] transition-all bg-white flex-shrink-0"></div>
+                  <span class="text-[0.95rem] font-medium text-brand-gray group-hover:text-brand-black peer-checked:text-brand-black transition-colors">상위 50위까지</span>
+                </label>
+                <label class="kw-radio cursor-pointer group relative flex items-center gap-3 w-fit">
+                  <input type="radio" name="kw-range" value="100" class="peer sr-only" checked>
+                  <div class="w-5 h-5 rounded-full border-2 border-[#E5E5EA] transition-all bg-white flex-shrink-0"></div>
+                  <span class="text-[0.95rem] font-medium text-brand-gray group-hover:text-brand-black peer-checked:text-brand-black transition-colors">상위 100위까지</span>
+                </label>
+                <label class="kw-radio cursor-pointer group relative flex items-center gap-3 w-fit">
+                  <input type="radio" name="kw-range" value="200" class="peer sr-only">
+                  <div class="w-5 h-5 rounded-full border-2 border-[#E5E5EA] transition-all bg-white flex-shrink-0"></div>
+                  <span class="text-[0.95rem] font-medium text-brand-gray group-hover:text-brand-black peer-checked:text-brand-black transition-colors">상위 200위까지</span>
+                </label>
+              </div>
+              <p class="text-brand-gray text-[0.8rem] mt-3">네이버 쇼핑 검색 결과 기준으로 순위를 집계합니다.</p>
+            </div>
+
+            <div>
+              <label class="block text-[0.95rem] font-bold mb-3">순위 유형</label>
+              <div class="flex flex-col gap-2.5">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" id="kw-rank-type-price" class="w-4 h-4 rounded" checked>
+                  <span class="text-sm font-semibold">가격비교 <span class="text-brand-gray font-medium">(전체 쇼핑 검색 결과)</span></span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" id="kw-rank-type-plus" class="w-4 h-4 rounded">
+                  <span class="text-sm font-semibold">플러스스토어 <span class="text-brand-gray font-medium">(스마트스토어/플러스만)</span></span>
+                </label>
+              </div>
+              <p class="text-brand-gray text-[0.8rem] mt-2">두 유형 동시 선택 시 각각 별도 순위로 조회됩니다.</p>
+            </div>
+          </div>
+
+          <button id="kw-search-btn" onclick="runKwRankSearch()" class="w-full mt-6 bg-brand-black text-white py-3.5 rounded-full font-bold hover:bg-[#333] transition-colors shadow-md flex justify-center items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            순위 조회
+          </button>
+        </section>
+
+        <!-- 순위 조회 결과 -->
+        <section class="bg-white p-6 md:p-8 rounded-4xl panel flex-1 flex flex-col overflow-hidden">
+          <div class="flex justify-between items-end mb-6 shrink-0 flex-wrap gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-2 h-6 bg-brand-blue-light rounded-full"></div>
+              <h2 class="text-[1.35rem] font-bold">순위 조회 결과</h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="kw-register-selected-btn" type="button" onclick="registerSelectedKwResults()" class="hidden px-4 py-2 rounded-full bg-brand-black text-white text-xs font-bold hover:bg-[#333] transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                <span id="kw-register-selected-label">선택한 키워드 등록</span>
+              </button>
+              <div class="text-brand-gray text-sm font-medium flex items-center gap-1.5 bg-brand-bg px-3 py-1.5 rounded-full">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span id="kw-last-query">아직 조회 기록 없음</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto flex-1 border border-brand-border rounded-2xl">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr class="bg-brand-bg border-b border-brand-border text-brand-gray text-[0.85rem]">
+                  <th class="font-semibold p-4 pl-5 whitespace-nowrap w-10"><input type="checkbox" id="kw-result-select-all" onclick="toggleAllKwResults(this)" class="w-4 h-4 rounded cursor-pointer"></th>
+                  <th class="font-semibold p-4 whitespace-nowrap">키워드</th>
+                  <th class="font-semibold p-4 whitespace-nowrap text-center">현재 순위</th>
+                  <th class="font-semibold p-4 whitespace-nowrap">전일 대비</th>
+                  <th class="font-semibold p-4 whitespace-nowrap text-center">최고 순위</th>
+                  <th class="font-semibold p-4 whitespace-nowrap text-center">최저 순위</th>
+                  <th class="font-semibold p-4 pr-5 whitespace-nowrap text-right">조회 시각</th>
+                </tr>
+              </thead>
+              <tbody id="kw-result-body" class="text-[0.95rem]">
+                <tr><td colspan="7" class="p-10 text-center text-brand-gray">왼쪽에서 키워드와 상품을 선택한 뒤 <b class="text-brand-black">순위 조회</b> 버튼을 누르면 결과가 여기에 표시됩니다.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      </div><!-- /kw-tab-track -->
+
+      <!-- 탭: 순위 변동 추이 -->
+      <div id="kw-tab-trend" class="space-y-6">
+        <section class="bg-white p-6 md:p-8 rounded-4xl panel flex flex-col">
+          <div class="flex justify-between items-center mb-5 shrink-0 flex-wrap gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-2 h-6 bg-brand-orange-light rounded-full"></div>
+              <h2 class="text-[1.35rem] font-bold">순위 변동 추이</h2>
+              <p class="text-brand-gray text-sm hidden md:block">상품별로 등록된 키워드들의 현재 순위와 등락을 한눈에 확인하세요.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <button type="button" id="kw-auto-run-btn" onclick="runKwAutoTrackNow()" title="등록된 모든 키워드의 순위를 지금 즉시 조회하여 추이에 기록합니다" class="text-xs font-bold px-3 py-1.5 rounded-full bg-brand-black text-white hover:bg-[#333] flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                지금 자동 추적 실행
+              </button>
+              <button type="button" onclick="refreshKwVolumes()" title="모든 키워드의 월 검색량을 다시 조회합니다" class="text-xs font-bold text-brand-blue hover:underline flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                검색량 새로고침
+              </button>
+            </div>
+          </div>
+
+          <!-- 상단 통계 바 -->
+          <div id="kw-trend-stats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5 pb-5 border-b border-brand-border">
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-bold text-brand-gray">슬롯 사용 현황</span>
+              <div class="flex items-baseline gap-1">
+                <span id="kw-stat-slots" class="text-[1.4rem] font-black text-brand-black">0</span>
+                <span class="text-xs text-brand-gray">개</span>
+              </div>
+              <div class="h-1 bg-brand-bg rounded-full overflow-hidden mt-0.5"><div id="kw-stat-slots-bar" class="h-full bg-brand-orange rounded-full transition-all" style="width:0%"></div></div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-bold text-brand-gray">등록 키워드</span>
+              <div class="flex items-baseline gap-1">
+                <span id="kw-stat-kws" class="text-[1.4rem] font-black text-brand-black">0</span>
+                <span class="text-xs text-brand-gray">개</span>
+              </div>
+              <div class="h-1 bg-brand-bg rounded-full overflow-hidden mt-0.5"><div id="kw-stat-kws-bar" class="h-full bg-brand-blue rounded-full transition-all" style="width:0%"></div></div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-bold text-brand-gray">유지 키워드 <span class="text-brand-gray">-</span></span>
+              <div class="flex items-baseline gap-1">
+                <span id="kw-stat-keep" class="text-[1.4rem] font-black text-brand-gray">0</span>
+                <span class="text-xs text-brand-gray">개</span>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-bold text-brand-gray">상승 키워드 <span class="text-brand-blue">▲</span></span>
+              <div class="flex items-baseline gap-1">
+                <span id="kw-stat-up" class="text-[1.4rem] font-black text-brand-blue">0</span>
+                <span class="text-xs text-brand-gray">개</span>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-[11px] font-bold text-brand-gray">하락 키워드 <span class="text-brand-pink">▼</span></span>
+              <div class="flex items-baseline gap-1">
+                <span id="kw-stat-down" class="text-[1.4rem] font-black text-brand-pink">0</span>
+                <span class="text-xs text-brand-gray">개</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 카드 그리드 — 1줄에 2개 -->
+          <div id="kw-trend-canvas" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </section>
+      </div><!-- /kw-tab-trend -->
+
+      <!-- 탭: 설정 -->
+      <div id="kw-tab-settings" class="hidden space-y-6">
+
+      <!-- Row 3: 카드 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- 순위 알림 -->
+        <section class="bg-white p-7 rounded-3xl panel flex flex-col hover:-translate-y-1 transition-transform duration-300">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <div class="font-bold text-[1.15rem] mb-1 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                순위 알림
+              </div>
+              <p class="text-brand-gray text-sm leading-snug">설정한 기준을 벗어나면 알림을 보내드립니다.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 mb-5 mt-2">
+            <label class="kw-check cursor-pointer flex items-center gap-3">
+              <input type="checkbox" class="sr-only" checked>
+              <div class="w-5 h-5 rounded border-2 border-[#E5E5EA] transition-colors bg-white flex items-center justify-center flex-shrink-0">
+                <svg class="hidden w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <span class="text-sm font-medium">100위 밖으로 떨어질 때 (순위 이탈)</span>
+            </label>
+            <label class="kw-check cursor-pointer flex items-center gap-3">
+              <input type="checkbox" class="sr-only" checked>
+              <div class="w-5 h-5 rounded border-2 border-[#E5E5EA] transition-colors bg-white flex items-center justify-center flex-shrink-0">
+                <svg class="hidden w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <span class="text-sm font-medium">전일 대비 10계단 이상 하락할 때 (급락)</span>
+            </label>
+            <label class="kw-check cursor-pointer flex items-center gap-3">
+              <input type="checkbox" class="sr-only">
+              <div class="w-5 h-5 rounded border-2 border-[#E5E5EA] transition-colors bg-white flex items-center justify-center flex-shrink-0">
+                <svg class="hidden w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <span class="text-sm font-medium">순위권 진입 시 (신규 진입)</span>
+            </label>
+          </div>
+
+          <div class="mt-auto border-t border-brand-border pt-4">
+            <div class="text-xs font-bold text-brand-gray mb-2">알림 수단</div>
+            <div class="flex gap-4">
+              <label class="kw-check cursor-pointer flex items-center gap-2">
+                <input type="checkbox" class="sr-only" checked>
+                <div class="w-4 h-4 rounded border-2 border-[#E5E5EA] transition-colors bg-white flex items-center justify-center">
+                  <svg class="hidden w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <span class="text-xs font-semibold text-brand-gray">화면 알림</span>
+              </label>
+              <label class="kw-check cursor-pointer flex items-center gap-2">
+                <input type="checkbox" class="sr-only">
+                <div class="w-4 h-4 rounded border-2 border-[#E5E5EA] transition-colors bg-white flex items-center justify-center">
+                  <svg class="hidden w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <span class="text-xs font-semibold text-brand-gray">이메일</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- 네이버 API 설정 -->
+        <section class="bg-white p-7 rounded-3xl panel flex flex-col hover:-translate-y-1 transition-transform duration-300">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <div class="font-bold text-[1.15rem] mb-1 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                네이버 API 설정
+              </div>
+              <p class="text-brand-gray text-sm leading-snug">네이버 개발자 센터에서 발급받은 API 키를 등록하세요.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 flex-1 justify-center mt-2">
+            <div>
+              <input id="kw-naver-id" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-black transition-colors font-mono" placeholder="Client ID 입력">
+            </div>
+            <div>
+              <input id="kw-naver-secret" type="password" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-black transition-colors font-mono" placeholder="Client Secret 입력">
+            </div>
+            <div id="kw-naver-status" class="hidden items-center gap-1.5 text-xs font-bold text-brand-green bg-brand-green-light px-2 py-1.5 rounded-lg w-max mt-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              <span id="kw-naver-status-text">네이버 API 연결됨</span>
+            </div>
+          </div>
+
+          <div class="mt-5 flex gap-2">
+            <button onclick="testNaverApi()" class="flex-1 bg-white border border-[#E5E5EA] text-brand-black py-2.5 rounded-full text-sm font-bold hover:bg-brand-bg transition-colors">연결 테스트</button>
+            <button onclick="saveNaverApi()" class="flex-1 bg-brand-black text-white py-2.5 rounded-full text-sm font-bold hover:bg-[#333] transition-colors">설정 저장</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 네이버 검색광고 API (월 검색량 조회용) -->
+      <section class="bg-white p-7 rounded-3xl panel">
+        <div class="flex justify-between items-start mb-4 flex-wrap gap-3">
+          <div class="min-w-0">
+            <div class="font-bold text-[1.15rem] mb-1 flex items-center gap-2 flex-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              네이버 검색광고 API
+              <span id="sa-key-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full text-brand-gray bg-brand-bg">미등록</span>
+            </div>
+            <p class="text-brand-gray text-sm leading-snug">키워드별 <b>월 검색량</b>(추이 표 옆 표시)을 조회하려면 검색광고 API 키가 필요합니다. 위쪽 "네이버 API 설정"(쇼핑 Open API)과는 별도입니다.</p>
+            <p class="text-brand-gray text-xs mt-1.5">발급: <a href="https://manage.searchad.naver.com" target="_blank" class="text-brand-blue hover:underline font-semibold">searchad.naver.com</a> → 도구 → API 사용 관리</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">CUSTOMER_ID</label>
+            <input id="sa-customer-id" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-black transition-colors font-mono" placeholder="예: 1234567">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">ACCESS_LICENSE</label>
+            <input id="sa-license" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-black transition-colors font-mono" placeholder="01000000...">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">SECRET_KEY</label>
+            <input id="sa-secret" type="password" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-black transition-colors font-mono" placeholder="시크릿 키">
+          </div>
+        </div>
+
+        <div class="mt-5 flex gap-2 justify-end flex-wrap">
+          <button type="button" onclick="clearSaKeys()" class="px-5 py-2.5 bg-white border border-[#E5E5EA] text-brand-gray rounded-full text-sm font-bold hover:bg-brand-bg transition-colors">키 삭제</button>
+          <button type="button" onclick="testSaApi()" class="px-5 py-2.5 bg-white border border-[#E5E5EA] text-brand-black rounded-full text-sm font-bold hover:bg-brand-bg transition-colors">연결 테스트</button>
+          <button type="button" onclick="saveSaKeys()" class="px-5 py-2.5 bg-brand-black text-white rounded-full text-sm font-bold hover:bg-[#333] transition-colors">검색광고 API 키 저장</button>
+        </div>
+      </section>
+
+      </div><!-- /kw-tab-settings -->
+</div>
   </main>
 </div>
 
 <div id="toast"></div>
 
+<div id="kw-delete-product-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onclick="if(event.target===this)closeKwDeleteProductModal()">
+  <div class="bg-white rounded-3xl panel w-[90%] max-w-sm overflow-hidden flex flex-col">
+    <div class="px-6 pt-6 pb-4 flex flex-col items-center text-center">
+      <div class="w-14 h-14 rounded-full bg-brand-pink-light flex items-center justify-center mb-4">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#E91E63" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+      </div>
+      <h3 class="font-bold text-lg mb-1">상품을 삭제할까요?</h3>
+      <p class="text-brand-gray text-sm">아래 상품이 조회 목록에서 제거됩니다.</p>
+      <div id="kw-delete-product-name" class="mt-4 w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm font-bold text-brand-black break-all"></div>
+      <p class="text-brand-gray text-xs mt-3 leading-relaxed">이 상품에 연결된 키워드 관리·추이 데이터는 그대로 유지되며, 키워드는 <span class="font-semibold text-brand-black">&lt;연결 끊김&gt;</span> 상태가 됩니다.</p>
+    </div>
+    <div class="px-6 py-4 border-t border-brand-border flex gap-2">
+      <button onclick="closeKwDeleteProductModal()" class="flex-1 px-5 py-2.5 rounded-full bg-white border border-brand-border text-sm font-bold hover:bg-brand-bg">취소</button>
+      <button id="kw-delete-product-confirm" class="flex-1 px-5 py-2.5 rounded-full bg-brand-pink text-white text-sm font-bold hover:opacity-90">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- 키워드 - 새 상품 추가 모달 -->
+<div id="kw-add-product-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onclick="if(event.target===this)closeKwAddProductModal()">
+  <div class="bg-white rounded-3xl panel w-[90%] max-w-md overflow-hidden flex flex-col">
+    <div class="px-6 py-4 border-b border-brand-border flex items-center justify-between">
+      <div>
+        <div class="font-bold text-base">새 상품 추가</div>
+        <div class="text-xs text-brand-gray mt-1">키워드 순위 조회용 상품을 직접 추가합니다.</div>
+      </div>
+      <button onclick="closeKwAddProductModal()" class="text-brand-gray hover:text-brand-black p-1 rounded-full hover:bg-brand-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="p-6 flex flex-col gap-4">
+      <div>
+        <label class="block text-sm font-bold mb-2">상품명</label>
+        <input id="kw-new-product-name" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors" placeholder="예: 24SS 프리미엄 오버핏 티셔츠" onkeydown="if(event.key==='Enter')document.getElementById('kw-new-product-url').focus()">
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2">상품 URL <span class="text-brand-gray font-medium">(선택)</span></label>
+        <input id="kw-new-product-url" type="url" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors" placeholder="https://smartstore.naver.com/..." onkeydown="if(event.key==='Enter')submitKwAddProduct()">
+        <p class="text-brand-gray text-xs mt-2">네이버 쇼핑/스마트스토어 등 상품 상세 페이지 주소를 입력하세요.</p>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-brand-border flex justify-end gap-2">
+      <button onclick="closeKwAddProductModal()" class="px-5 py-2.5 rounded-full bg-white border border-brand-border text-sm font-bold hover:bg-brand-bg">취소</button>
+      <button onclick="submitKwAddProduct()" class="px-5 py-2.5 rounded-full bg-brand-black text-white text-sm font-bold hover:bg-[#333]">추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- 키워드 - 키워드 등록/수정 모달 -->
+<div id="kw-manage-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40" onclick="if(event.target===this)closeKwManageModal()">
+  <div class="bg-white rounded-3xl panel w-[90%] max-w-md overflow-hidden flex flex-col">
+    <div class="px-6 py-4 border-b border-brand-border flex items-center justify-between">
+      <div>
+        <div id="kw-manage-modal-title" class="font-bold text-base">키워드 등록</div>
+        <div class="text-xs text-brand-gray mt-1">자동 추적할 키워드와 연결 상품을 지정합니다.</div>
+      </div>
+      <button onclick="closeKwManageModal()" class="text-brand-gray hover:text-brand-black p-1 rounded-full hover:bg-brand-bg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="p-6 flex flex-col gap-4">
+      <input type="hidden" id="kw-manage-edit-id">
+      <div>
+        <label class="block text-sm font-bold mb-2">키워드</label>
+        <input id="kw-manage-keyword" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors" placeholder="예: 오버핏 티셔츠, 여름 무지티, 박스 티">
+        <p id="kw-manage-keyword-hint" class="text-brand-gray text-xs mt-2 flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          쉼표(,)로 구분하면 여러 키워드를 한 번에 등록할 수 있습니다.
+        </p>
+      </div>
+      <div>
+        <label class="block text-sm font-bold mb-2">연결 상품</label>
+        <div class="relative">
+          <select id="kw-manage-product" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors appearance-none cursor-pointer">
+            <option value="" disabled selected>상품을 선택하세요</option>
+          </select>
+          <svg class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-brand-gray" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <p class="text-brand-gray text-xs mt-2">조회할 상품 목록과 동일하게 등록 상품 + 직접 추가 상품을 사용합니다.</p>
+      </div>
+      <label class="flex items-center justify-between bg-brand-bg rounded-xl px-4 py-3">
+        <span class="text-sm font-bold">자동 추적</span>
+        <span class="kw-toggle">
+          <input type="checkbox" id="kw-manage-auto" checked>
+          <span class="slider"></span>
+        </span>
+      </label>
+      <div class="bg-brand-bg rounded-xl px-4 py-3">
+        <div class="text-sm font-bold mb-2">순위 유형</div>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="kw-manage-type-price" class="w-4 h-4 rounded" checked>
+            <span class="text-sm">가격비교</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="kw-manage-type-plus" class="w-4 h-4 rounded">
+            <span class="text-sm">플러스스토어</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-brand-border flex justify-end gap-2">
+      <button onclick="closeKwManageModal()" class="px-5 py-2.5 rounded-full bg-white border border-brand-border text-sm font-bold hover:bg-brand-bg">취소</button>
+      <button onclick="submitKwManage()" class="px-5 py-2.5 rounded-full bg-brand-black text-white text-sm font-bold hover:bg-[#333]">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 순위 변동 추이 상세(상품별) 모달 -->
+<div id="kw-trend-detail-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeKwTrendDetail()">
+  <div class="bg-white rounded-3xl panel w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+    <!-- 헤더 -->
+    <div class="px-6 py-4 border-b border-brand-border flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div id="kw-detail-title" class="font-bold text-base truncate">상품 추이</div>
+        <div class="text-xs text-brand-gray mt-0.5">매일 오전 7시 자동 추적 결과 + 수동 조회 누적</div>
+      </div>
+      <button onclick="closeKwTrendDetail()" class="text-brand-gray hover:text-brand-black p-1 rounded-full hover:bg-brand-bg shrink-0" aria-label="닫기">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- 기간 필터 -->
+    <div class="px-6 py-3 border-b border-brand-border flex items-center gap-3 flex-wrap">
+      <div id="kw-detail-period" class="flex gap-1 bg-brand-bg p-1 rounded-xl">
+        <button data-days="7" class="kw-detail-pbtn px-3 py-1.5 text-sm font-bold bg-white shadow-sm rounded-lg text-brand-black">7일</button>
+        <button data-days="14" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">14일</button>
+        <button data-days="30" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">30일</button>
+        <button data-days="all" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">전체</button>
+      </div>
+      <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨</span>
+    </div>
+    <!-- 표 -->
+    <div id="kw-detail-canvas" class="overflow-auto flex-1"></div>
+  </div>
+</div>
+<!-- 이카운트 전송 오류 상세 모달 -->
+<!-- 공용 알림 모달 (native alert 대체) -->
+<div id="app-alert-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onclick="if(event.target===this)closeAppAlert()">
+  <div class="bg-white rounded-3xl panel w-[90%] max-w-md overflow-hidden flex flex-col">
+    <div class="px-6 py-5 flex items-start gap-4">
+      <div id="app-alert-icon" class="w-12 h-12 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div id="app-alert-title" class="font-bold text-base">알림</div>
+        <div id="app-alert-msg" class="text-sm text-brand-gray mt-1 leading-relaxed whitespace-pre-line"></div>
+        <div id="app-alert-extra" class="text-xs text-brand-gray mt-3 bg-brand-bg rounded-xl px-3 py-2 leading-relaxed hidden"></div>
+      </div>
+    </div>
+    <div class="px-6 py-4 border-t border-brand-border flex justify-end">
+      <button onclick="closeAppAlert()" class="px-5 py-2.5 rounded-full bg-brand-black text-white text-sm font-bold hover:bg-[#333]">확인</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═════════════ 페이지 전환 ═════════════
-const PAGES = ['dashboard','scrap','analysis','special','archive','tools','rank','competitor','performance','ai','seo'];
+const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords'];
 const SEMI_PAGES = ['analysis','special','archive','tools'];
 function goPage(pageId) {
   PAGES.forEach(p => {
@@ -548,6 +1053,22 @@ function goPage(pageId) {
   try { localStorage.setItem('gpago_last_page', pageId); } catch(_) {}
   if (pageId === 'archive') renderSlots();
   if (pageId === 'special') renderSynonyms();
+  if (pageId === 'keywords') {
+    try {
+      if (typeof _loadKwExtras === 'function') _loadKwExtras();
+      if (typeof _migrateKwManageProductKeys === 'function') _migrateKwManageProductKeys();
+      if (typeof _cleanupOrphanKwSeries === 'function') _cleanupOrphanKwSeries();
+      if (typeof renderKwProductSelect === 'function') renderKwProductSelect();
+      if (typeof _fillNaverApiInputs === 'function') _fillNaverApiInputs();
+      if (typeof renderKwManageList === 'function') renderKwManageList();
+      if (typeof _bindKwTrendPeriodButtons === 'function') _bindKwTrendPeriodButtons();
+      if (typeof renderKwTrend === 'function') renderKwTrend();
+      if (typeof renderKwAutoStatus === 'function') renderKwAutoStatus();
+      if (typeof _scheduleKwAutoTick === 'function') _scheduleKwAutoTick();
+      if (typeof _populateSaInputs === 'function') _populateSaInputs();
+      if (typeof _updateSaBadge === 'function') _updateSaBadge();
+    } catch(e) { console.error('[keywords init]', e); }
+  }
 }
 document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => goPage(el.dataset.page)));
 
@@ -1092,6 +1613,2068 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.textContent = Math.min(r.length, 10);
   } catch(_) {}
 });
+
+// ════════════════════════════════════════
+// 키워드 순위 (GPLAN에서 이식)
+// ════════════════════════════════════════
+const KW_EXTRA_KEY = 'kw_extra_products';
+function _kwExtraUid() { return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function _loadKwExtras() {
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem(KW_EXTRA_KEY) || '[]'); } catch(_) { raw = []; }
+  let mutated = false;
+  const arr = raw.map(item => {
+    let obj;
+    if (typeof item === 'string') { obj = { id: '', name: item, url: '' }; mutated = true; }
+    else obj = { id: item.id || '', name: item.name || '', url: item.url || '' };
+    if (!obj.id) { obj.id = _kwExtraUid(); mutated = true; }
+    return obj;
+  });
+  if (mutated) localStorage.setItem(KW_EXTRA_KEY, JSON.stringify(arr));
+  return arr;
+}
+function _saveKwExtras(arr) { localStorage.setItem(KW_EXTRA_KEY, JSON.stringify(arr)); }
+function _findKwExtraIndexById(id) { return _loadKwExtras().findIndex(p => p.id === id); }
+
+function renderKwProductSelect() {
+  const sel = document.getElementById('kw-product-select');
+  if (!sel) return;
+  const prev = sel.value;
+  const extras = _loadKwExtras().map(p => ({ id: 'ex:' + p.id, name: p.name, url: p.url }));
+  sel.innerHTML = '<option value="" disabled' + (prev ? '' : ' selected') + '>순위를 확인할 상품을 선택하세요</option>'
+    + extras.map(p => `<option value="${p.id}">${_escapeHtml(p.name)}</option>`).join('');
+  if (prev && extras.some(p => p.id === prev)) sel.value = prev;
+  sel.classList.toggle('text-brand-gray', !sel.value);
+
+  const updateDelBtn = () => {
+    const btn = document.getElementById('kw-delete-selected-product');
+    if (btn) btn.classList.toggle('hidden', !sel.value);
+  };
+  updateDelBtn();
+  sel.onchange = () => { sel.classList.toggle('text-brand-gray', !sel.value); updateDelBtn(); };
+}
+
+function deleteSelectedKwExtra() {
+  const sel = document.getElementById('kw-product-select');
+  if (!sel || !sel.value || !sel.value.startsWith('ex:')) return;
+  const id = sel.value.slice(3);
+  const product = _loadKwExtras().find(p => p.id === id);
+  if (!product) return;
+  document.getElementById('kw-delete-product-name').textContent = product.name;
+  const modal = document.getElementById('kw-delete-product-modal');
+  modal.classList.remove('hidden');
+  const confirmBtn = document.getElementById('kw-delete-product-confirm');
+  confirmBtn.onclick = () => { closeKwDeleteProductModal(); removeKwExtraProduct(id); };
+}
+function closeKwDeleteProductModal() {
+  document.getElementById('kw-delete-product-modal').classList.add('hidden');
+}
+
+function _escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function openKwAddProductModal() {
+  document.getElementById('kw-add-product-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('kw-new-product-name')?.focus(), 50);
+}
+function closeKwAddProductModal() {
+  document.getElementById('kw-add-product-modal').classList.add('hidden');
+  const nameI = document.getElementById('kw-new-product-name');
+  const urlI = document.getElementById('kw-new-product-url');
+  if (nameI) nameI.value = '';
+  if (urlI) urlI.value = '';
+}
+function submitKwAddProduct() {
+  const nameI = document.getElementById('kw-new-product-name');
+  const urlI = document.getElementById('kw-new-product-url');
+  const name = (nameI?.value || '').trim();
+  let url = (urlI?.value || '').trim();
+  if (!name) { nameI?.focus(); return; }
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const extras = _loadKwExtras();
+  const newId = _kwExtraUid();
+  extras.push({ id: newId, name, url, imageUrl: '' });
+  _saveKwExtras(extras);
+  closeKwAddProductModal();
+  renderKwProductSelect();
+  const sel = document.getElementById('kw-product-select');
+  if (sel) { sel.value = 'ex:' + newId; sel.classList.remove('text-brand-gray'); }
+  // 백그라운드로 이미지 자동 가져오기
+  _fetchKwProductImage(newId, name, url);
+}
+
+// 네이버 쇼핑 API에서 상품 이미지 자동 가져오기
+async function _fetchKwProductImage(extraId, name, url) {
+  try {
+    const productIdMatch = (url || '').match(/products\/(\d+)/);
+    const productId = productIdMatch ? productIdMatch[1] : '';
+    const r = await fetch(`/api/naver-shop?query=${encodeURIComponent(name)}&display=20&start=1`);
+    if (!r.ok) return;
+    const data = await r.json();
+    const items = data.items || [];
+    let matched = null;
+    if (productId) matched = items.find(it => (it.link || '').includes(productId) || String(it.productId) === productId);
+    if (!matched && url) matched = items.find(it => (it.link || '').includes(url.replace(/^https?:\/\//, '').split('/')[0]));
+    if (!matched) matched = items[0];
+    if (!matched || !matched.image) return;
+    const extras = _loadKwExtras();
+    const target = extras.find(p => p.id === extraId);
+    if (!target) return;
+    target.imageUrl = matched.image;
+    _saveKwExtras(extras);
+    if (typeof renderKwTrend === 'function') renderKwTrend();
+  } catch (_) { /* 조용히 실패 */ }
+}
+function removeKwExtraProduct(id) {
+  const extras = _loadKwExtras().filter(p => p.id !== id);
+  _saveKwExtras(extras);
+  renderKwProductSelect();
+  if (typeof renderKwManageList === 'function') renderKwManageList();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+}
+
+// ── Naver API 키 ───────────────────────────
+const KW_API_KEY = 'kw_naver_api';
+const KW_HIST_KEY = 'kw_rank_history';
+
+function _loadNaverApi() { try { return JSON.parse(localStorage.getItem(KW_API_KEY) || '{}'); } catch(_) { return {}; } }
+function _saveNaverApi(o) { localStorage.setItem(KW_API_KEY, JSON.stringify(o)); }
+
+function _fillNaverApiInputs() {
+  const c = _loadNaverApi();
+  const idEl = document.getElementById('kw-naver-id');
+  const scEl = document.getElementById('kw-naver-secret');
+  if (idEl && c.clientId) idEl.value = c.clientId;
+  if (scEl && c.clientSecret) scEl.value = c.clientSecret;
+  _setNaverStatus(!!(c.clientId && c.clientSecret), c.clientId && c.clientSecret ? '네이버 API 등록됨' : '');
+}
+function _setNaverStatus(ok, text) {
+  const box = document.getElementById('kw-naver-status');
+  const t = document.getElementById('kw-naver-status-text');
+  if (!box) return;
+  if (ok) { box.classList.remove('hidden'); box.classList.add('flex'); if (t && text) t.textContent = text; }
+  else { box.classList.add('hidden'); box.classList.remove('flex'); }
+}
+
+function saveNaverApi() {
+  const id = document.getElementById('kw-naver-id').value.trim();
+  const sc = document.getElementById('kw-naver-secret').value.trim();
+  if (!id || !sc) { alert('Client ID와 Client Secret을 모두 입력하세요.'); return; }
+  _saveNaverApi({ clientId: id, clientSecret: sc });
+  _setNaverStatus(true, '네이버 API 등록됨');
+  alert('네이버 API 키가 저장되었습니다.');
+}
+
+async function testNaverApi() {
+  const id = document.getElementById('kw-naver-id').value.trim();
+  const sc = document.getElementById('kw-naver-secret').value.trim();
+  if (!id || !sc) { alert('Client ID와 Client Secret을 입력하세요.'); return; }
+  try {
+    const res = await _naverShopSearch('테스트', 1, 1, id, sc);
+    if (res && Array.isArray(res.items)) {
+      _setNaverStatus(true, '네이버 API 연결됨');
+      alert('연결 성공! 응답 정상.');
+    } else {
+      _setNaverStatus(false);
+      alert('연결 실패: 응답이 올바르지 않습니다.');
+    }
+  } catch (e) {
+    _setNaverStatus(false);
+    alert('연결 실패: ' + e.message);
+  }
+}
+
+// 자체 백엔드 프록시 생존 확인 — /api/health 엔드포인트로 네이버 호출 없이 체크
+// 성공은 60초 캐시, 실패는 캐시 안 함 (서버를 나중에 켤 수도 있으므로)
+let _backendProxyCache = { ok: null, ts: 0 };
+async function _probeBackendProxy() {
+  const now = Date.now();
+  if (_backendProxyCache.ok === true && now - _backendProxyCache.ts < 60000) return true;
+  try {
+    const r = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
+    if (r.ok) {
+      const data = await r.json().catch(() => ({}));
+      if (data.ok) { _backendProxyCache = { ok: true, ts: now }; return true; }
+    }
+  } catch (_) {}
+  // 실패시 캐시하지 않음 (매번 재시도)
+  return false;
+}
+
+// 네이버 쇼핑 검색
+// 모든 호출은 자체 백엔드 함수 /api/naver-shop 만 사용 (외부 CORS 프록시 미사용).
+// /api/naver-shop 내부에서 1차 웹 스크래핑 → 실패 시 공식 Open API로 자동 폴백.
+// 클라이언트 키를 헤더로 함께 보내 폴백 경로에서 사용할 수 있게 함.
+async function _naverShopSearch(query, start, display, clientId, clientSecret) {
+  const headers = {};
+  if (clientId)     headers['X-Naver-Client-Id']     = clientId;
+  if (clientSecret) headers['X-Naver-Client-Secret'] = clientSecret;
+  const r = await fetch(
+    `/api/naver-shop?query=${encodeURIComponent(query)}&start=${start}&display=${display}`,
+    { headers }
+  );
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || ('HTTP ' + r.status));
+  }
+  const data = await r.json();
+  // 프론트가 기대하는 포맷(공식 API 비슷)으로 변환
+  return {
+    total: data.total || 0,
+    start,
+    display,
+    manuTags: data.manuTags || [],
+    source: data.source || '',
+    items: (data.items || []).map(it => ({
+      title: it.title || '',
+      link: it.link || '',
+      productId: it.productId || '',
+      productUrl: it.link || '',
+      lprice: it.price || 0,
+      category1: it.category1 || '',
+      category2: it.category2 || '',
+      category3: it.category3 || '',
+      category4: it.category4 || '',
+      mallName: it.mallName || '',
+      brand: it.brand || '',
+      manuTag: it.manuTag || '',
+      attributeValue: it.attributeValue || '',
+      reviewCount: it.reviewCount || 0,
+      _rank: it.rank,
+    })),
+  };
+}
+
+// 상품 매칭: URL의 productId(우선) 또는 상품명 정확 매칭
+function _extractProductIds(url) {
+  if (!url) return [];
+  const ids = new Set();
+  // smartstore.naver.com/<store>/products/1234567890
+  let m = url.match(/\/products?\/(\d{6,})/i); if (m) ids.add(m[1]);
+  // shopping.naver.com/.../products/1234567890
+  m = url.match(/products?\/(\d{6,})/i); if (m) ids.add(m[1]);
+  // ?nvMid=12345 / &nvMid=
+  m = url.match(/[?&]nvMid=(\d{6,})/i); if (m) ids.add(m[1]);
+  // ?productNo=12345
+  m = url.match(/[?&]productNo=(\d{6,})/i); if (m) ids.add(m[1]);
+  // search.shopping.naver.com/catalog/12345
+  m = url.match(/\/catalog\/(\d{6,})/i); if (m) ids.add(m[1]);
+  // window-products/.../1234567890
+  m = url.match(/window-products\/[^/]+\/(\d{6,})/i); if (m) ids.add(m[1]);
+  return [...ids];
+}
+
+function _matchItem(item, productName, productIds) {
+  // 1. URL/productId 정확 매칭 (가장 신뢰도 높음)
+  if (productIds && productIds.length) {
+    const link = (item.link || '') + ' ' + (item.productId || '') + ' ' + (item.productUrl || '');
+    for (const pid of productIds) {
+      if (link.includes(pid)) return true;
+    }
+    // URL이 제공된 경우, 다른 매칭은 사용하지 않음(오인 방지)
+    return false;
+  }
+  // 2. URL이 없는 경우에만 상품명 매칭 — 단, 매우 엄격하게(정확 일치 또는 90% 이상)
+  if (productName) {
+    const title = (item.title || '').replace(/<[^>]+>/g, '');
+    const norm = s => s.toLowerCase().replace(/[\s\[\]()【】]+/g, '');
+    const a = norm(title);
+    const b = norm(productName);
+    if (!b) return false;
+    // 상품명이 검색 결과 제목에 포함 + 길이가 충분히 길어야 인정
+    if (b.length >= 8 && a.includes(b)) return true;
+    return false;
+  }
+  return false;
+}
+
+function _getSelectedKwProduct() {
+  const sel = document.getElementById('kw-product-select');
+  if (!sel || !sel.value) return null;
+  return _kwResolveProduct(sel.value);
+}
+
+function _loadKwHistory() { try { return JSON.parse(localStorage.getItem(KW_HIST_KEY) || '{}'); } catch(_) { return {}; } }
+function _saveKwHistory(h) { localStorage.setItem(KW_HIST_KEY, JSON.stringify(h)); }
+
+function _renderKwResults(rows, ctx) {
+  const tbody = document.getElementById('kw-result-body');
+  if (!tbody) return;
+  const regBtn = document.getElementById('kw-register-selected-btn');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-brand-gray">조회 결과가 없습니다.</td></tr>';
+    if (regBtn) regBtn.classList.add('hidden');
+    return;
+  }
+  // 등록 시 사용할 컨텍스트(상품키, 순위유형)를 tbody에 보관
+  if (ctx) {
+    if (ctx.manageProductKey) tbody.setAttribute('data-product-key', ctx.manageProductKey);
+    if (Array.isArray(ctx.rankTypes)) tbody.setAttribute('data-rank-types', ctx.rankTypes.join(','));
+  }
+  tbody.innerHTML = rows.map((r, i) => {
+    const isLast = i === rows.length - 1;
+    const borderCls = isLast ? '' : 'border-b border-brand-border';
+    let rankCell, deltaCell;
+    if (r.rank == null) {
+      rankCell = `<td class="p-4 text-center font-bold text-[1.1rem] text-brand-gray">-</td>`;
+      deltaCell = `<td class="p-4"><span class="text-brand-gray font-bold text-xs border border-[#E5E5EA] px-2.5 py-1 rounded-lg flex items-center gap-1 w-max bg-white">순위권 밖</span></td>`;
+    } else {
+      rankCell = `<td class="p-4 text-center font-bold text-[1.1rem]">${r.rank}<span class="text-sm font-medium text-brand-gray ml-0.5">위</span></td>`;
+      if (r.prev == null) {
+        deltaCell = `<td class="p-4"><span class="text-brand-orange font-bold text-xs bg-brand-orange-light/80 px-2.5 py-1 rounded-lg flex items-center gap-1 w-max"><span class="w-1.5 h-1.5 bg-brand-orange rounded-full animate-pulse"></span>신규 진입</span></td>`;
+      } else if (r.prev === r.rank) {
+        deltaCell = `<td class="p-4"><span class="text-brand-gray font-bold text-xs bg-brand-border px-2.5 py-1 rounded-lg flex items-center gap-1 w-max"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"/></svg>변동 없음</span></td>`;
+      } else if (r.rank < r.prev) {
+        deltaCell = `<td class="p-4"><span class="text-brand-pink font-bold text-xs bg-brand-pink-light/60 px-2.5 py-1 rounded-lg flex items-center gap-1 w-max"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m18 15-6-6-6 6"/></svg>${r.prev - r.rank}계단 상승</span></td>`;
+      } else {
+        deltaCell = `<td class="p-4"><span class="text-brand-blue font-bold text-xs bg-brand-blue-light/60 px-2.5 py-1 rounded-lg flex items-center gap-1 w-max"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>${r.rank - r.prev}계단 하락</span></td>`;
+      }
+    }
+    const best = r.best == null ? '-' : r.best + '위';
+    const worst = r.worst == null ? '-' : r.worst + '위';
+    const matchedHtml = r.matchedTitle ? `<div class="text-[11px] font-medium text-brand-gray truncate max-w-[220px] mt-0.5" title="${_escapeHtml(r.matchedTitle)}">↳ ${_escapeHtml(r.matchedTitle)}</div>` : '';
+    const typeBadge = r.rankType === 'plus'
+      ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[10px] font-bold px-1.5 py-0.5 rounded ml-1 align-middle">플러스</span>'
+      : (r.rankType === 'price' ? '<span class="inline-block bg-brand-blue-light text-brand-blue text-[10px] font-bold px-1.5 py-0.5 rounded ml-1 align-middle">가격비교</span>' : '');
+    return `<tr class="${borderCls} hover:bg-gray-50/50 transition-colors group">
+      <td class="p-4 pl-5"><input type="checkbox" class="kw-result-cb w-4 h-4 rounded cursor-pointer" data-keyword="${_escapeHtml(r.keyword)}" data-rank-type="${r.rankType}" onchange="_updateKwSelectedCount()"></td>
+      <td class="p-4 font-bold ${r.rank==null?'text-brand-gray':''}">${_escapeHtml(r.keyword)}${typeBadge}${matchedHtml}</td>
+      ${rankCell}
+      ${deltaCell}
+      <td class="p-4 text-center text-brand-gray">${best}</td>
+      <td class="p-4 text-center text-brand-gray">${worst}</td>
+      <td class="p-4 pr-5 text-right text-brand-gray text-sm">${r.time}</td>
+    </tr>`;
+  }).join('');
+  if (regBtn) regBtn.classList.remove('hidden');
+  const sa = document.getElementById('kw-result-select-all'); if (sa) sa.checked = false;
+  _updateKwSelectedCount();
+}
+
+// 결과 행 전체 선택/해제
+function toggleAllKwResults(cb) {
+  document.querySelectorAll('.kw-result-cb').forEach(c => { c.checked = cb.checked; });
+  _updateKwSelectedCount();
+}
+
+// 등록 버튼의 라벨에 선택 개수 표시 + 활성화 토글
+function _updateKwSelectedCount() {
+  const cbs = document.querySelectorAll('.kw-result-cb');
+  const checked = Array.from(cbs).filter(c => c.checked);
+  const btn = document.getElementById('kw-register-selected-btn');
+  const lbl = document.getElementById('kw-register-selected-label');
+  if (lbl) lbl.textContent = checked.length ? `선택한 키워드 등록 (${checked.length})` : '선택한 키워드 등록';
+  if (btn) btn.disabled = checked.length === 0;
+}
+
+// 선택한 결과를 키워드 관리에 등록
+function registerSelectedKwResults() {
+  const tbody = document.getElementById('kw-result-body');
+  const productKey = tbody?.getAttribute('data-product-key') || '';
+  const rankTypes = (tbody?.getAttribute('data-rank-types') || '').split(',').filter(Boolean);
+  if (!productKey) { showAppAlert ? showAppAlert('등록 불가', '먼저 순위 조회를 실행하세요.') : alert('먼저 순위 조회를 실행하세요.'); return; }
+  if (!rankTypes.length) { showAppAlert ? showAppAlert('등록 불가', '순위 유형 정보가 없습니다.') : alert('순위 유형 정보가 없습니다.'); return; }
+  const checked = Array.from(document.querySelectorAll('.kw-result-cb:checked'));
+  if (!checked.length) { showAppAlert ? showAppAlert('선택 항목 없음', '등록할 키워드를 먼저 체크하세요.') : alert('등록할 키워드를 먼저 체크하세요.'); return; }
+  // 선택 행 → 키워드 단위로 합치기 (같은 키워드의 가격비교/플러스 결과를 한 번에 처리)
+  const byKeyword = new Map();
+  checked.forEach(cb => {
+    const kw = cb.getAttribute('data-keyword') || '';
+    const rt = cb.getAttribute('data-rank-type') || '';
+    if (!kw) return;
+    if (!byKeyword.has(kw)) byKeyword.set(kw, new Set());
+    if (rt) byKeyword.get(kw).add(rt);
+  });
+  const manage = _loadKwManage();
+  let added = 0, merged = 0, skipped = 0;
+  byKeyword.forEach((typeSet, keyword) => {
+    const types = Array.from(typeSet).length ? Array.from(typeSet) : rankTypes.slice();
+    const existing = manage.find(x => x.keyword === keyword && x.productKey === productKey);
+    if (existing) {
+      const curTypes = Array.isArray(existing.rankTypes) && existing.rankTypes.length ? existing.rankTypes : ['price'];
+      const newTypes = types.filter(t => !curTypes.includes(t));
+      if (newTypes.length) {
+        existing.rankTypes = [...curTypes, ...newTypes];
+        merged++;
+      } else {
+        skipped++;
+      }
+    } else {
+      manage.push({ id: _kwUid(), keyword, productKey, auto: false, rankTypes: types, createdAt: Date.now() });
+      added++;
+    }
+  });
+  if (added || merged) _saveKwManage(manage);
+  renderKwManageList();
+  // 등록 후 선택 해제
+  document.querySelectorAll('.kw-result-cb').forEach(c => { c.checked = false; });
+  const sa = document.getElementById('kw-result-select-all'); if (sa) sa.checked = false;
+  _updateKwSelectedCount();
+  const msg = [];
+  if (added) msg.push(`신규 등록 ${added}개`);
+  if (merged) msg.push(`기존 항목에 유형 추가 ${merged}개`);
+  if (skipped) msg.push(`이미 등록됨 ${skipped}개`);
+  showAppAlert ? showAppAlert('키워드 등록 완료', msg.join('\n') || '변경 없음') : alert(msg.join(' / ') || '변경 없음');
+}
+
+// 플러스스토어(스마트스토어) 여부 판단
+function _isPlusStoreItem(item) {
+  const link = (item.link || '') + ' ' + (item.productUrl || '');
+  if (/smartstore\.naver\.com/i.test(link)) return true;
+  if (/brand\.naver\.com/i.test(link)) return true;
+  if (/shopping\.naver\.com\/window/i.test(link)) return true;
+  return false;
+}
+
+async function runKwRankSearch() {
+  const btn = document.getElementById('kw-search-btn');
+  const kwRaw = (document.getElementById('kw-keywords')?.value || '').trim();
+  const product = _getSelectedKwProduct();
+  const rangeEl = document.querySelector('input[name="kw-range"]:checked');
+  const range = rangeEl ? parseInt(rangeEl.value, 10) : 100;
+
+  const typePrice = document.getElementById('kw-rank-type-price')?.checked !== false;
+  const typePlus = document.getElementById('kw-rank-type-plus')?.checked === true;
+  const rankTypes = [];
+  if (typePrice) rankTypes.push('price');
+  if (typePlus) rankTypes.push('plus');
+  if (!rankTypes.length) { alert('순위 유형을 하나 이상 선택하세요.'); return; }
+
+  if (!kwRaw) { alert('검색 키워드를 입력하세요.'); return; }
+  if (!product) { alert('조회할 상품을 선택하세요.'); return; }
+
+  const api = _loadNaverApi();
+  if (!api.clientId || !api.clientSecret) {
+    alert('네이버 API 설정 카드에서 Client ID와 Secret을 먼저 등록하세요.');
+    return;
+  }
+
+  const keywords = kwRaw.split(/[,\r\n]+/).map(s => s.trim()).filter(Boolean);
+  const productIds = _extractProductIds(product.url);
+  if (product.url && productIds.length === 0) {
+    if (!confirm('입력한 상품 URL에서 상품 ID를 추출하지 못했습니다.\n상품명만으로 매칭하면 잘못된 순위가 나올 수 있습니다.\n계속 진행할까요?')) return;
+  }
+  const history = _loadKwHistory();
+  const productKey = product.url || product.name;
+
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="animate-pulse">조회 중...</span>';
+
+  try {
+    const rows = [];
+    const now = new Date();
+    const timeStr = now.toTimeString().slice(0, 5);
+
+    for (const keyword of keywords) {
+      // 각 유형별로 별도 조회
+      const display = 100;
+      const apiCache = new Map(); // start 기준으로 캐시 (두 유형이 같은 API 호출 공유)
+      for (const rankType of rankTypes) {
+        let foundRank = null;
+        let matchedTitle = '';
+        let virtualRank = 0; // 유형별 필터링된 순위(가격비교=전체 순위, 플러스=필터 후 순위)
+        for (let start = 1; start <= range; start += display) {
+          const need = Math.min(display, range - start + 1);
+          let resp = apiCache.get(start);
+          if (!resp) {
+            try { resp = await _naverShopSearch(keyword, start, need, api.clientId, api.clientSecret); }
+            catch (e) { console.error('검색 실패:', e); break; }
+            apiCache.set(start, resp);
+          }
+          const items = resp.items || [];
+          const filtered = (rankType === 'plus') ? items.filter(_isPlusStoreItem) : items;
+          // 플러스스토어의 경우 필터링된 리스트에서 순번 계산
+          const idx = filtered.findIndex(it => _matchItem(it, product.name, productIds));
+          if (idx >= 0) {
+            foundRank = (rankType === 'plus') ? (virtualRank + idx + 1) : (start + idx);
+            matchedTitle = (filtered[idx].title || '').replace(/<[^>]+>/g, '');
+            break;
+          }
+          if (rankType === 'plus') virtualRank += filtered.length;
+          if (items.length < need) break;
+        }
+
+        const histKey = productKey + '||' + keyword + '||' + rankType;
+        const hist = history[histKey] || { prev: null, best: null, worst: null };
+        const prev = hist.prev;
+        const best = foundRank == null ? hist.best : (hist.best == null ? foundRank : Math.min(hist.best, foundRank));
+        const worst = foundRank == null ? hist.worst : (hist.worst == null ? foundRank : Math.max(hist.worst, foundRank));
+        rows.push({ keyword, rankType, rank: foundRank, prev, best, worst, time: timeStr, matchedTitle });
+
+        history[histKey] = { prev: foundRank == null ? prev : foundRank, best, worst, last: now.toISOString() };
+        _appendKwSeries(histKey, now.toISOString(), foundRank);
+      }
+    }
+
+    _saveKwHistory(history);
+
+    // 키워드 관리 등록은 결과 화면에서 사용자가 직접 선택해서 처리 (자동 등록 제거)
+    // 등록 시 사용할 productKey와 rankTypes를 결과 테이블에 저장해 둠
+    const manageProductKey = (document.getElementById('kw-product-select')?.value) || product.id || productKey;
+    _renderKwResults(rows, { manageProductKey, rankTypes });
+    renderKwManageList();
+    renderKwTrend();
+    const lq = document.getElementById('kw-last-query');
+    if (lq) lq.textContent = `마지막 조회: ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+// ── 키워드 관리 ─────────────────────────────
+const KW_MANAGE_KEY = 'kw_manage_list';
+function _loadKwManage() { try { return JSON.parse(localStorage.getItem(KW_MANAGE_KEY) || '[]'); } catch(_) { return []; } }
+function _saveKwManage(arr) { localStorage.setItem(KW_MANAGE_KEY, JSON.stringify(arr)); }
+function _kwUid() { return 'k_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+function _kwAllProductOptions() {
+  return _loadKwExtras().map(p => ({ id: 'ex:' + p.id, name: p.name, url: p.url || '', imageUrl: p.imageUrl || '' }));
+}
+function _kwResolveProduct(productKey) {
+  if (!productKey) return null;
+  const all = _kwAllProductOptions();
+  const direct = all.find(p => p.id === productKey);
+  if (direct) return direct;
+  // 레거시 인덱스 기반 키 (ex:0, ex:1) — 현재 배열 인덱스로 폴백
+  if (/^ex:\d+$/.test(productKey)) {
+    const i = parseInt(productKey.slice(3), 10);
+    return all[i] || null;
+  }
+  return null;
+}
+
+// 일회성 마이그레이션: kw_manage 항목의 ex:<index> → ex:<stableId>
+function _migrateKwManageProductKeys() {
+  const list = _loadKwManage();
+  const extras = _loadKwExtras();
+  let changed = false;
+  list.forEach(it => {
+    if (!it.productKey) return;
+    if (/^ex:\d+$/.test(it.productKey)) {
+      const i = parseInt(it.productKey.slice(3), 10);
+      // 인덱스가 유효하면 그 위치의 stable id로 교체
+      if (extras[i]) {
+        it.productKey = 'ex:' + extras[i].id;
+        changed = true;
+      } else if (extras.length === 1) {
+        // 인덱스는 깨졌지만 남은 상품이 1개뿐이면 자동 연결
+        it.productKey = 'ex:' + extras[0].id;
+        changed = true;
+      }
+    } else if (!/^ex:/.test(it.productKey)) {
+      // 자동 등록 버그로 url 또는 name이 통째로 productKey에 들어간 경우
+      // 현재 등록된 상품 중 url 또는 name이 일치하는 것을 찾아 정상 형식으로 교체
+      const matched = extras.find(p => (p.url && p.url === it.productKey) || p.name === it.productKey);
+      if (matched) {
+        it.productKey = 'ex:' + matched.id;
+        changed = true;
+      }
+    }
+  });
+  if (changed) _saveKwManage(list);
+}
+
+// 검색량 캐시 비우고 다시 조회
+function refreshKwVolumes() {
+  if (typeof _saveKwVolume === 'function') _saveKwVolume({});
+  if (typeof _refreshKwVolumesForRendered === 'function') _refreshKwVolumesForRendered();
+}
+
+let _kwManageView = 'list'; // 'list' | 'group'
+let _kwManagePage = 1;
+const KW_MANAGE_PAGE_SIZE = 20;
+
+function setKwManageView(mode) {
+  _kwManageView = mode;
+  _kwManagePage = 1;
+  const lb = document.getElementById('kw-manage-view-list');
+  const gb = document.getElementById('kw-manage-view-group');
+  if (lb && gb) {
+    const on = 'bg-white shadow-sm text-brand-black';
+    const off = 'text-brand-gray hover:text-brand-black transition-colors';
+    lb.className = 'px-3 py-1.5 text-xs font-bold ' + (mode === 'list' ? on : off) + ' rounded-lg';
+    gb.className = 'px-3 py-1.5 text-xs font-bold ' + (mode === 'group' ? on : off) + ' rounded-lg';
+  }
+  renderKwManageList();
+}
+function setKwManagePage(p) {
+  _kwManagePage = Math.max(1, p|0);
+  renderKwManageList();
+  // 표 상단으로 스크롤
+  const body = document.getElementById('kw-manage-body');
+  if (body && body.parentElement && body.parentElement.parentElement) {
+    body.parentElement.parentElement.scrollTop = 0;
+  }
+}
+
+function _populateKwManageFilter() {
+  const sel = document.getElementById('kw-manage-filter');
+  if (!sel) return;
+  const prev = sel.value || '__all__';
+  const list = _loadKwManage();
+  const usedKeys = [...new Set(list.map(it => it.productKey))];
+  const opts = usedKeys.map(k => {
+    const p = _kwResolveProduct(k);
+    return { key: k, name: p ? p.name : '<연결 끊김>' };
+  });
+  sel.innerHTML = `<option value="__all__">전체 상품 (${list.length})</option>`
+    + opts.map(o => {
+        const cnt = list.filter(it => it.productKey === o.key).length;
+        return `<option value="${_escapeHtml(o.key)}">${_escapeHtml(o.name)} (${cnt})</option>`;
+      }).join('');
+  sel.value = opts.some(o => o.key === prev) || prev === '__all__' ? prev : '__all__';
+}
+
+function _renderKwRow(it, isLast, history) {
+  const borderCls = isLast ? '' : 'border-b border-brand-border';
+  const product = _kwResolveProduct(it.productKey);
+  const productName = product ? product.name : '<연결 끊김>';
+  const productKey = product ? (product.url || product.name) : it.productKey;
+  const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+  // 각 유형별 순위 조회 (신키=product||keyword||type, 구키=product||keyword)
+  const getRank = (t) => {
+    const k1 = productKey + '||' + it.keyword + '||' + t;
+    if (history[k1]) return history[k1].prev;
+    if (t === 'price') {
+      const k2 = productKey + '||' + it.keyword;
+      return history[k2]?.prev ?? null;
+    }
+    return null;
+  };
+  const pillHtml = (label, bg, rank) => {
+    const val = rank == null ? '-' : rank + '위';
+    const cls = rank == null ? 'text-brand-gray' : 'text-brand-black';
+    return `<div class="inline-flex items-center gap-1 ${bg} rounded-md px-2 py-0.5 text-[11px]"><span class="font-bold text-[9px] opacity-80">${label}</span><span class="font-bold ${cls}">${val}</span></div>`;
+  };
+  const rankPills = types.map(t => {
+    if (t === 'plus') return pillHtml('플러스', 'bg-brand-green-light', getRank('plus'));
+    return pillHtml('가격비교', 'bg-brand-blue-light', getRank('price'));
+  }).join(' ');
+  const rankCell = `<td class="p-4 text-center"><div class="inline-flex flex-col gap-1">${rankPills || '<span class="text-brand-gray">-</span>'}</div></td>`;
+
+  const typeLabels = types.map(t => t === 'plus' ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[9px] font-bold px-1.5 py-0.5 rounded">플러스</span>' : '<span class="inline-block bg-brand-blue-light text-brand-blue text-[9px] font-bold px-1.5 py-0.5 rounded">가격비교</span>').join(' ');
+  return `<tr class="${borderCls} hover:bg-gray-50/50 transition-colors">
+    <td class="p-4 pl-5"><div class="font-bold">${_escapeHtml(it.keyword)}</div><div class="mt-0.5 flex gap-1">${typeLabels}</div></td>
+    <td class="p-4 text-brand-gray text-sm truncate max-w-[150px]" title="${_escapeHtml(productName)}">${_escapeHtml(productName.length > 18 ? productName.slice(0,18)+'...' : productName)}</td>
+    ${rankCell}
+    <td class="p-4 text-center">
+      <label class="kw-toggle transform scale-75 origin-center inline-block">
+        <input type="checkbox" ${it.auto ? 'checked' : ''} onchange="toggleKwManageAuto('${it.id}', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </td>
+    <td class="p-4 pr-5 text-right">
+      <button onclick="editKwManage('${it.id}')" class="text-brand-gray hover:text-brand-black p-1 transition-colors" title="수정"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      <button onclick="deleteKwManage('${it.id}')" class="text-brand-gray hover:text-red-500 p-1 transition-colors ml-1" title="삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </td>
+  </tr>`;
+}
+
+function renderKwManageList() {
+  const tbody = document.getElementById('kw-manage-body');
+  if (!tbody) return;
+  _populateKwManageFilter();
+  const filterSel = document.getElementById('kw-manage-filter');
+  const filter = filterSel ? filterSel.value : '__all__';
+  const all = _loadKwManage();
+  const list = filter === '__all__' ? all : all.filter(it => it.productKey === filter);
+  const history = _loadKwHistory();
+  const pagesEl = document.getElementById('kw-manage-pages');
+  const rangeEl = document.getElementById('kw-manage-range');
+
+  if (!all.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-brand-gray text-sm">등록된 키워드가 없습니다. <button onclick="openKwManageModal()" class="text-brand-blue font-bold hover:underline ml-1">키워드 등록</button></td></tr>`;
+    if (pagesEl) pagesEl.innerHTML = '';
+    if (rangeEl) rangeEl.textContent = '';
+    return;
+  }
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-brand-gray text-sm">선택한 상품에 등록된 키워드가 없습니다.</td></tr>`;
+    if (pagesEl) pagesEl.innerHTML = '';
+    if (rangeEl) rangeEl.textContent = '';
+    return;
+  }
+
+  // 페이지네이션 — 한 페이지 20개
+  const totalPages = Math.max(1, Math.ceil(list.length / KW_MANAGE_PAGE_SIZE));
+  if (_kwManagePage > totalPages) _kwManagePage = totalPages;
+  if (_kwManagePage < 1) _kwManagePage = 1;
+  const startIdx = (_kwManagePage - 1) * KW_MANAGE_PAGE_SIZE;
+  const pageItems = list.slice(startIdx, startIdx + KW_MANAGE_PAGE_SIZE);
+
+  if (_kwManageView === 'group') {
+    // 페이지로 잘라낸 결과를 productKey로 다시 묶기
+    const groups = new Map();
+    pageItems.forEach(it => {
+      if (!groups.has(it.productKey)) groups.set(it.productKey, []);
+      groups.get(it.productKey).push(it);
+    });
+    const html = [];
+    [...groups.entries()].forEach(([key, items]) => {
+      const product = _kwResolveProduct(key);
+      const productName = product ? product.name : '<연결 끊김>';
+      html.push(`<tr class="bg-brand-bg/70 border-b border-brand-border"><td colspan="5" class="px-5 py-2.5 text-xs font-bold text-brand-black flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-brand-black"></span>${_escapeHtml(productName)} <span class="text-brand-gray font-medium">· ${items.length}개 키워드</span></td></tr>`);
+      items.forEach((it, i) => html.push(_renderKwRow(it, i === items.length - 1, history)));
+    });
+    tbody.innerHTML = html.join('');
+  } else {
+    tbody.innerHTML = pageItems.map((it, i) => _renderKwRow(it, i === pageItems.length - 1, history)).join('');
+  }
+
+  // 페이지 버튼 렌더
+  if (rangeEl) {
+    const from = startIdx + 1;
+    const to = Math.min(list.length, startIdx + pageItems.length);
+    rangeEl.textContent = `${from}–${to} / 총 ${list.length}건`;
+  }
+  if (pagesEl) {
+    if (totalPages <= 1) {
+      pagesEl.innerHTML = '';
+    } else {
+      const showRange = 5;
+      let pStart = Math.max(1, _kwManagePage - Math.floor(showRange / 2));
+      let pEnd   = Math.min(totalPages, pStart + showRange - 1);
+      pStart = Math.max(1, pEnd - showRange + 1);
+      const btn = (p, label, disabled, active) =>
+        `<button ${disabled?'disabled':''} onclick="setKwManagePage(${p})" class="px-3 py-1 rounded-full text-xs font-bold border ${active ? 'bg-brand-black text-white border-brand-black' : 'border-brand-border bg-white ' + (disabled ? 'text-brand-gray/40 cursor-not-allowed' : 'hover:bg-brand-bg')}">${label}</button>`;
+      let html = '';
+      html += btn(Math.max(1, _kwManagePage - 1), '‹', _kwManagePage === 1, false);
+      if (pStart > 1) {
+        html += btn(1, '1', false, false);
+        if (pStart > 2) html += '<span class="text-brand-gray px-1">…</span>';
+      }
+      for (let p = pStart; p <= pEnd; p++) html += btn(p, String(p), false, p === _kwManagePage);
+      if (pEnd < totalPages) {
+        if (pEnd < totalPages - 1) html += '<span class="text-brand-gray px-1">…</span>';
+        html += btn(totalPages, String(totalPages), false, false);
+      }
+      html += btn(Math.min(totalPages, _kwManagePage + 1), '›', _kwManagePage === totalPages, false);
+      pagesEl.innerHTML = html;
+    }
+  }
+}
+
+function _populateKwManageProductSelect(selectedKey) {
+  const sel = document.getElementById('kw-manage-product');
+  if (!sel) return;
+  const opts = _kwAllProductOptions();
+  sel.innerHTML = '<option value="" disabled' + (selectedKey ? '' : ' selected') + '>상품을 선택하세요</option>'
+    + opts.map(p => `<option value="${p.id}" ${p.id === selectedKey ? 'selected' : ''}>${_escapeHtml(p.name)}</option>`).join('');
+}
+
+function openKwManageModal() {
+  document.getElementById('kw-manage-modal-title').textContent = '키워드 등록';
+  document.getElementById('kw-manage-edit-id').value = '';
+  document.getElementById('kw-manage-keyword').value = '';
+  document.getElementById('kw-manage-keyword').placeholder = '예: 오버핏 티셔츠, 여름 무지티, 박스 티';
+  document.getElementById('kw-manage-keyword-hint').classList.remove('hidden');
+  document.getElementById('kw-manage-auto').checked = true;
+  document.getElementById('kw-manage-type-price').checked = true;
+  document.getElementById('kw-manage-type-plus').checked = false;
+  _populateKwManageProductSelect('');
+  document.getElementById('kw-manage-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('kw-manage-keyword')?.focus(), 50);
+}
+function closeKwManageModal() {
+  document.getElementById('kw-manage-modal').classList.add('hidden');
+}
+function editKwManage(id) {
+  const list = _loadKwManage();
+  const it = list.find(x => x.id === id);
+  if (!it) return;
+  document.getElementById('kw-manage-modal-title').textContent = '키워드 수정';
+  document.getElementById('kw-manage-edit-id').value = id;
+  document.getElementById('kw-manage-keyword').value = it.keyword;
+  document.getElementById('kw-manage-keyword').placeholder = '예: 오버핏 티셔츠';
+  document.getElementById('kw-manage-keyword-hint').classList.add('hidden');
+  document.getElementById('kw-manage-auto').checked = !!it.auto;
+  const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+  document.getElementById('kw-manage-type-price').checked = types.includes('price');
+  document.getElementById('kw-manage-type-plus').checked = types.includes('plus');
+  _populateKwManageProductSelect(it.productKey);
+  document.getElementById('kw-manage-modal').classList.remove('hidden');
+}
+function submitKwManage() {
+  const editId = document.getElementById('kw-manage-edit-id').value;
+  const raw = document.getElementById('kw-manage-keyword').value.trim();
+  const productKey = document.getElementById('kw-manage-product').value;
+  const auto = document.getElementById('kw-manage-auto').checked;
+  const rankTypes = [];
+  if (document.getElementById('kw-manage-type-price').checked) rankTypes.push('price');
+  if (document.getElementById('kw-manage-type-plus').checked) rankTypes.push('plus');
+  if (!rankTypes.length) { alert('순위 유형을 하나 이상 선택하세요.'); return; }
+  if (!raw) { alert('키워드를 입력하세요.'); return; }
+  if (!productKey) { alert('연결 상품을 선택하세요.'); return; }
+  const list = _loadKwManage();
+
+  if (editId) {
+    // 수정 모드: 단일 키워드만 (콤마가 있어도 첫 번째만 사용)
+    const keyword = raw.split(',')[0].trim();
+    if (!keyword) { alert('유효한 키워드를 입력하세요.'); return; }
+    const it = list.find(x => x.id === editId);
+    if (it) Object.assign(it, { keyword, productKey, auto, rankTypes });
+  } else {
+    // 등록 모드: 쉼표로 분리하여 여러 개 등록
+    const keywords = [...new Set(raw.split(',').map(s => s.trim()).filter(Boolean))];
+    if (!keywords.length) { alert('유효한 키워드를 입력하세요.'); return; }
+    const skipped = [];  // 선택한 모든 유형이 이미 등록된 키워드
+    const merged = [];   // 기존 항목에 유형만 추가된 키워드
+    let added = 0;
+    keywords.forEach(keyword => {
+      const existing = list.find(x => x.keyword === keyword && x.productKey === productKey);
+      if (existing) {
+        const curTypes = Array.isArray(existing.rankTypes) && existing.rankTypes.length ? existing.rankTypes : ['price'];
+        const newTypes = rankTypes.filter(t => !curTypes.includes(t));
+        if (newTypes.length) {
+          existing.rankTypes = [...curTypes, ...newTypes];
+          existing.auto = existing.auto || auto;
+          merged.push(keyword + '(' + newTypes.map(t => t === 'plus' ? '플러스' : '가격비교').join(',') + ' 추가)');
+        } else {
+          skipped.push(keyword);
+        }
+      } else {
+        list.push({ id: _kwUid(), keyword, productKey, auto, rankTypes, createdAt: Date.now() });
+        added++;
+      }
+    });
+    if (added === 0 && merged.length === 0) {
+      alert('모든 키워드가 이미 등록되어 있습니다.\n(' + skipped.join(', ') + ')');
+      return;
+    }
+    const msg = [];
+    if (added) msg.push(added + '개 신규 등록');
+    if (merged.length) msg.push(merged.length + '개 유형 추가 (' + merged.join(', ') + ')');
+    if (skipped.length) msg.push(skipped.length + '개 중복 건너뜀 (' + skipped.join(', ') + ')');
+    if (merged.length || skipped.length) alert(msg.join('\n'));
+  }
+  _saveKwManage(list);
+  closeKwManageModal();
+  renderKwManageList();
+  renderKwTrend();
+}
+function deleteKwManage(id) {
+  if (!confirm('이 키워드를 삭제할까요?\n해당 키워드의 추이 데이터도 함께 삭제됩니다.')) return;
+  const all = _loadKwManage();
+  const target = all.find(x => x.id === id);
+  const list = all.filter(x => x.id !== id);
+  _saveKwManage(list);
+  // 추이 데이터에서 해당 키워드 시리즈 삭제 (다른 키워드가 같은 histKey를 쓰지 않을 때만)
+  if (target) {
+    const product = _kwResolveProduct(target.productKey);
+    const realKey = product ? (product.url || product.name) : target.productKey;
+    const histKey = realKey + '||' + target.keyword;
+    const stillUsed = list.some(x => {
+      const p = _kwResolveProduct(x.productKey);
+      const rk = p ? (p.url || p.name) : x.productKey;
+      return (rk + '||' + x.keyword) === histKey;
+    });
+    if (!stillUsed) {
+      const series = _loadKwSeries();
+      delete series[histKey];
+      _saveKwSeries(series);
+    }
+  }
+  renderKwManageList();
+  renderKwTrend();
+}
+function toggleKwManageAuto(id, checked) {
+  const list = _loadKwManage();
+  const it = list.find(x => x.id === id);
+  if (it) { it.auto = !!checked; _saveKwManage(list); }
+  renderKwAutoStatus();
+}
+
+// ── 키워드 페이지 탭 전환 ─────────────────────────
+function setKwTab(tab) {
+  const tabs = ['trend', 'track', 'settings'];
+  if (!tabs.includes(tab)) tab = 'trend';
+  const activeCls = 'px-6 py-2.5 rounded-full text-sm font-bold bg-brand-black text-white transition-all';
+  const idleCls = 'px-6 py-2.5 rounded-full text-sm font-medium text-brand-gray hover:text-brand-black transition-all';
+  for (const t of tabs) {
+    const el  = document.getElementById('kw-tab-' + t);
+    const btn = document.getElementById('kw-tab-btn-' + t);
+    if (el)  el.classList.toggle('hidden', t !== tab);
+    if (btn) btn.className = (t === tab) ? activeCls : idleCls;
+  }
+  // 추이 탭으로 전환 시 차트가 늦게 그려진 경우 다시 렌더
+  if (tab === 'trend' && typeof renderKwTrend === 'function') {
+    try { renderKwTrend(); } catch (_) {}
+  }
+}
+
+// ── 자동 추적 설정 ─────────────────────────
+const KW_AUTO_KEY = 'kw_auto_tracking';
+const KW_AUTO_HOUR = 7; // 매일 오전 7시 고정
+function _loadKwAuto() { try { return JSON.parse(localStorage.getItem(KW_AUTO_KEY) || '{}'); } catch(_) { return {}; } }
+function _saveKwAuto(o) { localStorage.setItem(KW_AUTO_KEY, JSON.stringify(o)); }
+
+function setKwAutoEnabled(on) {
+  const s = _loadKwAuto();
+  s.enabled = !!on;
+  _saveKwAuto(s);
+  renderKwAutoStatus();
+  if (on) _scheduleKwAutoTick();
+}
+
+function _fmtStamp(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function _ymdStr(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
+function renderKwAutoStatus() {
+  const s = _loadKwAuto();
+  const enabled = s.enabled !== false; // 기본 활성
+  const list = _loadKwManage();
+  const autoList = list.filter(x => x.auto);
+
+  const enabledEl = document.getElementById('kw-auto-enabled');
+  if (enabledEl) enabledEl.checked = enabled;
+  const dot = document.getElementById('kw-auto-status-dot');
+  const text = document.getElementById('kw-auto-status-text');
+  if (dot && text) {
+    if (enabled && autoList.length) {
+      dot.className = 'w-2 h-2 rounded-full bg-brand-green';
+      text.textContent = '자동 추적 활성';
+    } else if (enabled) {
+      dot.className = 'w-2 h-2 rounded-full bg-brand-orange';
+      text.textContent = '활성 — 추적할 키워드 없음';
+    } else {
+      dot.className = 'w-2 h-2 rounded-full bg-brand-gray';
+      text.textContent = '자동 추적 꺼짐';
+    }
+  }
+  const cntEl = document.getElementById('kw-auto-target-count');
+  if (cntEl) cntEl.textContent = autoList.length;
+
+  const lastEl = document.getElementById('kw-auto-last');
+  if (lastEl) lastEl.textContent = s.lastRun ? _fmtStamp(new Date(s.lastRun)) : '-';
+  const nextEl = document.getElementById('kw-auto-next');
+  if (nextEl) {
+    if (!enabled) { nextEl.textContent = '꺼짐'; }
+    else {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(KW_AUTO_HOUR, 0, 0, 0);
+      if (now.getHours() >= KW_AUTO_HOUR) next.setDate(next.getDate() + 1);
+      nextEl.textContent = _fmtStamp(next);
+    }
+  }
+}
+
+async function runKwAutoTrack(isAuto) {
+  // 자동 추적은 등록된 모든 키워드를 대상으로 실행 (auto 플래그 무시)
+  const list = _loadKwManage();
+  if (!list.length) {
+    if (!isAuto) alert('등록된 키워드가 없습니다. 순위 조회 결과에서 "선택한 키워드 등록" 버튼으로 추가하세요.');
+    return { ok: 0, skipped: 0 };
+  }
+  const api = _loadNaverApi();
+  if (!api.clientId || !api.clientSecret) {
+    if (!isAuto) alert('네이버 API Client ID/Secret을 먼저 등록하세요.');
+    return { ok: 0, skipped: list.length };
+  }
+
+  const history = _loadKwHistory();
+  const now = new Date();
+
+  let ok = 0, skipped = 0;
+  // 진단 로그 — 사용자가 콘솔에서 어디까지 진행됐는지 확인 가능
+  const errors = [];
+  console.group(`[KW Auto] 자동 추적 시작 - ${list.length}개 키워드`);
+  for (let listIdx = 0; listIdx < list.length; listIdx++) {
+    const it = list[listIdx];
+    const product = _kwResolveProduct(it.productKey);
+    if (!product) {
+      console.warn(`[KW Auto] (${listIdx+1}/${list.length}) "${it.keyword}" 상품 연결 끊김`, it);
+      skipped++;
+      continue;
+    }
+    const productIds = _extractProductIds(product.url);
+    const productKey = product.url || product.name;
+    const keyword = it.keyword;
+    const range = 200; // 자동 추적 조회 범위 — 상위 200위까지 (사용자 요청)
+    const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+
+    const apiCache = new Map();
+    try {
+      for (const rankType of rankTypes) {
+        let foundRank = null;
+        let virtualRank = 0;
+        for (let start = 1; start <= range; start += 100) {
+          const need = Math.min(100, range - start + 1);
+          let resp = apiCache.get(start);
+          if (!resp) { resp = await _naverShopSearch(keyword, start, need, api.clientId, api.clientSecret); apiCache.set(start, resp); }
+          const items = resp.items || [];
+          const filtered = (rankType === 'plus') ? items.filter(_isPlusStoreItem) : items;
+          const idx = filtered.findIndex(x => _matchItem(x, product.name, productIds));
+          if (idx >= 0) { foundRank = (rankType === 'plus') ? (virtualRank + idx + 1) : (start + idx); break; }
+          if (rankType === 'plus') virtualRank += filtered.length;
+          if (items.length < need) break;
+        }
+        const histKey = productKey + '||' + keyword + '||' + rankType;
+        const hist = history[histKey] || { prev: null, best: null, worst: null };
+        const best = foundRank == null ? hist.best : (hist.best == null ? foundRank : Math.min(hist.best, foundRank));
+        const worst = foundRank == null ? hist.worst : (hist.worst == null ? foundRank : Math.max(hist.worst, foundRank));
+        history[histKey] = { prev: foundRank == null ? hist.prev : foundRank, best, worst, last: now.toISOString() };
+        _appendKwSeries(histKey, now.toISOString(), foundRank);
+      }
+      ok++;
+      console.log(`[KW Auto] (${listIdx+1}/${list.length}) ✅ "${keyword}" 완료`);
+    } catch (e) {
+      const errMsg = e.message || String(e);
+      console.warn(`[KW Auto] (${listIdx+1}/${list.length}) ❌ "${keyword}" 실패:`, errMsg);
+      errors.push({ keyword, error: errMsg });
+      // 실패해도 series 에 null 기록하여 "그날 시도했지만 안 잡힘" 표시 (날짜 컬럼이 사라지지 않음)
+      try {
+        rankTypes.forEach(rankType => {
+          const histKey = productKey + '||' + keyword + '||' + rankType;
+          _appendKwSeries(histKey, now.toISOString(), null);
+        });
+      } catch (_) {}
+      skipped++;
+      continue;
+    }
+  }
+  console.log(`[KW Auto] 종료 - 성공 ${ok}건 / 건너뜀 ${skipped}건 / 오류 ${errors.length}건`);
+  if (errors.length) {
+    console.table(errors.slice(0, 10));
+    if (errors.length > 10) console.log(`... 외 ${errors.length - 10}건 (자세한 로그는 위 warn 참조)`);
+  }
+  console.groupEnd();
+  // 진단용 — 마지막 실행 결과 노출
+  window._lastKwAutoErrors = errors;
+  _saveKwHistory(history);
+
+  const s = _loadKwAuto();
+  s.lastRun = now.toISOString();
+  s.lastRunDay = _ymdStr(now);
+  _saveKwAuto(s);
+
+  renderKwAutoStatus();
+  if (typeof renderKwManageList === 'function') renderKwManageList();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+  return { ok, skipped };
+}
+
+async function runKwAutoTrackNow() {
+  const btn = document.getElementById('kw-auto-run-btn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="animate-pulse">실행 중...</span>'; }
+  const res = await runKwAutoTrack(false);
+  if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+
+  if (res.ok || res.skipped) {
+    const errs = (window._lastKwAutoErrors || []);
+    let msg = `자동 추적 완료: 성공 ${res.ok}건 / 건너뜀 ${res.skipped}건`;
+    if (errs.length) {
+      // 같은 에러 메시지끼리 묶어서 빈도 집계
+      const byMsg = {};
+      errs.forEach(e => { byMsg[e.error] = (byMsg[e.error] || 0) + 1; });
+      const sorted = Object.entries(byMsg).sort((a, b) => b[1] - a[1]);
+      msg += '\n\n실패 사유 TOP 5:';
+      sorted.slice(0, 5).forEach(([m, c]) => { msg += `\n• [${c}건] ${m.slice(0, 100)}`; });
+      if (errs.length > 0 && res.ok === 0) {
+        msg += '\n\n⚠ 모든 키워드 실패 — 네이버 검색이 차단됐거나 Open API 키 문제일 수 있어요.\nF12 콘솔에서 자세한 로그 확인 가능.';
+      }
+    }
+    alert(msg);
+  }
+}
+
+let _kwAutoTickTimer = null;
+function _scheduleKwAutoTick() {
+  if (_kwAutoTickTimer) clearInterval(_kwAutoTickTimer);
+  _kwAutoTickTimer = setInterval(_kwAutoTick, 60 * 1000); // 1분마다
+  setTimeout(_kwAutoTick, 500); // 즉시 1회
+}
+
+async function _kwAutoTick() {
+  // 자동 추적은 항상 활성. 등록된 모든 키워드를 매일 오전 7시 이후 한 번 실행.
+  const s = _loadKwAuto();
+  const now = new Date();
+  const today = _ymdStr(now);
+  if (s.lastRunDay === today) return; // 오늘 이미 실행됨
+  if (now.getHours() < KW_AUTO_HOUR) return; // 오전 7시 이후에만
+  const list = _loadKwManage();
+  if (!list.length) return;
+  const api = _loadNaverApi();
+  if (!api.clientId || !api.clientSecret) return; // API 없으면 조용히 스킵
+  console.log('[KW Auto] 자동 추적 실행:', today, list.length, '개 키워드');
+  await runKwAutoTrack(true);
+}
+
+// ── 순위 변동 추이 ─────────────────────────
+const KW_SERIES_KEY = 'kw_rank_series';
+let _kwTrendDays = 7;
+
+function _loadKwSeries() { try { return JSON.parse(localStorage.getItem(KW_SERIES_KEY) || '{}'); } catch(_) { return {}; } }
+function _saveKwSeries(s) { localStorage.setItem(KW_SERIES_KEY, JSON.stringify(s)); }
+function _appendKwSeries(histKey, isoTime, rank) {
+  const s = _loadKwSeries();
+  if (!s[histKey]) s[histKey] = [];
+  s[histKey].push({ t: isoTime, r: rank });
+  // 최대 1000개만 보관
+  if (s[histKey].length > 1000) s[histKey] = s[histKey].slice(-1000);
+  _saveKwSeries(s);
+}
+
+function _kwTrendPopulateProducts() {
+  const sel = document.getElementById('kw-trend-product');
+  if (!sel) return;
+  const prev = sel.value || '__all__';
+  const keys = [...new Set(_loadKwManage().map(it => it.productKey))];
+  const opts = keys.map(k => {
+    const p = _kwResolveProduct(k);
+    return { key: k, name: p ? p.name : '<연결 끊김>' };
+  });
+  sel.innerHTML = '<option value="__all__">전체 상품</option>'
+    + opts.map(o => `<option value="${_escapeHtml(o.key)}">${_escapeHtml(o.name)}</option>`).join('');
+  sel.value = (prev === '__all__' || opts.some(o => o.key === prev)) ? prev : '__all__';
+}
+
+// 키워드 관리에 없는 시리즈 데이터 정리
+function _cleanupOrphanKwSeries() {
+  const series = _loadKwSeries();
+  const validKeys = new Set();
+  _loadKwManage().forEach(it => {
+    const p = _kwResolveProduct(it.productKey);
+    const realKey = p ? (p.url || p.name) : it.productKey;
+    // Legacy key (no type) — for backward compat
+    validKeys.add(realKey + '||' + it.keyword);
+    const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+    types.forEach(t => validKeys.add(realKey + '||' + it.keyword + '||' + t));
+  });
+  let changed = false;
+  Object.keys(series).forEach(k => {
+    if (!validKeys.has(k)) { delete series[k]; changed = true; }
+  });
+  if (changed) _saveKwSeries(series);
+}
+
+function _bindKwTrendPeriodButtons() {
+  document.querySelectorAll('.kw-trend-pbtn').forEach(btn => {
+    btn.onclick = () => {
+      const v = btn.dataset.days;
+      _kwTrendDays = (v === 'all') ? 'all' : parseInt(v, 10);
+      document.querySelectorAll('.kw-trend-pbtn').forEach(b => {
+        b.className = 'kw-trend-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors';
+      });
+      btn.className = 'kw-trend-pbtn px-3 py-1.5 text-sm font-bold bg-white shadow-sm rounded-lg text-brand-black';
+      renderKwTrend();
+    };
+  });
+}
+
+// 1페이지 = 40개 (네이버 쇼핑 기준)
+function _kwPageOf(rank) { return Math.ceil(rank / 40); }
+function _ymd(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function _ymdLabel(d) { return String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0'); }
+
+function renderKwTrend() {
+  const canvas = document.getElementById('kw-trend-canvas');
+  if (!canvas) return;
+
+  const series = _loadKwSeries();
+  const manage = _loadKwManage();
+  const allProducts = _kwAllProductOptions(); // 등록된 모든 "조회할 상품"
+
+  function _realKeyOf(pk) {
+    const p = _kwResolveProduct(pk);
+    return p ? (p.url || p.name) : pk;
+  }
+
+  // 키워드를 productKey 단위로 묶음
+  const byProduct = new Map(); // productKey → { product, items: [{id, keyword, rankType, histKey, legacyKey}] }
+  manage.forEach(it => {
+    const product = _kwResolveProduct(it.productKey);
+    if (!product) return; // 끊긴 상품은 표시 안 함
+    const realKey = _realKeyOf(it.productKey);
+    const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+    if (!byProduct.has(it.productKey)) byProduct.set(it.productKey, { product, items: [] });
+    types.forEach(t => {
+      byProduct.get(it.productKey).items.push({
+        id: it.id,
+        keyword: it.keyword,
+        rankType: t,
+        histKey: realKey + '||' + it.keyword + '||' + t,
+        legacyKey: realKey + '||' + it.keyword,
+      });
+    });
+  });
+
+  // "+" 카드: 새 상품 추가 (슬롯 번호는 동적으로 채워짐)
+  function _plusCard(slotNum) {
+    const numStr = String(slotNum).padStart(2, '0');
+    return `
+    <button type="button" onclick="openKwAddProductModal()" class="bg-white border-2 border-dashed border-brand-border rounded-3xl p-5 flex items-center gap-5 hover:border-brand-orange hover:bg-brand-orange-light/20 transition-colors min-h-[180px] text-left">
+      <div class="shrink-0 flex flex-col items-center justify-center w-14">
+        <div class="text-[1.6rem] font-black text-brand-gray leading-none">${numStr}</div>
+        <div class="text-[10px] font-bold text-brand-gray mt-1">미등록</div>
+      </div>
+      <div class="flex-1 flex items-center gap-4">
+        <div class="w-16 h-16 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-bold text-brand-gray">상품을 등록해주세요</div>
+          <div class="text-[11px] text-brand-gray mt-1 leading-relaxed">클릭하면 새 상품을 추가할 수 있습니다.</div>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-brand-orange-light/60 flex items-center justify-center shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF9500" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+      </div>
+    </button>`;
+  }
+
+  // 가장 최근 시리즈 항목의 (rank, prevRank) 추출
+  // - prevRank는 같은 histKey의 그 직전 항목
+  function _latest(histKey, legacyKey) {
+    const arr = (series[histKey] || []).concat(legacyKey ? (series[legacyKey] || []) : []);
+    if (!arr.length) return { rank: undefined, prev: undefined, t: '' };
+    arr.sort((a, b) => String(a.t).localeCompare(String(b.t)));
+    const last = arr[arr.length - 1];
+    const prev = arr.length >= 2 ? arr[arr.length - 2].r : undefined;
+    return { rank: last.r, prev, t: last.t };
+  }
+
+  // 키워드 칩 1개 렌더
+  function _renderChip(item) {
+    const { rank, prev } = _latest(item.histKey, item.rankType === 'price' ? item.legacyKey : null);
+    let body = '';
+    if (rank === undefined) {
+      body = `<span class="text-brand-gray text-[11px]">미조회</span>`;
+    } else if (rank === null) {
+      body = `<span class="text-brand-gray text-[11px] font-bold">순위권 밖</span>`;
+    } else {
+      let delta = '';
+      if (typeof prev === 'number') {
+        const diff = prev - rank; // +면 상승
+        if (diff > 0) {
+          delta = `<span class="text-brand-pink font-bold text-[11px] inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,4 22,20 2,20"/></svg>${diff}</span>`;
+        } else if (diff < 0) {
+          delta = `<span class="text-brand-blue font-bold text-[11px] inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,20 22,4 2,4"/></svg>${rank - prev}</span>`;
+        } else {
+          delta = `<span class="text-brand-gray font-bold text-[11px]">-</span>`;
+        }
+      } else if (prev === null) {
+        delta = `<span class="text-brand-orange font-bold text-[11px]">신규</span>`;
+      }
+      body = `<span class="font-bold text-brand-black text-[12px]">${rank}위</span>${delta ? ' ' + delta : ''}`;
+    }
+    const typeIcon = item.rankType === 'plus'
+      ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[9px] font-bold px-1 py-0 rounded ml-1 align-middle">+</span>'
+      : '';
+    return `<span class="group inline-flex items-center gap-1 bg-brand-bg border border-brand-border rounded-full pl-2.5 pr-1.5 py-1 text-[12px] font-semibold whitespace-nowrap" title="${_escapeHtml(item.keyword)}${item.rankType === 'plus' ? ' (플러스스토어)' : ''}">
+      <span class="text-brand-black">${_escapeHtml(item.keyword)}${typeIcon}</span>
+      ${body}
+      <button type="button" onclick="event.stopPropagation(); deleteKwTrendItem('${item.id}', this)" title="키워드 삭제" class="ml-1 w-4 h-4 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center text-[12px] leading-none transition-colors" aria-label="삭제">×</button>
+    </span>`;
+  }
+
+  // 카드 1개 렌더 — 등록 상품별로 (슬롯 번호 + ROPAGO 스타일 가로 레이아웃)
+  function _renderCard(productKey, product, slotNum) {
+    const data = byProduct.get(productKey);
+    const items = data ? data.items : [];
+    // 정렬은 manage 배열 순서(=사용자가 상세 모달 드롭다운으로 지정한 순서)를 그대로 따름
+
+    const SHOWN = 6;
+    const visible = items.slice(0, SHOWN);
+    const hidden = items.slice(SHOWN);
+    const chipsHtml = visible.map(_renderChip).join(' ');
+    const hiddenHtml = hidden.length
+      ? `<details class="inline"><summary class="text-[11px] font-bold text-brand-blue cursor-pointer hover:underline list-none ml-1 inline">+${hidden.length}개 더보기</summary><div class="mt-2 flex flex-wrap gap-1.5">${hidden.map(_renderChip).join(' ')}</div></details>`
+      : '';
+    const productName = product.name || '<이름 없음>';
+    const urlLink = product.url
+      ? `<a href="${_escapeHtml(product.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[11px] text-brand-blue hover:underline truncate inline-block max-w-full align-bottom">${_escapeHtml(product.url.replace(/^https?:\/\//, ''))}</a>`
+      : `<span class="text-[11px] text-brand-gray">URL 없음</span>`;
+
+    // 가장 최근 업데이트 시간
+    let latestTime = '';
+    items.forEach(it => {
+      const t = _latest(it.histKey, it.rankType === 'price' ? it.legacyKey : null).t;
+      if (t && t > latestTime) latestTime = t;
+    });
+    const updateText = latestTime
+      ? `<span class="text-[10px] font-bold text-brand-gray">LAST RANK UPDATE</span><span class="text-[11px] font-bold text-brand-black ml-1.5">${_escapeHtml(latestTime.replace('T', ' ').slice(0, 16))}</span>`
+      : `<span class="text-[10px] font-bold text-brand-gray">미조회</span>`;
+
+    const numStr = String(slotNum).padStart(2, '0');
+    const status = items.length > 0 ? '추적완료' : '키워드 미등록';
+    const statusColor = items.length > 0 ? 'text-brand-green' : 'text-brand-gray';
+    const imgUrl = product.imageUrl || '';
+    const imgBlock = imgUrl
+      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-16 h-16 rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
+      : `<div class="w-16 h-16 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
+           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+         </div>`;
+
+    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-5 flex gap-4 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer min-h-[180px]">
+      <!-- 슬롯 번호 -->
+      <div class="shrink-0 flex flex-col items-center justify-start w-14 pt-1">
+        <div class="text-[1.6rem] font-black text-brand-black leading-none">${numStr}</div>
+        <div class="text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
+      </div>
+
+      <!-- 썸네일 -->
+      ${imgBlock}
+
+      <!-- 본문 -->
+      <div class="flex-1 min-w-0 flex flex-col gap-2.5">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <h3 class="font-bold text-[15px] text-brand-black leading-tight truncate" title="${_escapeHtml(productName)}">${_escapeHtml(productName)}</h3>
+            <div class="mt-1">${urlLink}</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span class="text-[10px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full whitespace-nowrap">${items.length}개</span>
+            <button type="button" onclick="event.stopPropagation(); deleteKwTrendSlot('${_escapeHtml(productKey)}')" title="이 슬롯(상품) 삭제" class="w-7 h-7 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="border-t border-brand-border pt-2.5 flex flex-wrap gap-1.5 min-h-[36px]">
+          ${items.length === 0
+            ? '<span class="text-brand-gray text-xs">등록된 키워드 없음 — 순위 조회 후 "선택한 키워드 등록"으로 추가하세요</span>'
+            : chipsHtml + hiddenHtml}
+        </div>
+        <div class="border-t border-brand-border pt-2 flex items-center justify-between">
+          <div>${updateText}</div>
+          <div class="text-[11px] text-brand-gray flex items-center gap-1">
+            <span>날짜별 추이 보기</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // 통계 계산: 슬롯/키워드/유지/상승/하락
+  let totalKws = 0, upCnt = 0, downCnt = 0, keepCnt = 0;
+  byProduct.forEach(({ items }) => {
+    items.forEach(it => {
+      totalKws++;
+      const { rank, prev } = _latest(it.histKey, it.rankType === 'price' ? it.legacyKey : null);
+      if (typeof rank === 'number' && typeof prev === 'number') {
+        const diff = prev - rank;
+        if (diff > 0) upCnt++;
+        else if (diff < 0) downCnt++;
+        else keepCnt++;
+      }
+    });
+  });
+  const slotEl = document.getElementById('kw-stat-slots');
+  if (slotEl) slotEl.textContent = String(allProducts.length);
+  const kwEl = document.getElementById('kw-stat-kws');
+  if (kwEl) kwEl.textContent = String(totalKws);
+  const keepEl = document.getElementById('kw-stat-keep');
+  if (keepEl) keepEl.textContent = String(keepCnt);
+  const upEl = document.getElementById('kw-stat-up');
+  if (upEl) upEl.textContent = String(upCnt);
+  const downEl = document.getElementById('kw-stat-down');
+  if (downEl) downEl.textContent = String(downCnt);
+  // 진행바 (최대 50기준으로 가정 — 슬롯/키워드 양쪽 모두)
+  const slotBar = document.getElementById('kw-stat-slots-bar');
+  if (slotBar) slotBar.style.width = Math.min(100, allProducts.length * 10) + '%'; // 10슬롯 가득 = 100%
+  const kwsBar = document.getElementById('kw-stat-kws-bar');
+  if (kwsBar) kwsBar.style.width = Math.min(100, (totalKws / 50) * 100) + '%';
+
+  // 카드 렌더링 — 슬롯 번호는 1부터
+  const nextSlot = allProducts.length + 1;
+  const cardsHtml = allProducts.map((p, i) => _renderCard(p.id, p, i + 1)).join('');
+  canvas.innerHTML = cardsHtml + _plusCard(nextSlot);
+
+  // 이미지가 없는 기존 상품은 백그라운드로 자동 가져오기 (한 번에 하나씩, 중복 호출 방지)
+  if (!window._kwImgFetching) {
+    const extras = _loadKwExtras();
+    const missing = extras.filter(p => !p.imageUrl && p.name);
+    if (missing.length) {
+      window._kwImgFetching = true;
+      (async () => {
+        for (const p of missing.slice(0, 5)) { // 최대 5개씩만
+          await _fetchKwProductImage(p.id, p.name, p.url || '');
+        }
+        window._kwImgFetching = false;
+      })();
+    }
+  }
+}
+
+// 슬롯(상품) 전체 삭제
+function deleteKwTrendSlot(productKey) {
+  if (!productKey) return;
+  // ex:<id> 형태인 경우 id 추출
+  const m = String(productKey).match(/^ex:(.+)$/);
+  if (!m) { renderKwTrend(); return; }
+  const id = m[1];
+  // 등록된 키워드도 함께 삭제됨 (removeKwExtraProduct는 product만 지움 → manage 정리 추가)
+  const manage = _loadKwManage();
+  const remain = manage.filter(it => it.productKey !== productKey);
+  const removedKws = manage.filter(it => it.productKey === productKey);
+  const apply = () => {
+    _saveKwManage(remain);
+    // 시리즈에서도 해당 productKey 관련 키워드 정리
+    try {
+      const series = _loadKwSeries();
+      const product = _kwResolveProduct(productKey);
+      const realKey = product ? (product.url || product.name) : productKey;
+      removedKws.forEach(it => {
+        const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+        types.forEach(t => { delete series[realKey + '||' + it.keyword + '||' + t]; });
+        delete series[realKey + '||' + it.keyword];
+      });
+      _saveKwSeries(series);
+    } catch(_) {}
+    removeKwExtraProduct(id);
+  };
+  if (window.showAppConfirm) {
+    showAppConfirm(
+      '슬롯 삭제',
+      `이 슬롯(상품)을 삭제할까요?\n등록된 ${removedKws.length}개 키워드와 추이 데이터도 함께 삭제됩니다.`,
+      apply,
+      { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' }
+    );
+  } else {
+    if (confirm(`이 슬롯(상품)을 삭제할까요?\n등록된 ${removedKws.length}개 키워드와 추이 데이터도 함께 삭제됩니다.`)) apply();
+  }
+}
+
+// 추이 카드 칩에서 X 버튼 → 키워드 즉시 삭제
+function deleteKwTrendItem(id, btn) {
+  if (!id) return;
+  const all = _loadKwManage();
+  const target = all.find(x => x.id === id);
+  if (!target) { renderKwTrend(); return; }
+  const ok = window.showAppConfirm
+    ? null  // showAppConfirm은 비동기 콜백 패턴이므로 별도 처리
+    : confirm(`"${target.keyword}" 키워드를 삭제할까요?\n해당 키워드의 추이 데이터도 함께 삭제됩니다.`);
+  if (window.showAppConfirm) {
+    showAppConfirm(
+      '키워드 삭제',
+      `"${target.keyword}" 키워드를 삭제할까요?\n해당 키워드의 추이 데이터도 함께 삭제됩니다.`,
+      () => _doDeleteKwTrendItem(id),
+      { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' }
+    );
+    return;
+  }
+  if (ok) _doDeleteKwTrendItem(id);
+}
+function _doDeleteKwTrendItem(id) {
+  const all = _loadKwManage();
+  const target = all.find(x => x.id === id);
+  if (!target) return;
+  const list = all.filter(x => x.id !== id);
+  _saveKwManage(list);
+  // 추이 시리즈 정리
+  const product = _kwResolveProduct(target.productKey);
+  const realKey = product ? (product.url || product.name) : target.productKey;
+  const series = _loadKwSeries();
+  const types = Array.isArray(target.rankTypes) && target.rankTypes.length ? target.rankTypes : ['price'];
+  // 다른 동일 키워드 등록이 있는지 확인
+  const stillUsed = list.some(x => x.keyword === target.keyword && _realKeyOf(x.productKey) === realKey);
+  if (!stillUsed) {
+    delete series[realKey + '||' + target.keyword];
+    types.forEach(t => delete series[realKey + '||' + target.keyword + '||' + t]);
+    _saveKwSeries(series);
+  }
+  renderKwTrend();
+  // 상세 모달이 열려 있으면 같이 갱신
+  if (_kwDetailProductKey) _renderKwDetailTable();
+  function _realKeyOf(pk) { const p = _kwResolveProduct(pk); return p ? (p.url || p.name) : pk; }
+}
+
+// ── 상품별 추이 상세 모달 ─────────────────────
+let _kwDetailDays = 7;            // 7 | 14 | 30 | 'all'
+let _kwDetailProductKey = null;
+
+function openKwTrendDetail(productKey) {
+  if (!productKey) return;
+  _kwDetailProductKey = productKey;
+  const product = _kwResolveProduct(productKey);
+  const titleEl = document.getElementById('kw-detail-title');
+  if (titleEl) titleEl.textContent = product ? product.name : '<연결 끊김>';
+  // 기간 버튼 바인딩 (한 번만 부착)
+  const periodEl = document.getElementById('kw-detail-period');
+  if (periodEl && !periodEl.dataset.bound) {
+    periodEl.querySelectorAll('.kw-detail-pbtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = btn.dataset.days;
+        setKwDetailPeriod(v === 'all' ? 'all' : parseInt(v, 10));
+      });
+    });
+    periodEl.dataset.bound = '1';
+  }
+  // ESC 키로 닫기
+  document.addEventListener('keydown', _kwDetailEscHandler);
+  document.getElementById('kw-trend-detail-modal').classList.remove('hidden');
+  _renderKwDetailTable();
+}
+
+function _kwDetailEscHandler(e) {
+  if (e.key === 'Escape') closeKwTrendDetail();
+}
+
+function closeKwTrendDetail() {
+  document.getElementById('kw-trend-detail-modal').classList.add('hidden');
+  _kwDetailProductKey = null;
+  document.removeEventListener('keydown', _kwDetailEscHandler);
+}
+
+function setKwDetailPeriod(days) {
+  _kwDetailDays = days;
+  const idle = 'kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors';
+  const active = 'kw-detail-pbtn px-3 py-1.5 text-sm font-bold bg-white shadow-sm rounded-lg text-brand-black';
+  document.querySelectorAll('.kw-detail-pbtn').forEach(b => {
+    b.className = (String(b.dataset.days) === String(days)) ? active : idle;
+  });
+  _renderKwDetailTable();
+}
+
+function _renderKwDetailTable() {
+  const canvas = document.getElementById('kw-detail-canvas');
+  if (!canvas || !_kwDetailProductKey) return;
+  const series = _loadKwSeries();
+  const manage = _loadKwManage();
+
+  function _realKeyOf(pk) { const p = _kwResolveProduct(pk); return p ? (p.url || p.name) : pk; }
+
+  // 이 상품의 키워드만
+  const items = [];
+  manage.forEach(it => {
+    if (it.productKey !== _kwDetailProductKey) return;
+    const realKey = _realKeyOf(it.productKey);
+    const types = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+    types.forEach(t => {
+      items.push({
+        id: it.id,
+        keyword: it.keyword,
+        rankType: t,
+        histKey: realKey + '||' + it.keyword + '||' + t,
+        legacyKey: realKey + '||' + it.keyword,
+      });
+    });
+  });
+
+  if (!items.length) {
+    canvas.innerHTML = '<div class="p-10 text-center text-brand-gray text-sm">이 상품에 등록된 키워드가 없습니다. 순위 조회 후 "선택한 키워드 등록"으로 추가하세요.</div>';
+    return;
+  }
+
+  // 날짜 컬럼 (오늘부터 N일, 최신 → 과거)
+  const today = new Date(); today.setHours(0,0,0,0);
+  let days;
+  if (_kwDetailDays === 'all') {
+    let oldest = today.getTime();
+    for (const it of items) {
+      const arr = (series[it.histKey] || []).concat(it.rankType === 'price' ? (series[it.legacyKey] || []) : []);
+      for (const e of arr) {
+        const t = new Date(e.t).getTime();
+        if (t < oldest) oldest = t;
+      }
+    }
+    const diffDays = Math.ceil((today.getTime() - oldest) / 86400000) + 1;
+    days = Math.max(1, Math.min(180, diffDays));
+  } else {
+    days = _kwDetailDays || 7;
+  }
+  const dateCols = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today.getTime() - i * 86400000);
+    dateCols.push({ key: _ymd(d), label: _ymdLabel(d) });
+  }
+
+  function _dayRank(histKey, dayKey, legacyKey) {
+    const arr = (series[histKey] || []).concat(legacyKey ? (series[legacyKey] || []) : []);
+    let v = undefined, latestT = '';
+    for (const e of arr) {
+      if (_ymd(new Date(e.t)) === dayKey && e.t > latestT) { v = e.r; latestT = e.t; }
+    }
+    return v;
+  }
+
+  // 동일 id를 가진 항목들은 같은 manage 항목에서 나온 것이므로 dedupe
+  const uniqueIds = [...new Set(items.map(it => it.id))];
+  const headerCells = dateCols.map(c => `<th class="font-semibold p-3 text-left whitespace-nowrap min-w-[130px]">${c.label}</th>`).join('');
+  const rowsHtml = items.map(item => {
+    const lk = item.rankType === 'price' ? item.legacyKey : null;
+    const cells = dateCols.map((c, idx) => {
+      const cur = _dayRank(item.histKey, c.key, lk);
+      let prev = undefined;
+      for (let j = idx + 1; j < dateCols.length; j++) {
+        const v = _dayRank(item.histKey, dateCols[j].key, lk);
+        if (v !== undefined) { prev = v; break; }
+      }
+      if (cur === undefined) return '<td class="p-3 text-brand-gray text-sm">-</td>';
+      if (cur === null) return '<td class="p-3"><span class="text-brand-gray font-semibold text-sm">순위권 밖</span></td>';
+      const page = _kwPageOf(cur);
+      let delta = '';
+      if (typeof prev === 'number') {
+        const diff = prev - cur;
+        if (diff > 0) {
+          delta = `<span class="ml-1.5 text-green-600 font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,4 22,20 2,20"/></svg>${diff}</span>`;
+        } else if (diff < 0) {
+          delta = `<span class="ml-1.5 text-red-500 font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,20 22,4 2,4"/></svg>${-diff}</span>`;
+        } else {
+          delta = `<span class="ml-1.5 text-brand-gray font-bold text-xs">-</span>`;
+        }
+      } else if (prev === null) {
+        delta = `<span class="ml-1.5 text-brand-orange font-bold text-xs">신규</span>`;
+      }
+      return `<td class="p-3 whitespace-nowrap"><span class="font-bold text-brand-black">${cur}위</span> <span class="text-brand-gray text-xs">- ${page}페이지 ${cur}위</span>${delta}</td>`;
+    }).join('');
+    const typeBadge = item.rankType === 'plus'
+      ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[10px] font-bold px-1.5 py-0.5 rounded">플러스</span>'
+      : '';
+    // 위치 드롭다운 — 동일 id는 첫 행에서만 표시
+    const myIdxInUnique = uniqueIds.indexOf(item.id);
+    const isFirstRowOfId = items.findIndex(x => x.id === item.id) === items.indexOf(item);
+    const posOptions = uniqueIds.map((_, i) => `<option value="${i}" ${i === myIdxInUnique ? 'selected' : ''}>${i + 1}</option>`).join('');
+    const posSelect = isFirstRowOfId
+      ? `<select onchange="changeKwDetailOrder('${item.id}', parseInt(this.value, 10))" onclick="event.stopPropagation()" class="text-[11px] font-bold bg-brand-bg border border-brand-border rounded-md px-1.5 py-0.5 text-brand-black focus:outline-none focus:border-brand-black" title="위치 변경">${posOptions}</select>`
+      : `<span class="inline-block w-7"></span>`;
+    const dragHandle = isFirstRowOfId
+      ? `<span class="kw-drag-handle text-brand-gray hover:text-brand-black cursor-grab active:cursor-grabbing select-none" title="드래그해서 위치 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></span>`
+      : `<span class="inline-block w-3.5"></span>`;
+    const rowDraggable = isFirstRowOfId ? 'draggable="true"' : '';
+    return `<tr ${rowDraggable} data-kw-id="${item.id}" data-kw-pos="${myIdxInUnique}" ondragstart="_kwRowDragStart(event)" ondragover="_kwRowDragOver(event)" ondragleave="_kwRowDragLeave(event)" ondrop="_kwRowDrop(event)" ondragend="_kwRowDragEnd(event)" class="border-b border-brand-border last:border-b-0 hover:bg-gray-50/50 transition-colors">
+      <td class="p-3 pl-4 sticky left-0 bg-white z-10 border-r border-brand-border">
+        <div class="flex items-center gap-2">
+          ${dragHandle}
+          ${posSelect}
+          <span class="font-semibold text-sm text-brand-black whitespace-nowrap">${_escapeHtml(item.keyword)}</span>
+          ${typeBadge}
+        </div>
+      </td>
+      <td class="p-3 sticky left-[200px] bg-white z-10 border-r border-brand-border whitespace-nowrap">
+        <span data-vol-kw="${_escapeHtml(item.keyword)}" class="font-bold text-brand-black text-sm">—</span>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  canvas.innerHTML = `<table class="w-full text-left border-collapse text-[0.95rem]">
+    <thead class="sticky top-0 bg-brand-bg z-20 shadow-sm">
+      <tr class="text-brand-gray text-[0.8rem]">
+        <th class="font-semibold p-3 pl-4 whitespace-nowrap sticky left-0 bg-brand-bg z-30 border-r border-brand-border min-w-[200px]">키워드</th>
+        <th class="font-semibold p-3 whitespace-nowrap sticky left-[200px] bg-brand-bg z-30 border-r border-brand-border min-w-[100px]">월 검색량</th>
+        ${headerCells}
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+
+  // 검색량 비동기 갱신 (캐시 즉시 표시 → 만료된 키워드만 백그라운드 fetch)
+  if (typeof _refreshKwVolumesForRendered === 'function') _refreshKwVolumesForRendered();
+}
+
+// ── 드래그 앤 드롭 핸들러 (상세 모달 테이블) ─────────────
+let _kwDragSrcId = null;
+function _kwRowDragStart(e) {
+  const tr = e.currentTarget;
+  _kwDragSrcId = tr.dataset.kwId;
+  tr.classList.add('opacity-40');
+  try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', _kwDragSrcId); } catch(_) {}
+}
+function _kwRowDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const tr = e.currentTarget;
+  if (tr.dataset.kwId !== _kwDragSrcId) {
+    // 마우스 위치에 따라 위/아래 border highlight
+    const rect = tr.getBoundingClientRect();
+    const isUpper = (e.clientY - rect.top) < rect.height / 2;
+    tr.classList.remove('border-t-2', 'border-b-2', 'border-brand-blue');
+    tr.classList.add(isUpper ? 'border-t-2' : 'border-b-2', 'border-brand-blue');
+  }
+}
+function _kwRowDragLeave(e) {
+  e.currentTarget.classList.remove('border-t-2', 'border-b-2', 'border-brand-blue');
+}
+function _kwRowDrop(e) {
+  e.preventDefault();
+  const tr = e.currentTarget;
+  tr.classList.remove('border-t-2', 'border-b-2', 'border-brand-blue');
+  if (!_kwDragSrcId || tr.dataset.kwId === _kwDragSrcId) return;
+  // 소스 행의 현재 위치 추출
+  const srcTr = document.querySelector(`#kw-detail-canvas tr[data-kw-id="${_kwDragSrcId}"]`);
+  const srcPos = srcTr ? parseInt(srcTr.dataset.kwPos, 10) : 0;
+  const targetPos = parseInt(tr.dataset.kwPos, 10);
+  const rect = tr.getBoundingClientRect();
+  const isUpper = (e.clientY - rect.top) < rect.height / 2;
+  let newIndex = isUpper ? targetPos : targetPos + 1;
+  // changeKwDetailOrder는 소스 제거 후 newIndex에 삽입하므로 인덱스 보정 필요
+  if (srcPos < newIndex) newIndex--;
+  changeKwDetailOrder(_kwDragSrcId, newIndex);
+  _kwDragSrcId = null;
+}
+function _kwRowDragEnd(e) {
+  e.currentTarget.classList.remove('opacity-40');
+  // 혹시 남은 highlight 제거
+  document.querySelectorAll('#kw-detail-canvas tr.border-brand-blue').forEach(el => {
+    el.classList.remove('border-t-2', 'border-b-2', 'border-brand-blue');
+  });
+  _kwDragSrcId = null;
+}
+
+// 키워드 행을 새 위치로 이동 (해당 상품 내에서만)
+function changeKwDetailOrder(id, newIndex) {
+  if (!id || !_kwDetailProductKey) return;
+  const manage = _loadKwManage();
+  const target = manage.find(it => it.id === id);
+  if (!target) return;
+  // 이 상품의 항목만 추출 (현재 순서 유지)
+  const productItems = manage.filter(it => it.productKey === _kwDetailProductKey);
+  const otherItems = manage.filter(it => it.productKey !== _kwDetailProductKey);
+  const currentIdx = productItems.findIndex(it => it.id === id);
+  if (currentIdx === -1) return;
+  // 제거 → 새 위치에 삽입
+  productItems.splice(currentIdx, 1);
+  const clamped = Math.max(0, Math.min(newIndex, productItems.length));
+  productItems.splice(clamped, 0, target);
+  // otherItems + productItems 순으로 재구성하지 않고, manage 전체에서 productItems 순서를 적용
+  // — 원래 manage 배열 내 productKey 항목들 위치를 새 순서로 교체
+  const newManage = [];
+  let pIdx = 0;
+  manage.forEach(it => {
+    if (it.productKey === _kwDetailProductKey) {
+      newManage.push(productItems[pIdx++]);
+    } else {
+      newManage.push(it);
+    }
+  });
+  _saveKwManage(newManage);
+  _renderKwDetailTable();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+}
+
+// ── 키워드 월 검색량 (네이버 검색광고 API) ─────────────────────────
+const KW_VOL_KEY = 'kw_search_volume';
+const KW_VOL_TTL = 24 * 60 * 60 * 1000; // 24시간
+function _loadKwVolume() { try { return JSON.parse(localStorage.getItem(KW_VOL_KEY) || '{}'); } catch(_) { return {}; } }
+function _saveKwVolume(o) { localStorage.setItem(KW_VOL_KEY, JSON.stringify(o)); }
+function _kwHasSaKey() {
+  const k = _loadSaKeys();
+  return !!(k.customerId && k.accessLicense && k.secretKey);
+}
+function _normalizeQc(qc) {
+  if (qc == null) return { n: 0, low: false };
+  if (typeof qc === 'number') return { n: qc, low: false };
+  const s = String(qc).trim();
+  if (s.startsWith('<')) return { n: 0, low: true };
+  const n = parseInt(s.replace(/[^0-9]/g, ''), 10);
+  return { n: isNaN(n) ? 0 : n, low: false };
+}
+const KW_VOL_ERR_TTL = 5 * 60 * 1000; // 에러 캐시 5분 (rate-limit 회피)
+function _kwVolumeText(v) {
+  if (v && v.error === 'no_key') return '<button type="button" onclick="setKwTab(\'settings\'); document.getElementById(\'sa-customer-id\') && document.getElementById(\'sa-customer-id\').focus()" class="text-brand-blue hover:underline font-medium">설정 → 검색광고 API 등록</button>';
+  if (v && v.error) {
+    const detail = String(v.error).slice(0, 80);
+    return `<span class="text-brand-pink font-medium" title="${detail.replace(/"/g,'&quot;')}">조회 실패 (콘솔 확인)</span>`;
+  }
+  if (v && v.loading) return '<span class="text-brand-gray">조회 중…</span>';
+  if (!v || v.total == null) return '—';
+  if (typeof v.total === 'string') return v.total + '회';
+  return v.total.toLocaleString() + '회';
+}
+async function _fetchAndCacheKwVolume(keyword) {
+  if (!_kwHasSaKey()) {
+    return { error: 'no_key' };
+  }
+  const cache = _loadKwVolume();
+  // 네이버 검색광고 API는 hintKeywords에 공백 포함 키워드를 거부 (BAD_REQUEST 11001)
+  // 공백을 제거해서 호출 — 네이버는 띄어쓰기 변형을 통합 집계하므로 검색량은 동일
+  const hintForSa = keyword.replace(/\s+/g, '');
+  const data = await _saFetchKeywords(hintForSa);
+  if (!data || data.error) {
+    const errMsg = (data && (data.error || data.detail)) || 'fetch_failed';
+    console.warn('[KW Volume] fetch 실패:', keyword, '→', errMsg, data);
+    cache[keyword] = { error: errMsg, ts: Date.now() };
+    _saveKwVolume(cache);
+    return cache[keyword];
+  }
+  if (!Array.isArray(data.keywordList)) {
+    console.warn('[KW Volume] keywordList 없음:', keyword, data);
+    cache[keyword] = { error: 'no_list', ts: Date.now() };
+    _saveKwVolume(cache);
+    return cache[keyword];
+  }
+  const norm = s => String(s || '').replace(/\s+/g, '').toLowerCase();
+  const target = norm(keyword);
+  const found = data.keywordList.find(k => norm(k.relKeyword) === target) || data.keywordList[0];
+  if (!found) {
+    cache[keyword] = { error: 'no_match', ts: Date.now() };
+    _saveKwVolume(cache);
+    return cache[keyword];
+  }
+  const pc = _normalizeQc(found.monthlyPcQcCnt);
+  const mb = _normalizeQc(found.monthlyMobileQcCnt);
+  const allLow = pc.low && mb.low;
+  const result = {
+    pc: pc.n, mobile: mb.n,
+    total: allLow ? '< 20' : (pc.n + mb.n),
+    ts: Date.now(),
+  };
+  cache[keyword] = result;
+  _saveKwVolume(cache);
+  return result;
+}
+function _applyKwVolumesToCells() {
+  const cache = _loadKwVolume();
+  document.querySelectorAll('[data-vol-kw]').forEach(el => {
+    const kw = el.getAttribute('data-vol-kw');
+    el.innerHTML = _kwVolumeText(cache[kw]);
+  });
+}
+let _kwVolumeFetchInFlight = false;
+let _kwVolumePendingRefresh = false;
+async function _refreshKwVolumesForRendered() {
+  _applyKwVolumesToCells();
+  if (_kwVolumeFetchInFlight) {
+    // 진행 중이면 끝난 후 다시 시도하도록 플래그만 세팅 (새로 추가된 키워드 잡기)
+    _kwVolumePendingRefresh = true;
+    return;
+  }
+  if (!_kwHasSaKey()) {
+    document.querySelectorAll('[data-vol-kw]').forEach(el => {
+      el.innerHTML = _kwVolumeText({ error: 'no_key' });
+    });
+    return;
+  }
+  const cache = _loadKwVolume();
+  const now = Date.now();
+  const needFetch = [];
+  const seen = new Set();
+  document.querySelectorAll('[data-vol-kw]').forEach(el => {
+    const kw = el.getAttribute('data-vol-kw');
+    if (!kw || seen.has(kw)) return;
+    seen.add(kw);
+    const c = cache[kw];
+    if (!c || !c.ts) { needFetch.push(kw); return; }
+    if (c.error) {
+      // 에러는 5분 TTL로 재시도
+      if ((now - c.ts) > KW_VOL_ERR_TTL) needFetch.push(kw);
+    } else {
+      if ((now - c.ts) > KW_VOL_TTL) needFetch.push(kw);
+    }
+  });
+  if (!needFetch.length) return;
+  _kwVolumeFetchInFlight = true;
+  // 진행 중 표시
+  needFetch.forEach(kw => {
+    document.querySelectorAll(`[data-vol-kw="${kw.replace(/"/g, '\\"')}"]`).forEach(el => {
+      el.innerHTML = _kwVolumeText({ loading: true });
+    });
+  });
+  try {
+    for (const kw of needFetch) {
+      try { await _fetchAndCacheKwVolume(kw); } catch(e) { console.warn('[KW Volume] 예외:', kw, e); }
+      _applyKwVolumesToCells();
+      await new Promise(r => setTimeout(r, 250)); // rate-limit 회피
+    }
+  } finally {
+    _kwVolumeFetchInFlight = false;
+    if (_kwVolumePendingRefresh) {
+      _kwVolumePendingRefresh = false;
+      setTimeout(() => _refreshKwVolumesForRendered(), 0);
+    }
+  }
+}
+
+// ── 상품 정제 — 키워드 발굴 ──────────────────
+const SRC_FAV_KEY = 'src_favorites';
+const SA_KEYS_LS = 'gplan_naver_searchad_keys';
+let _srcResults = [];
+let _srcDataSource = 'sample';
+let _srcPeriod = 30, _srcType = 'all';
+
+// ── 네이버 검색광고 API 키 관리 ──
+function _loadSaKeys() {
+  try { return JSON.parse(localStorage.getItem(SA_KEYS_LS) || '{}'); } catch(_) { return {}; }
+}
+function _saveSaKeysRaw(obj) { localStorage.setItem(SA_KEYS_LS, JSON.stringify(obj)); }
+function _updateSaBadge() {
+  const badge = document.getElementById('sa-key-badge');
+  if (!badge) return;
+  const keys = _loadSaKeys();
+  const has = keys.customerId && keys.accessLicense && keys.secretKey;
+  badge.textContent = has ? '등록됨' : '미등록';
+  badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full ' +
+    (has ? 'text-[#00C853] bg-brand-green-light' : 'text-brand-gray bg-brand-bg');
+}
+function _populateSaInputs() {
+  const keys = _loadSaKeys();
+  const ci = document.getElementById('sa-customer-id');
+  const lc = document.getElementById('sa-license');
+  const sc = document.getElementById('sa-secret');
+  if (ci) ci.value = keys.customerId || '';
+  if (lc) lc.value = keys.accessLicense || '';
+  if (sc) sc.value = keys.secretKey || '';
+}
+function _saValidateKeyFormat(customerId, accessLicense, secretKey) {
+  const warnings = [];
+  if (!/^\d+$/.test(customerId)) {
+    warnings.push(`• CUSTOMER_ID가 숫자만이 아닙니다 (현재 ${customerId.length}자, "${customerId.slice(0,8)}...")`);
+  }
+  // ACCESS_LICENSE는 hex 64자 정도, 보통 "0100"으로 시작
+  if (!/^[0-9a-f]+$/i.test(accessLicense)) {
+    warnings.push(`• ACCESS_LICENSE에 영문/숫자 외 문자가 있습니다 (예: 콜론, 공백, ==)`);
+  }
+  // SECRET_KEY는 base64이며 보통 "=="로 끝
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(secretKey)) {
+    warnings.push(`• SECRET_KEY가 base64 형식이 아닙니다 (영숫자+/=만 허용)`);
+  }
+  // 헷갈려서 라이선스/시크릿 자리 바꿔 입력했는지 체크
+  if (accessLicense.endsWith('==') && !secretKey.endsWith('==')) {
+    warnings.push(`⚠️ ACCESS_LICENSE와 SECRET_KEY가 서로 바뀌어 입력된 것 같습니다 (라이선스에 "==" 포함)`);
+  }
+  return warnings;
+}
+function saveSaKeys() {
+  const customerId = (document.getElementById('sa-customer-id').value || '').trim();
+  const accessLicense = (document.getElementById('sa-license').value || '').trim();
+  const secretKey = (document.getElementById('sa-secret').value || '').trim();
+  if (!customerId || !accessLicense || !secretKey) {
+    alert('CUSTOMER_ID / ACCESS_LICENSE / SECRET_KEY 3개 모두 입력해 주세요.');
+    return;
+  }
+  const warns = _saValidateKeyFormat(customerId, accessLicense, secretKey);
+  if (warns.length) {
+    if (!confirm('입력된 키에 의심스러운 부분이 있습니다:\n\n' + warns.join('\n') + '\n\n그래도 저장할까요?')) return;
+  }
+  _saveSaKeysRaw({ customerId, accessLicense, secretKey });
+  _updateSaBadge();
+  // 에러 캐시 정리 → 새 키로 즉시 재시도
+  if (typeof _loadKwVolume === 'function') {
+    const cache = _loadKwVolume();
+    let cleared = 0;
+    for (const k in cache) {
+      if (cache[k] && cache[k].error) { delete cache[k]; cleared++; }
+    }
+    if (cleared) _saveKwVolume(cache);
+  }
+  alert('네이버 검색광고 API 키가 저장되었습니다.');
+  if (typeof _refreshKwVolumesForRendered === 'function' && document.querySelector('[data-vol-kw]')) {
+    _refreshKwVolumesForRendered();
+  }
+}
+function clearSaKeys() {
+  if (!confirm('저장된 API 키를 삭제할까요?')) return;
+  localStorage.removeItem(SA_KEYS_LS);
+  _populateSaInputs();
+  _updateSaBadge();
+  if (typeof _loadKwVolume === 'function') {
+    const cache = _loadKwVolume();
+    let cleared = 0;
+    for (const k in cache) {
+      if (cache[k] && cache[k].error) { delete cache[k]; cleared++; }
+    }
+    if (cleared) _saveKwVolume(cache);
+  }
+  if (typeof _refreshKwVolumesForRendered === 'function' && document.querySelector('[data-vol-kw]')) {
+    _refreshKwVolumesForRendered();
+  }
+}
+async function testSaApi() {
+  const customerId = (document.getElementById('sa-customer-id').value || '').trim();
+  const accessLicense = (document.getElementById('sa-license').value || '').trim();
+  const secretKey = (document.getElementById('sa-secret').value || '').trim();
+  if (!customerId || !accessLicense || !secretKey) {
+    alert('3개 키를 모두 입력한 후 테스트하세요.');
+    return;
+  }
+  // 형식 검사부터
+  const warns = _saValidateKeyFormat(customerId, accessLicense, secretKey);
+  if (warns.length) {
+    alert('⚠️ 키 형식 의심:\n\n' + warns.join('\n') + '\n\n광고주센터에서 각 값을 다시 확인해 주세요.');
+    return;
+  }
+  // 임시로 입력값으로 호출 (저장 안 된 상태에서도 테스트 가능)
+  try {
+    const r = await fetch(`/api/naver-searchad?hint=${encodeURIComponent('티셔츠')}`, {
+      headers: {
+        'x-naver-sa-customer': customerId,
+        'x-naver-sa-license': accessLicense,
+        'x-naver-sa-secret': secretKey,
+      },
+    });
+    if (r.ok) {
+      const data = await r.json();
+      const cnt = (data.keywordList || []).length;
+      alert(`✅ 연결 성공! "티셔츠" 검색에서 ${cnt}개 연관 키워드를 가져왔습니다.\n\n저장 버튼을 눌러 적용하세요.`);
+      return;
+    }
+    const errBody = await r.json().catch(() => ({}));
+    let hint = '';
+    if (r.status === 403) {
+      hint = '\n\n원인 가능성:\n1. CUSTOMER_ID(숫자) ↔ 다른 키와 자리 바뀜\n2. ACCESS_LICENSE ↔ SECRET_KEY 자리 바뀜\n3. 광고주센터에서 비밀키 재발급 후 옛날 키 입력\n4. 광고주센터에서 SA API 사용 신청이 안 된 상태\n\n광고주센터 → 도구 → SA API 사용 관리 에서 재확인 필요';
+    } else if (r.status === 401) {
+      hint = '\n\n인증 오류 — 키 값을 다시 확인해 주세요.';
+    } else if (r.status === 429) {
+      hint = '\n\n호출 제한 — 1분 후 다시 시도하세요.';
+    } else if (r.status >= 500) {
+      hint = '\n\n네이버 서버 오류 또는 server.py 미실행 가능성.';
+    }
+    alert(`❌ 연결 실패 (HTTP ${r.status})\n\n${errBody.error || ''}\n${(errBody.detail || '').slice(0, 200)}${hint}`);
+  } catch (e) {
+    alert(`❌ 통신 오류: ${e.message}\n\nserver.py가 실행 중인지 확인하세요. (cmd 창에서 python server.py)`);
+  }
+}
+async function _saFetchKeywords(hint) {
+  const keys = _loadSaKeys();
+  if (!keys.customerId || !keys.accessLicense || !keys.secretKey) return null;
+  try {
+    const r = await fetch(`/api/naver-searchad?hint=${encodeURIComponent(hint)}`, {
+      headers: {
+        'x-naver-sa-customer': keys.customerId,
+        'x-naver-sa-license': keys.accessLicense,
+        'x-naver-sa-secret': keys.secretKey,
+      },
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      console.warn('searchad error:', err);
+      return { error: err.error || `HTTP ${r.status}`, detail: err.detail };
+    }
+    return await r.json();
+  } catch (e) {
+    console.warn('searchad fetch failed:', e);
+    return { error: e.message };
+  }
+}
+
+function showAppAlert(title, msg, type, extra) {
+  const modal = document.getElementById('app-alert-modal');
+  if (!modal) { alert((title ? title + '\n' : '') + msg); return; }
+  const t = document.getElementById('app-alert-title');
+  const m = document.getElementById('app-alert-msg');
+  const e = document.getElementById('app-alert-extra');
+  const ic = document.getElementById('app-alert-icon');
+  if (t) t.textContent = title || '알림';
+  if (m) m.textContent = msg || '';
+  if (e) {
+    if (extra) { e.innerHTML = extra; e.classList.remove('hidden'); }
+    else e.classList.add('hidden');
+  }
+  // 아이콘 + 색상 테마
+  const themes = {
+    success: { bg: 'bg-brand-green-light', stroke: '#00C853', icon: '<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>' },
+    warn:    { bg: 'bg-brand-orange-light/50', stroke: '#FF9800', icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' },
+    error:   { bg: 'bg-brand-pink-light',    stroke: '#E91E63', icon: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>' },
+    info:    { bg: 'bg-brand-bg',            stroke: '#333',    icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>' },
+  };
+  const th = themes[type] || themes.info;
+  if (ic) {
+    ic.className = 'w-12 h-12 rounded-2xl ' + th.bg + ' flex items-center justify-center shrink-0';
+    ic.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${th.stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${th.icon}</svg>`;
+  }
+  modal.classList.remove('hidden');
+}
+function closeAppAlert() {
+  const modal = document.getElementById('app-alert-modal');
+  if (modal) modal.classList.add('hidden');
+}
 </script>
 </body>
 </html>
