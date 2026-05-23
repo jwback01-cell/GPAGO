@@ -378,12 +378,10 @@
                 <th class="px-3 py-4 text-left">상품명</th>
                 <th class="px-5 py-4 text-left w-48">카테고리</th>
                 <th class="px-5 py-4 text-left w-32">스토어명</th>
-                <th class="px-5 py-4 text-left w-48">속성</th>
-                <th class="px-5 py-4 text-left w-32">태그</th>
               </tr>
             </thead>
             <tbody id="analysis-tbody">
-              <tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">
+              <tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">
                 기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
                 <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
               </td></tr>
@@ -2165,7 +2163,7 @@ async function runAnalysis() {
   for (let i = 0; i < baseList.length; i++) {
     const bk = baseList[i];
     const q = filterKw ? (bk + ' ' + filterKw).trim() : bk;
-    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
     try {
       const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(q) + '&display=80&sort=sim';
       const resp = await fetch(proxyUrl, { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
@@ -2189,7 +2187,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   document.getElementById('multi-kw-tabs').classList.add('hidden');
   const api = _getApi();
   const tbody = document.getElementById('analysis-tbody');
-  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
   try {
     // 분석 히스토리 저장
@@ -2216,7 +2214,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     const data = await resp.json();
     const items = data.items || [];
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
       return;
     }
 
@@ -2238,7 +2236,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
   } catch (e) {
     console.error('[분석] 실패:', e);
-    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
   }
 }
 
@@ -2416,7 +2414,7 @@ function activateMultiKwTab(idx) {
   const r = _multiAnalysisResults[idx];
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
     renderMultiKwTabs();
     return;
   }
@@ -2445,7 +2443,7 @@ function renderAnalysisResults() {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it, i) => {
@@ -2459,9 +2457,6 @@ function renderAnalysisResults() {
       : isNaverPay
         ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
         : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
-    // 속성·태그 — 상품명에서 풍부하게 추출
-    const attrText = _extractAttributes(it);
-    const tagText = _extractTagsFromTitle(it);
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
@@ -2470,8 +2465,6 @@ function renderAnalysisResults() {
       </td>
       <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${escapeHtml(cat || '-')}</td>
       <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
-      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${attrText}</td>
-      <td class="px-5 py-3.5 text-[11px] align-middle">${tagText}</td>
     </tr>`;
   }).join('');
 }
@@ -3185,7 +3178,7 @@ function _renderKwResults(rows, ctx) {
   if (!tbody) return;
   const regBtn = document.getElementById('kw-register-selected-btn');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-brand-gray">조회 결과가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-brand-gray">조회 결과가 없습니다.</td></tr>';
     if (regBtn) regBtn.classList.add('hidden');
     return;
   }
