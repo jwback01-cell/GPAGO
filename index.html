@@ -764,12 +764,13 @@ function computeStats(items, terms, baseKw, filterKw) {
   _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
 
   // 상품명 가중치 — 각 텀이 포함된 상품의 개수 (1개 상품당 최대 1개로 카운트)
+  // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
   const termCounts = terms.map(t => {
     let cnt = 0;
-    const tLower = t.toLowerCase();
+    const tNoSpace = t.toLowerCase().replace(/\s+/g, '');
     items.forEach(it => {
-      const title = _stripHtml(it.title).toLowerCase();
-      if (title.includes(tLower)) cnt++;
+      const titleNoSpace = _stripHtml(it.title).toLowerCase().replace(/\s+/g, '');
+      if (titleNoSpace.includes(tNoSpace)) cnt++;
     });
     return { term: t, count: cnt };
   });
@@ -782,12 +783,13 @@ function computeStats(items, terms, baseKw, filterKw) {
   else _fillCell('stat-cell-5', '-');
 
   // 파트 가중치 — FITER+ 값을 포함하지 않는 가장 높은 순위 (= 가장 위쪽 상품)
-  const filterKwLower = (filterKw || '').trim().toLowerCase();
-  if (filterKwLower) {
+  // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
+  const filterKwNoSpace = (filterKw || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (filterKwNoSpace) {
     let missingRank = -1, missingTitle = '';
     for (let i = 0; i < items.length; i++) {
-      const title = _stripHtml(items[i].title || '').toLowerCase();
-      if (!title.includes(filterKwLower)) {
+      const titleNoSpace = _stripHtml(items[i].title || '').toLowerCase().replace(/\s+/g, '');
+      if (!titleNoSpace.includes(filterKwNoSpace)) {
         missingRank = i + 1;
         missingTitle = _stripHtml(items[i].title || '');
         break;
