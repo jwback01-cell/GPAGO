@@ -666,22 +666,18 @@ let _lastAnalysisItems = []; // raw API 결과 캐시
 let _lastBaseKw = '';
 let _lastFilterKw = '';
 
-// N 키워드 박스에 직접 입력한 값으로 바로 분석
+// N 키워드 박스에 직접 입력한 값으로 바로 분석 (기준키워드/필터 값은 건드리지 않음)
 async function runAnalysisWithNaverKw() {
   const naverKw = (document.getElementById('kw-naver').value || '').trim();
   if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
-  // 입력된 N 키워드를 기준 키워드로 사용 (FITER+ 는 비움)
-  const baseEl = document.getElementById('kw-base');
-  const filterEl = document.getElementById('kw-filter');
-  if (baseEl) baseEl.value = naverKw;
-  if (filterEl) filterEl.value = '';
   return runAnalysis();
 }
 
 async function runAnalysis() {
   const baseKw = (document.getElementById('kw-base').value || '').trim();
   const filterKw = (document.getElementById('kw-filter').value || '').trim();
-  if (!baseKw && !filterKw) { toast('기준 키워드를 입력해 주세요'); return; }
+  const naverKw = (document.getElementById('kw-naver').value || '').trim();
+  if (!baseKw && !filterKw && !naverKw) { toast('기준 키워드를 입력해 주세요'); return; }
   const api = _getApi();
   if (!api.id || !api.secret) {
     toast('먼저 API 설정에서 Client ID/Secret 을 등록해 주세요');
@@ -692,7 +688,8 @@ async function runAnalysis() {
   tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
 
-  const query = filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw;
+  // 검색 쿼리: N 키워드가 있으면 그것을 우선 사용, 없으면 기준+필터 조합
+  const query = naverKw || (filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw);
   try {
     // 분석 히스토리 저장
     try {
