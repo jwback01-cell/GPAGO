@@ -727,11 +727,9 @@ async function runAnalysis() {
     _lastBaseKw = baseKw;
     _lastFilterKw = filterKw;
 
-    // 텀즈 표시 + N 라벨
+    // 텀즈 표시
     const terms = _extractTerms(baseKw, filterKw);
     document.getElementById('terms-display').textContent = terms.join(',') || '-';
-    const naverEl = document.getElementById('kw-naver');
-    if (naverEl) naverEl.value = query || '';
     document.getElementById('total-count').textContent = (data.total || items.length).toLocaleString('ko-KR');
 
     // 통계 계산
