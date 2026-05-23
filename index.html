@@ -883,6 +883,28 @@
         </div>
       </section>
 
+      <!-- GPLAN에서 데이터 이전 -->
+      <section class="bg-white p-7 rounded-3xl panel">
+        <div class="flex justify-between items-start mb-4 flex-wrap gap-3">
+          <div class="min-w-0">
+            <div class="font-bold text-[1.15rem] mb-1 flex items-center gap-2 flex-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              GPLAN 데이터 이전
+            </div>
+            <p class="text-brand-gray text-sm leading-snug">GPLAN에서 내보낸 키워드 순위/상품 정제/상품 소싱 데이터 JSON 파일을 업로드해 이전합니다.</p>
+            <p class="text-brand-gray text-xs mt-1.5">사용법: <b class="text-brand-black">GPLAN 대시보드 → "GPAGO 이전 데이터 내보내기"</b> → 다운로드된 JSON 파일을 아래에 업로드</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-3 flex-wrap">
+          <input type="file" id="gpago-migrate-input" accept="application/json,.json" class="hidden" onchange="importGpagoMigrationData(event)">
+          <button type="button" onclick="document.getElementById('gpago-migrate-input').click()" class="px-5 py-2.5 bg-brand-orange-light text-brand-orange rounded-full text-sm font-bold hover:bg-brand-orange hover:text-white transition-colors flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            JSON 파일 선택
+          </button>
+          <span id="gpago-migrate-status" class="text-xs text-brand-gray"></span>
+        </div>
+      </section>
+
       </div><!-- /kw-tab-settings -->
 </div>
 <div id="page-sourcing" class="page">
@@ -7824,6 +7846,48 @@ document.addEventListener('DOMContentLoaded', () => {
   _prodsrcState = _prodsrcLoad();
   try { _prodsrcRender(); } catch(_) {}
 });
+
+// ════════════════════════════════════════
+// GPLAN에서 마이그레이션 데이터 불러오기
+// ════════════════════════════════════════
+async function importGpagoMigrationData(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  const statusEl = document.getElementById('gpago-migrate-status');
+  if (!file) return;
+  if (statusEl) { statusEl.textContent = '파일 읽는 중...'; statusEl.className = 'text-xs text-brand-gray'; }
+  try {
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    if (!obj || !obj.data || typeof obj.data !== 'object') {
+      throw new Error('파일 형식이 올바르지 않습니다 — GPLAN에서 내보낸 JSON 파일인지 확인하세요.');
+    }
+    const keys = Object.keys(obj.data);
+    if (!keys.length) throw new Error('이전할 데이터가 비어 있습니다.');
+    const proceed = confirm(`총 ${keys.length}개 키를 GPAGO localStorage에 덮어쓸까요?\n\n` + keys.join('\n') + '\n\n기존 GPAGO 데이터는 같은 키일 경우 덮어쓰여집니다.');
+    if (!proceed) {
+      if (statusEl) statusEl.textContent = '취소됨';
+      evt.target.value = '';
+      return;
+    }
+    let cnt = 0;
+    for (const [k, v] of Object.entries(obj.data)) {
+      try { localStorage.setItem(k, v); cnt++; } catch(_) {}
+    }
+    if (statusEl) {
+      statusEl.textContent = `✓ ${cnt}개 키 가져오기 완료 — 페이지를 새로고침합니다`;
+      statusEl.className = 'text-xs text-brand-green font-bold';
+    }
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    if (statusEl) {
+      statusEl.textContent = '오류: ' + (e.message || String(e));
+      statusEl.className = 'text-xs text-brand-pink font-bold';
+    } else {
+      alert('가져오기 실패: ' + (e.message || String(e)));
+    }
+  }
+  evt.target.value = '';
+}
 </script>
 </body>
 </html>
