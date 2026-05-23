@@ -2083,7 +2083,7 @@ async function runAnalysis() {
     } catch(_) {}
 
     // Vercel 배포 시 — 서버리스 프록시 사용
-    const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(query) + '&display=40&sort=sim';
+    const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(query) + '&display=80&sort=sim';
     let resp;
     try {
       resp = await fetch(proxyUrl, {
