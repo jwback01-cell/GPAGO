@@ -268,15 +268,16 @@
             <thead class="bg-white border-b border-brand-border">
               <tr class="text-brand-blue font-black text-[13px]">
                 <th class="px-5 py-4 text-left w-14">NO</th>
-                <th class="px-5 py-4 text-left">상품명</th>
+                <th class="px-3 py-4 text-left w-16"></th>
+                <th class="px-3 py-4 text-left">상품명</th>
                 <th class="px-5 py-4 text-left w-48">카테고리</th>
                 <th class="px-5 py-4 text-left w-32">스토어명</th>
-                <th class="px-5 py-4 text-left w-32">속성</th>
-                <th class="px-5 py-4 text-left w-24">태그</th>
+                <th class="px-5 py-4 text-left w-48">속성</th>
+                <th class="px-5 py-4 text-left w-32">태그</th>
               </tr>
             </thead>
             <tbody id="analysis-tbody">
-              <tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">
+              <tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">
                 기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
                 <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
               </td></tr>
@@ -680,7 +681,7 @@ async function runAnalysis() {
     return;
   }
   const tbody = document.getElementById('analysis-tbody');
-  tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
 
   const query = filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw;
@@ -709,7 +710,7 @@ async function runAnalysis() {
     const data = await resp.json();
     const items = data.items || [];
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
       return;
     }
 
@@ -732,7 +733,7 @@ async function runAnalysis() {
     toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
   } catch (e) {
     console.error('[분석] 실패:', e);
-    tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
   }
 }
 
@@ -822,7 +823,7 @@ function _highlightTerms(text, terms) {
   terms.forEach(t => {
     if (!t) return;
     const re = new RegExp('(' + t.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + ')', 'gi');
-    result = result.replace(re, '<span class="bg-brand-green-light text-brand-green font-bold px-1 rounded">$1</span>');
+    result = result.replace(re, '<span class="inline-block bg-brand-green-light text-brand-green font-bold px-2 py-0.5 rounded-full text-[11px] mx-0.5">$1</span>');
   });
   return result;
 }
@@ -839,7 +840,7 @@ function renderAnalysisResults() {
     items = items.filter(it => ['6','7'].includes(String(it.productType)));
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it, i) => {
@@ -848,22 +849,34 @@ function renderAnalysisResults() {
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const isPriceCompare = ['1','2','3','4','5'].includes(String(it.productType));
     const isNaverPay = ['6','7'].includes(String(it.productType));
-    const attrBadge = isPriceCompare
-      ? '<span class="text-[10px] font-black bg-brand-blue-light text-brand-blue px-2 py-0.5 rounded-full">가격비교</span>'
+    // 그룹 배지 — 상품 타입에 따라 색상/라벨 다르게 (ROPAGO 스타일)
+    const groupBadge = isPriceCompare
+      ? '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">그룹</span>'
       : isNaverPay
-        ? '<span class="text-[10px] font-black bg-brand-green-light text-brand-green px-2 py-0.5 rounded-full">네이버페이</span>'
-        : '<span class="text-[10px] font-black bg-brand-bg text-brand-gray px-2 py-0.5 rounded-full">일반</span>';
-    const price = it.lprice ? Number(it.lprice).toLocaleString('ko-KR') + '원' : '-';
+        ? '<span class="inline-block text-[10px] font-black bg-brand-pink-light text-brand-pink px-2.5 py-0.5 rounded-full">가격</span>'
+        : '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>';
+    // 속성 — 추출 가능한 정보(브랜드/메이커/카테고리/가격) 를 점(·)으로 구분
+    const attrParts = [];
+    if (it.brand) attrParts.push(escapeHtml(it.brand));
+    if (it.maker && it.maker !== it.brand) attrParts.push(escapeHtml(it.maker));
+    if (it.category4) attrParts.push(escapeHtml(it.category4));
+    if (it.lprice) attrParts.push(Number(it.lprice).toLocaleString('ko-KR') + '원');
+    const attrText = attrParts.join(' · ') || '-';
+    // 태그 — 브랜드/카테고리 키워드 기반
+    const tags = [];
+    if (it.brand) tags.push('#' + it.brand);
+    if (it.category3) tags.push('#' + it.category3.replace(/[\s/]/g, ''));
+    const tagText = tags.length ? tags.map(t => `<span class="text-brand-blue font-bold">${escapeHtml(t)}</span>`).join(' ') : '<span class="text-brand-gray">-</span>';
     return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
-      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray">${i + 1}</td>
-      <td class="px-5 py-3.5 text-sm">
-        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue">${highlighted}</a>
-        <div class="text-[10px] text-brand-gray font-medium mt-0.5">${price}</div>
+      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
+      <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
+      <td class="px-3 py-3.5 text-sm align-middle">
+        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
       </td>
-      <td class="px-5 py-3.5 text-xs text-brand-gray">${escapeHtml(cat || '-')}</td>
-      <td class="px-5 py-3.5 text-sm text-brand-blue font-semibold">${escapeHtml(it.mallName || '-')}</td>
-      <td class="px-5 py-3.5">${attrBadge}</td>
-      <td class="px-5 py-3.5 text-[10px] text-brand-gray">${it.brand ? '#' + escapeHtml(it.brand) : '-'}</td>
+      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${escapeHtml(cat || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${attrText}</td>
+      <td class="px-5 py-3.5 text-[11px] align-middle">${tagText}</td>
     </tr>`;
   }).join('');
 }
