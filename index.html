@@ -293,8 +293,19 @@
             </div>
           </div>
 
-          <!-- ▣ 가운데 (1fr): 기준 키워드 + FITER+ + 가중치 분석 버튼 -->
+          <!-- ▣ 가운데 (1fr): N + 기준 키워드 + FITER+ + 가중치 분석 버튼 -->
           <div class="flex flex-col gap-2.5">
+            <div class="flex items-center gap-2">
+              <span class="w-16 shrink-0 flex items-center">
+                <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm">N</span>
+              </span>
+              <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
+                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') runAnalysisWithNaverKw()">
+                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysisWithNaverKw()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+              </div>
+            </div>
             <div class="flex items-center gap-2">
               <span class="text-xs font-bold text-brand-gray w-16 shrink-0">기준 키워드</span>
               <input id="kw-base" class="pill-input flex-1 min-w-0" placeholder="예: 마스크 (쉼표로 여러 키워드 동시 분석 가능)">
@@ -318,30 +329,25 @@
             </div>
           </div>
 
-          <!-- ▶ 우측 (1fr): N 키워드 + 우선/혼합/텀즈 + 전체/가격비교/네이버페이 -->
+          <!-- ▶ 우측 (1fr): 상품수만 + 숨겨진 필터(active 표시용 DOM 유지) -->
           <div class="flex flex-col gap-2.5">
-            <div class="flex items-center gap-2">
-              <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm shrink-0">N</span>
-              <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
-                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') runAnalysisWithNaverKw()">
-                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysisWithNaverKw()">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                </button>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap" id="match-mode">
+            <!-- 숨겨진 텀즈/필터 (active 표시 위해 DOM은 유지) -->
+            <div class="hidden" id="match-mode">
               <button class="weight-chip" data-match="priority">우선</button>
               <button class="weight-chip" data-match="mixed">혼합</button>
               <button class="weight-chip weight-chip-active">텀즈</button>
               <span class="text-sm text-brand-gray flex-1 truncate" id="terms-display">-</span>
             </div>
-            <div class="flex items-center gap-1 flex-wrap" id="result-filter">
+            <div class="hidden" id="result-filter">
               <button class="weight-chip weight-chip-active" data-rfilter="all">전체</button>
               <button class="weight-chip" data-rfilter="price">가격비교</button>
               <button class="weight-chip" data-rfilter="naverpay">네이버페이</button>
-              <div class="bg-brand-bg rounded-full px-3 py-1 text-xs font-bold text-brand-gray ml-auto">
-                <span id="total-count">0</span>
-              </div>
+            </div>
+            <!-- 상품수 표시 -->
+            <div class="flex items-center justify-end gap-2 pr-2 mt-auto">
+              <span class="text-xs font-bold text-brand-gray">상품수</span>
+              <span id="total-count" class="font-black text-brand-blue text-lg">0</span>
+              <span class="text-xs text-brand-gray">개</span>
             </div>
           </div>
 
