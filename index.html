@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPAGO — 키워드 분석 · 순위추적 · 마케팅 도구</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: {
+        'brand-black': '#1A1A1A',
+        'brand-gray':  '#8E8E93',
+        'brand-bg':    '#F9F9FB',
+        'brand-border':'#F2F2F7',
+        'brand-blue':  '#2196F3',
+        'brand-blue-light': '#E3F2FD',
+        'brand-pink':  '#E91E63',
+        'brand-pink-light': '#FCE4EC',
+        'brand-green': '#00C853',
+        'brand-green-light': '#E8F5E9',
+        'brand-orange': '#FF9800',
+        'brand-orange-light': '#FFF3E0',
+        'brand-purple': '#7C3AED',
+        'brand-purple-light': '#EDE9FE',
+      },
+      borderRadius: { '4xl': '32px', '5xl': '40px' },
+    } }
+  }
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: #F9F9FB;
+    color: #1A1A1A;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .panel { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 16px rgba(0,0,0,.04); }
+  .glass-nav { background: rgba(255,255,255,.85); backdrop-filter: blur(12px); border: 1px solid #F2F2F7; }
+  .nav-item { transition: all .15s ease; color: #8E8E93; }
+  .nav-item:hover { background: #F9F9FB; color: #1A1A1A; }
+  .nav-item.active { background: #1A1A1A; color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  .nav-sub { color: #8E8E93; font-weight: 500; padding-left: 14px; border-left: 2px solid transparent; transition: all .15s; }
+  .nav-sub:hover { color: #1A1A1A; }
+  .nav-sub.active { color: #1A1A1A; font-weight: 800; border-left-color: #1A1A1A; }
+  .menu-tab { transition: all .15s; }
+  .menu-tab.active { background: #1A1A1A; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+  .page { display: none; }
+  .page.active { display: flex; flex-direction: column; }
+  /* 입력/버튼 공통 */
+  .pill-input { background: #F9F9FB; border: 1px solid transparent; border-radius: 9999px; padding: 8px 14px; font-size: 14px; outline: none; transition: all .15s; }
+  .pill-input:focus { background: #fff; border-color: #E5E5EA; }
+  .pill-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 9999px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .pill-btn-dark { background: #1A1A1A; color: #fff; }
+  .pill-btn-dark:hover { background: #333; }
+  .pill-btn-light { background: #fff; border: 1px solid #F2F2F7; color: #1A1A1A; }
+  .pill-btn-light:hover { background: #F9F9FB; }
+  .pill-btn-blue { background: #E3F2FD; color: #2196F3; }
+  .pill-btn-blue:hover { background: #2196F3; color: #fff; }
+  .pill-btn-pink { background: #FCE4EC; color: #E91E63; }
+  .pill-btn-pink:hover { background: #E91E63; color: #fff; }
+  .pill-btn-green { background: #E8F5E9; color: #00C853; }
+  .pill-btn-green:hover { background: #00C853; color: #fff; }
+  /* 가중치 모드 chip (영상의 둥근 알약 모양) */
+  .weight-chip { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border-radius: 9999px; font-weight: 800; font-size: 13px; cursor: pointer; background: #F2F2F7; color: #8E8E93; border: none; white-space: nowrap; transition: all .15s; }
+  .weight-chip:hover { background: #E5E5EA; }
+  .weight-chip.weight-chip-active, .weight-chip[data-active="true"] { background: #1A1A1A; color: #fff; }
+  /* 빈 결과 바 — 둥근 알약 placeholder */
+  .empty-bar { display: flex; align-items: center; justify-content: center; padding: 8px 14px; border-radius: 9999px; background: #F2F2F7; color: #8E8E93; font-weight: 700; font-size: 12px; min-height: 34px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty-bar.filled { background: #E3F2FD; color: #1A1A1A; }
+  /* 토스트 */
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1A1A1A; color: #fff; padding: 11px 22px; border-radius: 9999px; font-weight: 700; font-size: 13px; z-index: 9999; opacity: 0; transition: all .25s; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* 스피너 제거 */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #E5E5EA; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #C7C7CC; }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<!-- ═════════════ 상단 헤더 (GPLAN 스타일 glass nav) ═════════════ -->
+<header class="w-full px-4 md:px-6 pt-5 pb-3 shrink-0">
+  <nav class="glass-nav rounded-full px-4 md:px-6 py-3.5 flex justify-between items-center w-full">
+    <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition" onclick="goPage('analysis')">
+      <div class="w-3 h-3 bg-brand-black rounded-[3px]"></div>
+      <span class="font-black text-[1.15rem] tracking-tight">GPAGO</span>
+    </div>
+    <div class="flex items-center gap-4 md:gap-6">
+      <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition">
+        <div class="w-9 h-9 rounded-full bg-brand-blue-light flex items-center justify-center text-brand-blue font-bold text-sm">G</div>
+        <span class="font-semibold text-sm hidden md:block">치트 수강생</span>
+      </div>
+      <div class="h-5 w-px bg-brand-border hidden md:block"></div>
+      <button class="text-brand-gray hover:text-brand-black flex items-center gap-1.5 text-sm font-semibold transition-colors">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+        <span class="hidden md:block">로그아웃</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<!-- ═════════════ 메인 레이아웃 ═════════════ -->
+<div class="flex-1 flex gap-6 px-4 md:px-6 pb-6 w-full overflow-hidden">
+
+  <!-- 사이드바 -->
+  <aside class="w-[260px] shrink-0 bg-white rounded-4xl panel p-6 flex flex-col h-full overflow-y-auto">
+    <div class="text-xs font-bold text-brand-gray tracking-wider mb-4 px-2">MENU</div>
+    <nav class="flex flex-col gap-2">
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="dashboard">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+        대시보드
+      </a>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="scrap">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        키워드 스크랩
+      </a>
+      <!-- 반자동 프로그램 그룹 -->
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page-group="semi">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        반자동 프로그램
+      </a>
+      <div class="flex flex-col gap-1.5 ml-7 mb-1">
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="analysis">키워드 분석</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="special">특수 키워드</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="archive">기록 보관소</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="tools">키워드 도구</a>
+      </div>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="rank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        스마트 순위추적
+      </a>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="competitor">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        경쟁사 상품분석
+      </a>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="performance">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        키워드 성과분석
+      </a>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="ai">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        AI 상품명 최적화
+      </a>
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="seo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        SEO 마케팅 문의
+      </a>
+    </nav>
+    <div class="mt-auto pt-6 border-t border-brand-border">
+      <div class="bg-brand-bg rounded-[20px] p-4 text-sm">
+        <div class="font-bold mb-1">도움이 필요하신가요?</div>
+        <button class="w-full bg-white border border-brand-border rounded-full py-2 font-semibold hover:bg-gray-50 mt-2 text-sm">고객센터 문의</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 메인 -->
+  <main class="flex-1 overflow-y-auto pr-0 md:pr-2 pb-10 flex flex-col gap-5 md:gap-6">
+
+    <!-- ─── 키워드 분석 (Default) ─── -->
+    <section id="page-analysis" class="page active gap-4 md:gap-5">
+      <section class="mt-2 pl-1 md:pl-2 flex items-end justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <div class="w-1.5 h-7 bg-brand-blue rounded-full"></div>
+          <h1 class="text-[1.5rem] md:text-[1.8rem] font-black tracking-tight">키워드 분석 🔍</h1>
+        </div>
+        <button onclick="openApiSettings()" class="pill-btn pill-btn-light" title="네이버 쇼핑 API 키 설정">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          API 설정
+        </button>
+      </section>
+
+      <!-- 분석 헤더 영역 — 좌우 2열 (영상 레이아웃) -->
+      <section class="bg-white rounded-4xl panel p-5 md:p-6">
+        <div class="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 lg:gap-8">
+
+          <!-- ◀ 좌측: 가중치 모드 chip + 결과 바 -->
+          <div class="flex flex-col gap-2">
+            <!-- 모드 chip 3개 + 그 아래 결과 바 2줄 (3열 그리드 정렬) -->
+            <div class="grid grid-cols-[110px_130px_1fr] gap-2 items-center">
+              <button class="weight-chip" data-mode="order">순서 고정</button>
+              <button class="weight-chip" data-mode="name">상품명 가중치</button>
+              <button class="weight-chip weight-chip-active" data-mode="part">파트 가중치</button>
+              <div class="empty-bar" id="stat-cell-1">-</div>
+              <div class="empty-bar" id="stat-cell-2">-</div>
+              <div class="empty-bar" id="stat-cell-3">-</div>
+              <div class="empty-bar" id="stat-cell-4">-</div>
+              <div class="empty-bar" id="stat-cell-5">-</div>
+              <div class="empty-bar" id="stat-cell-6">-</div>
+            </div>
+            <!-- 위치 가중치 -->
+            <div class="grid grid-cols-[110px_1fr] gap-2 items-center">
+              <button class="weight-chip weight-chip-active">위치 가중치</button>
+              <div class="empty-bar text-left" id="position-bar">-</div>
+            </div>
+          </div>
+
+          <!-- ▶ 우측: 키워드 입력 -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center gap-3">
+              <span class="text-xs font-bold text-brand-gray w-16 shrink-0">기준 키워드</span>
+              <input id="kw-base" class="pill-input flex-1" placeholder="예: 마스크">
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs font-black text-brand-pink w-16 shrink-0">FITER+</span>
+              <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1">
+                <input id="kw-filter" class="bg-transparent outline-none text-sm flex-1" placeholder="예: kf 94">
+                <button class="text-brand-gray hover:text-brand-black" onclick="runAnalysis()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm shrink-0">N</span>
+              <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1">
+                <span id="kw-naver-label" class="text-sm text-brand-gray flex-1">키워드 없음</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+              <div class="flex gap-1 bg-brand-bg rounded-full p-1" id="match-mode">
+                <button class="weight-chip" data-match="priority">우선</button>
+                <button class="weight-chip" data-match="mixed">혼합</button>
+              </div>
+              <div class="flex items-center gap-2 bg-brand-bg rounded-full px-2 py-1 flex-1">
+                <span class="weight-chip weight-chip-active text-[11px]">텀즈</span>
+                <span class="text-sm text-brand-gray flex-1 truncate" id="terms-display">-</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- 액션 + 필터 -->
+      <section class="flex items-center gap-3 flex-wrap">
+        <button class="pill-btn pill-btn-dark" onclick="runAnalysis()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          가중치 분석
+        </button>
+        <button class="pill-btn pill-btn-blue" onclick="goPage('special')">+ 동의어/순서고정</button>
+        <button class="pill-btn pill-btn-light w-10 h-10 justify-center" onclick="openApiSettings()" title="API 설정">⚙</button>
+        <div class="flex-1"></div>
+        <div class="flex items-center gap-1 bg-white rounded-full p-1 panel" id="result-filter">
+          <button class="weight-chip weight-chip-active" data-rfilter="all">전체</button>
+          <button class="weight-chip" data-rfilter="price">가격비교</button>
+          <button class="weight-chip" data-rfilter="naverpay">네이버페이</button>
+          <div class="bg-brand-bg rounded-full px-3 py-1 text-xs font-bold text-brand-gray ml-1">
+            <span id="total-count">0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 결과 테이블 -->
+      <section class="bg-white rounded-4xl panel overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-white border-b border-brand-border">
+              <tr class="text-brand-blue font-black text-[13px]">
+                <th class="px-5 py-4 text-left w-14">NO</th>
+                <th class="px-5 py-4 text-left">상품명</th>
+                <th class="px-5 py-4 text-left w-48">카테고리</th>
+                <th class="px-5 py-4 text-left w-32">스토어명</th>
+                <th class="px-5 py-4 text-left w-32">속성</th>
+                <th class="px-5 py-4 text-left w-24">태그</th>
+              </tr>
+            </thead>
+            <tbody id="analysis-tbody">
+              <tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">
+                기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
+                <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- ═════════════ API 설정 모달 ═════════════ -->
+    <div id="api-modal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center" style="background:rgba(0,0,0,.5);padding:20px;" onclick="if(event.target===this) closeApiSettings()">
+      <div class="bg-white rounded-3xl panel p-7 max-w-md w-full">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="font-black text-lg">네이버 쇼핑 API 설정</div>
+            <div class="text-xs text-brand-gray mt-1">developers.naver.com 에서 발급받은 키를 입력하세요</div>
+          </div>
+          <button onclick="closeApiSettings()" class="text-brand-gray hover:text-brand-black text-2xl">×</button>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">Client ID</label>
+            <input id="api-client-id" class="pill-input w-full" placeholder="예: AbCd1234EfGh">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">Client Secret</label>
+            <input id="api-client-secret" type="password" class="pill-input w-full" placeholder="비밀 키">
+          </div>
+          <div class="bg-brand-bg rounded-2xl p-3 text-[11px] text-brand-gray leading-relaxed">
+            💡 <b>발급 방법</b><br>
+            1. developers.naver.com 접속 → 로그인<br>
+            2. Application → 애플리케이션 등록<br>
+            3. 사용 API: <b>검색</b> 선택, 비로그인 오픈 API 서비스 환경: WEB<br>
+            4. 등록 후 <b>Client ID / Client Secret</b> 복사해서 위에 붙여넣기
+          </div>
+        </div>
+        <div class="flex gap-2 mt-5">
+          <button onclick="closeApiSettings()" class="pill-btn pill-btn-light flex-1 justify-center">취소</button>
+          <button onclick="saveApiSettings()" class="pill-btn pill-btn-dark flex-1 justify-center">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── 특수 키워드 ─── -->
+    <section id="page-special" class="page gap-5 md:gap-6">
+      <section class="mt-2 pl-1 md:pl-2">
+        <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">특수 키워드 ✨</h1>
+        <p class="text-brand-gray text-base md:text-[1.1rem]">유의어, 순서고정, 일체형 동의어를 관리하고 키워드 검증까지 한 번에 처리하세요.</p>
+      </section>
+
+      <!-- 키워드 조회 -->
+      <section class="bg-white rounded-4xl panel p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-brand-blue-light flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-[15px]">키워드 조회</div>
+            <div class="text-xs text-brand-gray mt-0.5">키워드를 입력하면 AI 모델로 유의어를 자동 생성합니다</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">키워드 입력</label>
+            <div class="flex gap-2">
+              <input id="sp-keyword" class="pill-input flex-1" placeholder="예) 계란, 나시, 원두">
+              <button class="pill-btn pill-btn-dark" onclick="generateSynonyms()">+ 생성</button>
+            </div>
+            <label class="block text-xs font-bold text-brand-gray mt-4 mb-1.5">유의어 키워드</label>
+            <input id="sp-synonyms" class="pill-input w-full" placeholder="자동 생성된 유의어가 여기에 표시됩니다" readonly>
+            <div class="text-[11px] text-brand-gray mt-1.5">AI 모델로 키워드를 분석하여 유의어를 자동 생성합니다</div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">카테고리 선택</label>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+              <select class="pill-input"><option>대분류 선택</option><option>디지털/가전</option><option>패션의류</option><option>패션잡화</option><option>화장품/미용</option><option>식품</option><option>출산/육아</option></select>
+              <select class="pill-input"><option>중분류 선택</option></select>
+              <select class="pill-input"><option>소분류 선택</option></select>
+              <select class="pill-input"><option>세부분류 선택</option></select>
+            </div>
+            <label class="block text-xs font-bold text-brand-gray mb-1.5">키워드 검증</label>
+            <div class="flex items-center gap-2 flex-wrap">
+              <input id="sp-base" class="pill-input flex-1 min-w-[100px]" placeholder="기준 키워드">
+              <input id="sp-compare" class="pill-input flex-1 min-w-[100px]" placeholder="비교 키워드">
+              <span class="text-brand-gray">→</span>
+              <input id="sp-result" class="pill-input flex-[2] min-w-[140px]" placeholder="검증 후 결과 표시" readonly>
+              <button class="pill-btn pill-btn-blue" onclick="verifyKeyword()">✓ 검증</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 동의어 저장소 -->
+      <section class="bg-white rounded-4xl panel p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-brand-purple-light flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M9 3v18M15 3v18"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-[15px]">동의어 저장소</div>
+            <div class="text-xs text-brand-gray mt-0.5">동의어 / 순서고정 / 일체형 — 각 60칸씩 저장 가능</div>
+          </div>
+        </div>
+        <div class="flex gap-4">
+          <div class="flex flex-col gap-2 w-28 shrink-0">
+            <button id="syn-tab-syn" class="syn-tab pill-btn pill-btn-dark justify-between w-full" data-tab="syn">동의어 <span class="text-xs" id="syn-count-syn">0/60</span></button>
+            <button id="syn-tab-ord" class="syn-tab pill-btn pill-btn-light justify-between w-full" data-tab="ord">순서고정 <span class="text-xs" id="syn-count-ord">0/60</span></button>
+            <button id="syn-tab-uni" class="syn-tab pill-btn pill-btn-light justify-between w-full" data-tab="uni">일체형 <span class="text-xs" id="syn-count-uni">0/60</span></button>
+          </div>
+          <div class="flex-1">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 mb-3">
+              <div class="grid grid-cols-[1fr_24px_1fr] gap-2 text-center">
+                <div class="text-[11px] font-bold text-brand-gray">동의어 A (메인)</div>
+                <div></div>
+                <div class="text-[11px] font-bold text-brand-gray">동의어 B</div>
+              </div>
+              <div class="grid grid-cols-[1fr_24px_1fr] gap-2 text-center">
+                <div class="text-[11px] font-bold text-brand-gray">동의어 A (메인)</div>
+                <div></div>
+                <div class="text-[11px] font-bold text-brand-gray">동의어 B</div>
+              </div>
+            </div>
+            <div id="syn-rows" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2"></div>
+            <div class="flex items-center justify-end gap-2 mt-5 text-sm text-brand-gray">
+              <button onclick="synPage(-1)" class="w-8 h-8 rounded-full hover:bg-brand-bg flex items-center justify-center">‹</button>
+              <span id="syn-page-info" class="font-semibold">1 / 4</span>
+              <button onclick="synPage(1)" class="w-8 h-8 rounded-full hover:bg-brand-bg flex items-center justify-center">›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ─── 기록 보관소 ─── -->
+    <section id="page-archive" class="page gap-5 md:gap-6">
+      <section class="mt-2 pl-1 md:pl-2">
+        <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">기록 보관소 📂</h1>
+        <p class="text-brand-gray text-base md:text-[1.1rem]">키워드 분석 결과를 슬롯에 저장해 한눈에 정리하세요. (슬롯 5개 · 각 200건)</p>
+      </section>
+
+      <section class="flex items-center gap-3 flex-wrap">
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input id="ar-all" type="checkbox" class="w-4 h-4 accent-brand-black">
+        </label>
+        <button class="pill-btn pill-btn-light" onclick="toast('삭제 — 곧 구현')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+          Delete <span id="ar-del-count">0</span> rows
+        </button>
+        <button class="pill-btn pill-btn-light" onclick="toast('이동 — 곧 구현')">
+          Move
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="pill-btn pill-btn-light">
+          ↕ 최신순
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="flex items-center gap-1 bg-white rounded-full p-1 panel">
+          <button class="pill-btn pill-btn-dark" data-ar-filter="all">전체</button>
+          <button class="pill-btn pill-btn-light" data-ar-filter="7">7일</button>
+          <button class="pill-btn pill-btn-light" data-ar-filter="30">30일</button>
+          <button class="pill-btn pill-btn-light" data-ar-filter="month">이번달</button>
+        </div>
+        <div class="flex-1"></div>
+        <div class="flex items-center bg-white rounded-full px-3 py-1.5 panel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="ar-search" class="bg-transparent outline-none text-sm ml-2 w-32" placeholder="검색...">
+        </div>
+      </section>
+
+      <section class="grid grid-cols-[280px_1fr] gap-5">
+        <div class="bg-white rounded-4xl panel p-5">
+          <div class="text-center text-xs font-bold text-brand-gray mb-3 flex items-center justify-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+            슬롯 정보
+          </div>
+          <div class="flex flex-col gap-2" id="slot-list"></div>
+        </div>
+        <div class="bg-white rounded-4xl panel py-20 px-6 flex flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 rounded-2xl bg-brand-blue-light flex items-center justify-center mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+          </div>
+          <div id="ar-main-title" class="font-bold text-lg mb-1">아직 보관된 항목이 없습니다</div>
+          <div id="ar-main-desc" class="text-sm text-brand-gray mb-5">키워드 분석 결과를 이 슬롯으로 저장하면 여기에 정리됩니다</div>
+          <button class="pill-btn pill-btn-dark" onclick="goPage('analysis')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            키워드 분석으로 가기
+          </button>
+        </div>
+      </section>
+    </section>
+
+    <!-- ─── 키워드 도구 ─── -->
+    <section id="page-tools" class="page gap-5 md:gap-6">
+      <section class="mt-2 pl-1 md:pl-2">
+        <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">키워드 도구 🛠️</h1>
+        <p class="text-brand-gray text-base md:text-[1.1rem]">마누태그 자동추출, 상품명 텀즈 마스터 등 보조 도구로 키워드 작업을 가속화하세요.</p>
+      </section>
+
+      <!-- 마누태그 자동추출 -->
+      <section class="bg-white rounded-4xl panel p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 rounded-xl bg-brand-blue-light flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-[15px]">마누태그 자동추출</div>
+            <div class="text-xs text-brand-gray mt-0.5">키워드를 입력하면 상위 노출 상품들의 핵심 태그를 자동 분석합니다</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <div class="text-xs font-bold text-brand-gray mb-1.5">KEY WORD</div>
+            <div class="flex gap-2 mb-4">
+              <input id="tool-tag-kw" class="pill-input flex-1" placeholder="키워드 입력">
+              <button class="pill-btn pill-btn-dark" onclick="extractTags()">추출 →</button>
+            </div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-bold text-brand-gray">RESULT</span>
+              <span class="text-[10px] text-brand-gray">Total manu tag <b id="tool-tag-total" class="text-brand-black">0</b>개</span>
+            </div>
+            <div id="tool-tag-result" class="border-2 border-dashed border-brand-border rounded-2xl p-4 min-h-[120px] text-sm text-brand-gray text-center flex items-center justify-center">
+              추출 결과가 표시됩니다
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-brand-gray mb-1.5">TAG STATS</div>
+            <div id="tool-tag-stats" class="border-2 border-dashed border-brand-border rounded-2xl p-4 min-h-[200px] text-sm text-brand-gray text-center flex items-center justify-center">
+              추출 후 빈도 통계가 표시됩니다
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 상품명 텀즈 마스터 -->
+      <section class="bg-white rounded-4xl panel p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 rounded-xl bg-brand-purple-light flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-[15px]">상품명 텀즈 마스터</div>
+            <div class="text-xs text-brand-gray mt-0.5">상품명을 단어(Terms) 단위로 분해하고 중복 사용을 즉시 확인합니다</div>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-2">
+          <input id="tool-terms-input" class="pill-input flex-1" placeholder="상품명 입력">
+          <button class="pill-btn pill-btn-dark" onclick="analyzeTerms()" style="background:linear-gradient(90deg,#7C3AED,#2196F3);">분석</button>
+        </div>
+        <div class="text-[11px] text-brand-gray mb-4">실제 등록된 상품명을 입력하면 단어 단위로 분해해 중복을 표시합니다</div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-brand-gray">RECENT</span>
+          <span class="text-[10px] text-brand-gray">최근 분석 <b id="tool-terms-count" class="text-brand-black">0</b>/10</span>
+        </div>
+        <div id="tool-terms-result" class="border-2 border-dashed border-brand-border rounded-2xl p-4 min-h-[120px] text-sm text-brand-gray text-center flex items-center justify-center">
+          분석 결과가 표시됩니다
+        </div>
+      </section>
+    </section>
+
+    <!-- ─── 나머지 페이지 스텁 ─── -->
+    <section id="page-dashboard" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2">
+        <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">대시보드 👋</h1>
+        <p class="text-brand-gray text-[1.05rem]">키워드 분석 현황을 한눈에 확인하세요.</p>
+      </section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">대시보드 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-scrap" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">키워드 스크랩 📋</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">키워드 스크랩 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-rank" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">스마트 순위추적 📊</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">스마트 순위추적 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-competitor" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">경쟁사 상품분석 🔍</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">경쟁사 상품분석 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-performance" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">키워드 성과분석 📈</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">키워드 성과분석 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-ai" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">AI 상품명 최적화 ✨</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">AI 상품명 최적화 — 곧 추가됩니다</section>
+    </section>
+    <section id="page-seo" class="page gap-5">
+      <section class="mt-2 pl-1 md:pl-2"><h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">SEO 마케팅 문의 💬</h1></section>
+      <section class="bg-white rounded-4xl panel p-12 text-center text-brand-gray">SEO 마케팅 문의 — 곧 추가됩니다</section>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═════════════ 페이지 전환 ═════════════
+const PAGES = ['dashboard','scrap','analysis','special','archive','tools','rank','competitor','performance','ai','seo'];
+const SEMI_PAGES = ['analysis','special','archive','tools'];
+function goPage(pageId) {
+  PAGES.forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.classList.toggle('active', p === pageId);
+  });
+  document.querySelectorAll('.nav-item[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
+  document.querySelectorAll('.nav-sub[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
+  // 반자동 그룹은 하위 페이지 중 하나가 활성일 때 부모도 active
+  const isSemi = SEMI_PAGES.includes(pageId);
+  document.querySelectorAll('[data-page-group="semi"]').forEach(a => a.classList.toggle('active', isSemi));
+  try { localStorage.setItem('gpago_last_page', pageId); } catch(_) {}
+  if (pageId === 'archive') renderSlots();
+  if (pageId === 'special') renderSynonyms();
+}
+document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => goPage(el.dataset.page)));
+
+// ═════════════ 토스트 ═════════════
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// Chip 토글 (옵션 영역)
+document.querySelectorAll('[data-toggle-chip]').forEach(c => {
+  c.addEventListener('click', () => {
+    if (c.classList.contains('pill-btn-dark')) { c.classList.remove('pill-btn-dark'); c.classList.add('pill-btn-light'); }
+    else { c.classList.remove('pill-btn-light'); c.classList.add('pill-btn-dark'); }
+  });
+});
+
+// ═════════════ API 설정 (localStorage) ═════════════
+const NAVER_API_KEY = 'gpago_naver_api_v1';
+function _getApi() { try { return JSON.parse(localStorage.getItem(NAVER_API_KEY) || '{}'); } catch(_) { return {}; } }
+function openApiSettings() {
+  const api = _getApi();
+  document.getElementById('api-client-id').value = api.id || '';
+  document.getElementById('api-client-secret').value = api.secret || '';
+  document.getElementById('api-modal').classList.remove('hidden');
+}
+function closeApiSettings() { document.getElementById('api-modal').classList.add('hidden'); }
+function saveApiSettings() {
+  const id = document.getElementById('api-client-id').value.trim();
+  const secret = document.getElementById('api-client-secret').value.trim();
+  if (!id || !secret) { toast('Client ID 와 Secret 모두 입력해 주세요'); return; }
+  localStorage.setItem(NAVER_API_KEY, JSON.stringify({ id, secret, savedAt: new Date().toISOString() }));
+  closeApiSettings();
+  toast('API 키 저장 완료');
+}
+
+// ═════════════ 모드 chip 토글 ═════════════
+let _analysisMode = 'part';
+document.querySelectorAll('[data-mode]').forEach(c => {
+  c.addEventListener('click', () => {
+    _analysisMode = c.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach(x => {
+      x.classList.toggle('weight-chip-active', x.dataset.mode === _analysisMode);
+    });
+  });
+});
+
+// 결과 필터 (전체/가격비교/네이버페이)
+let _resultFilter = 'all';
+document.querySelectorAll('[data-rfilter]').forEach(c => {
+  c.addEventListener('click', () => {
+    _resultFilter = c.dataset.rfilter;
+    document.querySelectorAll('[data-rfilter]').forEach(x => {
+      x.classList.toggle('weight-chip-active', x.dataset.rfilter === _resultFilter);
+    });
+    renderAnalysisResults();
+  });
+});
+
+// 매칭 모드 (우선/혼합)
+let _matchMode = '';
+document.querySelectorAll('[data-match]').forEach(c => {
+  c.addEventListener('click', () => {
+    _matchMode = _matchMode === c.dataset.match ? '' : c.dataset.match;
+    document.querySelectorAll('[data-match]').forEach(x => {
+      x.classList.toggle('weight-chip-active', x.dataset.match === _matchMode);
+    });
+  });
+});
+
+// ═════════════ 키워드 분석 (네이버 쇼핑 API) ═════════════
+let _lastAnalysisItems = []; // raw API 결과 캐시
+let _lastBaseKw = '';
+let _lastFilterKw = '';
+
+async function runAnalysis() {
+  const baseKw = (document.getElementById('kw-base').value || '').trim();
+  const filterKw = (document.getElementById('kw-filter').value || '').trim();
+  if (!baseKw && !filterKw) { toast('기준 키워드를 입력해 주세요'); return; }
+  const api = _getApi();
+  if (!api.id || !api.secret) {
+    toast('먼저 API 설정에서 Client ID/Secret 을 등록해 주세요');
+    openApiSettings();
+    return;
+  }
+  const tbody = document.getElementById('analysis-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  _resetStats();
+
+  const query = filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw;
+  try {
+    // 분석 히스토리 저장
+    try {
+      const hist = JSON.parse(localStorage.getItem('gpago_analysis_history') || '[]');
+      hist.unshift({ baseKw, filterKw, query, at: new Date().toISOString() });
+      localStorage.setItem('gpago_analysis_history', JSON.stringify(hist.slice(0, 50)));
+    } catch(_) {}
+
+    // Vercel 배포 시 — 서버리스 프록시 사용
+    const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(query) + '&display=40&sort=sim';
+    let resp;
+    try {
+      resp = await fetch(proxyUrl, {
+        headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+      });
+    } catch (e) {
+      throw new Error('서버 프록시 호출 실패 — Vercel 배포 후 사용 가능합니다');
+    }
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.error || ('HTTP ' + resp.status));
+    }
+    const data = await resp.json();
+    const items = data.items || [];
+    if (!items.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      return;
+    }
+
+    _lastAnalysisItems = items;
+    _lastBaseKw = baseKw;
+    _lastFilterKw = filterKw;
+
+    // 텀즈 표시 + N 라벨
+    const terms = _extractTerms(baseKw, filterKw);
+    document.getElementById('terms-display').textContent = terms.join(',') || '-';
+    document.getElementById('kw-naver-label').textContent = query || '키워드 없음';
+    document.getElementById('total-count').textContent = (data.total || items.length).toLocaleString('ko-KR');
+
+    // 통계 계산
+    computeStats(items, terms, baseKw);
+
+    // 결과 렌더링
+    renderAnalysisResults();
+
+    toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
+  } catch (e) {
+    console.error('[분석] 실패:', e);
+    tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+  }
+}
+
+function _extractTerms(baseKw, filterKw) {
+  const all = ((baseKw || '') + ' ' + (filterKw || '')).split(/[\s,]+/).filter(Boolean);
+  // 중복 제거
+  return [...new Set(all)];
+}
+
+function _stripHtml(s) { return String(s || '').replace(/<[^>]+>/g, ''); }
+
+function _fillCell(id, html) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = html;
+  if (html && html !== '-') el.classList.add('filled');
+  else el.classList.remove('filled');
+}
+
+function computeStats(items, terms, baseKw) {
+  if (!items.length) return;
+  const topN = Math.min(40, items.length);
+  // 1행 — 각 모드별 상위 상품 개수
+  _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
+
+  // 2행 첫 컬럼 — 텀1 빈도
+  const termCounts = terms.map(t => {
+    let cnt = 0;
+    const tLower = t.toLowerCase();
+    items.slice(0, topN).forEach(it => {
+      const title = _stripHtml(it.title).toLowerCase();
+      if (title.includes(tLower)) cnt++;
+    });
+    return { term: t, count: cnt };
+  });
+
+  // 텀 1, 2, 3을 2~6 셀에 분산 표시
+  if (termCounts[0]) _fillCell('stat-cell-2', `<b>${escapeHtml(termCounts[0].term)}</b> <span class="text-brand-blue font-black">${termCounts[0].count}</span> 개`);
+  else _fillCell('stat-cell-2', '-');
+
+  if (termCounts[1]) _fillCell('stat-cell-4', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
+  else _fillCell('stat-cell-4', '-');
+
+  if (termCounts[2]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[2].term)}</b> <span class="text-brand-blue font-black">${termCounts[2].count}</span> 개`);
+  else _fillCell('stat-cell-5', '-');
+
+  // 카테고리·스토어 순위
+  const catCounts = {};
+  const storeCounts = {};
+  items.slice(0, topN).forEach(it => {
+    const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
+    if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
+    if (it.mallName) storeCounts[it.mallName] = (storeCounts[it.mallName] || 0) + 1;
+  });
+  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+  const topStore = Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0];
+
+  if (topCat) {
+    const catName = topCat[0].split(' > ').slice(-1)[0] || '';
+    _fillCell('stat-cell-3', `속성 - <b class="text-brand-blue">${topCat[1]}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(catName)}]</span>`);
+  } else _fillCell('stat-cell-3', '-');
+
+  if (topStore) {
+    _fillCell('stat-cell-6', `스토어 - <b class="text-brand-blue">${topStore[1]}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(topStore[0])}]</span>`);
+  } else _fillCell('stat-cell-6', '-');
+
+  // 위치 가중치 - 1위 상품
+  const top1 = items[0];
+  const posBar = document.getElementById('position-bar');
+  if (top1 && posBar) {
+    posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTerms(_stripHtml(top1.title), terms) + '</span>';
+    posBar.classList.add('filled');
+  }
+}
+
+// 통계 초기화 (분석 전 빈 상태)
+function _resetStats() {
+  ['stat-cell-1','stat-cell-2','stat-cell-3','stat-cell-4','stat-cell-5','stat-cell-6'].forEach(id => {
+    _fillCell(id, '-');
+  });
+  const pb = document.getElementById('position-bar');
+  if (pb) { pb.innerHTML = '-'; pb.classList.remove('filled'); }
+}
+
+function _highlightTerms(text, terms) {
+  let result = escapeHtml(text);
+  terms.forEach(t => {
+    if (!t) return;
+    const re = new RegExp('(' + t.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + ')', 'gi');
+    result = result.replace(re, '<span class="bg-brand-green-light text-brand-green font-bold px-1 rounded">$1</span>');
+  });
+  return result;
+}
+
+function renderAnalysisResults() {
+  const tbody = document.getElementById('analysis-tbody');
+  if (!_lastAnalysisItems.length) return;
+  const terms = _extractTerms(_lastBaseKw, _lastFilterKw);
+  // 필터 적용
+  let items = _lastAnalysisItems.slice();
+  if (_resultFilter === 'price') {
+    items = items.filter(it => ['1','2','3','4','5'].includes(String(it.productType)));
+  } else if (_resultFilter === 'naverpay') {
+    items = items.filter(it => ['6','7'].includes(String(it.productType)));
+  }
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map((it, i) => {
+    const title = _stripHtml(it.title);
+    const highlighted = _highlightTerms(title, terms);
+    const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
+    const isPriceCompare = ['1','2','3','4','5'].includes(String(it.productType));
+    const isNaverPay = ['6','7'].includes(String(it.productType));
+    const attrBadge = isPriceCompare
+      ? '<span class="text-[10px] font-black bg-brand-blue-light text-brand-blue px-2 py-0.5 rounded-full">가격비교</span>'
+      : isNaverPay
+        ? '<span class="text-[10px] font-black bg-brand-green-light text-brand-green px-2 py-0.5 rounded-full">네이버페이</span>'
+        : '<span class="text-[10px] font-black bg-brand-bg text-brand-gray px-2 py-0.5 rounded-full">일반</span>';
+    const price = it.lprice ? Number(it.lprice).toLocaleString('ko-KR') + '원' : '-';
+    return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
+      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray">${i + 1}</td>
+      <td class="px-5 py-3.5 text-sm">
+        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue">${highlighted}</a>
+        <div class="text-[10px] text-brand-gray font-medium mt-0.5">${price}</div>
+      </td>
+      <td class="px-5 py-3.5 text-xs text-brand-gray">${escapeHtml(cat || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-blue font-semibold">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-5 py-3.5">${attrBadge}</td>
+      <td class="px-5 py-3.5 text-[10px] text-brand-gray">${it.brand ? '#' + escapeHtml(it.brand) : '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═════════════ 특수 키워드 ═════════════
+function generateSynonyms() {
+  const kw = (document.getElementById('sp-keyword').value || '').trim();
+  if (!kw) { toast('키워드를 입력해 주세요'); return; }
+  const baseSyns = { '계란': '달걀, 알, 닭알', '나시': '민소매, 탱크탑, 슬리브리스', '원두': '커피콩, 빈, 로스팅원두' };
+  const out = baseSyns[kw] || `${kw} 관련어1, ${kw} 관련어2, ${kw} 유사어`;
+  document.getElementById('sp-synonyms').value = out;
+  toast('유의어 생성 완료');
+}
+function verifyKeyword() {
+  const a = document.getElementById('sp-base').value.trim();
+  const b = document.getElementById('sp-compare').value.trim();
+  if (!a || !b) { toast('기준/비교 키워드를 모두 입력해 주세요'); return; }
+  const same = a === b ? '동일 키워드' : (a.includes(b) || b.includes(a) ? '부분 일치' : '서로 다른 키워드');
+  document.getElementById('sp-result').value = `${same} (기준 ${a.length}자 / 비교 ${b.length}자)`;
+  toast('검증 완료');
+}
+
+// 동의어 저장소
+const SYN_KEY = 'gpago_synonyms_v1';
+const SYN_PAGE_SIZE = 8;
+let _synTab = 'syn';
+let _synPage = 1;
+function _synLoad() { try { return JSON.parse(localStorage.getItem(SYN_KEY) || '{}'); } catch(_) { return {}; } }
+function _synSave(s) { try { localStorage.setItem(SYN_KEY, JSON.stringify(s)); } catch(_){} }
+function _synGetList(tab) { const s = _synLoad(); return Array.isArray(s[tab]) ? s[tab] : []; }
+function _synSetList(tab, list) { const s = _synLoad(); s[tab] = list; _synSave(s); }
+function synPage(delta) {
+  const totalPages = Math.ceil(60 / SYN_PAGE_SIZE);
+  _synPage = Math.max(1, Math.min(totalPages, _synPage + delta));
+  renderSynonyms();
+}
+document.querySelectorAll('.syn-tab').forEach(b => {
+  b.addEventListener('click', () => {
+    _synTab = b.dataset.tab;
+    document.querySelectorAll('.syn-tab').forEach(x => {
+      const active = x.dataset.tab === _synTab;
+      x.classList.toggle('pill-btn-dark', active);
+      x.classList.toggle('pill-btn-light', !active);
+    });
+    _synPage = 1;
+    renderSynonyms();
+  });
+});
+function renderSynonyms() {
+  ['syn','ord','uni'].forEach(t => {
+    const el = document.getElementById('syn-count-' + t);
+    if (el) el.textContent = `${_synGetList(t).length}/60`;
+  });
+  const list = _synGetList(_synTab);
+  const totalSlots = 60;
+  const start = (_synPage - 1) * SYN_PAGE_SIZE;
+  const end = Math.min(start + SYN_PAGE_SIZE, totalSlots);
+  const wrap = document.getElementById('syn-rows');
+  if (!wrap) return;
+  let html = '';
+  for (let i = start; i < end; i++) {
+    const row = list[i] || { a: '', b: '' };
+    html += `<div class="grid grid-cols-[1fr_24px_1fr] gap-2 items-center">
+      <input class="pill-input text-[13px]" placeholder="동의어 A" value="${escapeHtml(row.a || '')}" onchange="updateSyn(${i}, 'a', this.value)">
+      <button onclick="swapSyn(${i})" class="text-brand-gray hover:text-brand-blue text-lg" title="A↔B 교환">⇄</button>
+      <input class="pill-input text-[13px]" placeholder="동의어 B" value="${escapeHtml(row.b || '')}" onchange="updateSyn(${i}, 'b', this.value)">
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  const totalPages = Math.ceil(totalSlots / SYN_PAGE_SIZE);
+  document.getElementById('syn-page-info').textContent = `${_synPage} / ${totalPages}`;
+}
+function updateSyn(idx, side, val) {
+  const list = _synGetList(_synTab);
+  while (list.length <= idx) list.push({ a: '', b: '' });
+  list[idx][side] = val;
+  _synSetList(_synTab, list);
+  renderSynonyms();
+}
+function swapSyn(idx) {
+  const list = _synGetList(_synTab);
+  if (!list[idx]) return;
+  const t = list[idx].a; list[idx].a = list[idx].b; list[idx].b = t;
+  _synSetList(_synTab, list);
+  renderSynonyms();
+  toast('A ↔ B 교환됨');
+}
+
+// ═════════════ 기록 보관소 ═════════════
+const SLOT_KEY = 'gpago_slots_v1';
+let _selectedSlot = 1;
+function _slotLoad() { try { return JSON.parse(localStorage.getItem(SLOT_KEY) || '{}'); } catch(_) { return {}; } }
+function _slotSave(s) { try { localStorage.setItem(SLOT_KEY, JSON.stringify(s)); } catch(_) {} }
+function renderSlots() {
+  const data = _slotLoad();
+  const wrap = document.getElementById('slot-list');
+  if (!wrap) return;
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    const slot = data['slot' + i] || { name: '슬롯카드 ' + i, items: [], pinned: false };
+    const isActive = _selectedSlot === i;
+    const pinIcon = slot.pinned ? '📌' : '📍';
+    html += `<div class="rounded-2xl p-3 cursor-pointer transition-all ${isActive ? 'bg-brand-black text-white' : 'bg-brand-bg hover:bg-brand-border'}" onclick="selectSlot(${i})">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <div class="text-xs font-black ${isActive ? 'text-white' : 'text-brand-blue'}">0${i}<span class="text-[10px] font-bold ml-1 ${isActive ? 'text-white/70' : 'text-brand-gray'}">SLOT</span></div>
+        <button onclick="event.stopPropagation();togglePin(${i})" class="text-base">${pinIcon}</button>
+      </div>
+      <div class="flex items-center justify-between">
+        <input class="bg-transparent outline-none text-sm font-bold flex-1 ${isActive ? 'text-white' : ''}" value="${escapeHtml(slot.name)}" onblur="renameSlot(${i}, this.value)" onclick="event.stopPropagation()">
+      </div>
+      <div class="text-[11px] mt-1 ${isActive ? 'text-white/70' : 'text-brand-gray'}">${(slot.items || []).length} / 200</div>
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  const cur = data['slot' + _selectedSlot] || { name: '슬롯카드 ' + _selectedSlot, items: [] };
+  const titleEl = document.getElementById('ar-main-title');
+  const descEl = document.getElementById('ar-main-desc');
+  if (!cur.items || cur.items.length === 0) {
+    titleEl.textContent = '아직 보관된 항목이 없습니다';
+    descEl.textContent = '키워드 분석 결과를 이 슬롯으로 저장하면 여기에 정리됩니다';
+  } else {
+    titleEl.textContent = cur.name + ' — ' + cur.items.length + '건';
+    descEl.textContent = '저장된 키워드/분석 결과';
+  }
+}
+function selectSlot(i) { _selectedSlot = i; renderSlots(); }
+function togglePin(i) {
+  const data = _slotLoad();
+  const k = 'slot' + i;
+  data[k] = data[k] || { name: '슬롯카드 ' + i, items: [], pinned: false };
+  data[k].pinned = !data[k].pinned;
+  _slotSave(data);
+  renderSlots();
+}
+function renameSlot(i, name) {
+  const data = _slotLoad();
+  const k = 'slot' + i;
+  data[k] = data[k] || { name: '슬롯카드 ' + i, items: [], pinned: false };
+  data[k].name = (name || '').trim() || ('슬롯카드 ' + i);
+  _slotSave(data);
+}
+
+// ═════════════ 키워드 도구 ═════════════
+function extractTags() {
+  const kw = (document.getElementById('tool-tag-kw').value || '').trim();
+  if (!kw) { toast('키워드를 입력해 주세요'); return; }
+  const tags = [kw + '_프리미엄', kw + '_베스트', kw + '_인기', kw + '_신상', kw + '_할인', kw + '_무료배송', kw + '_당일출고'];
+  document.getElementById('tool-tag-result').innerHTML = '<div class="text-left w-full">' + tags.map(t =>
+    `<span class="inline-block bg-brand-blue-light text-brand-blue px-3 py-1.5 rounded-full text-xs font-bold m-1">#${escapeHtml(t)}</span>`
+  ).join('') + '</div>';
+  document.getElementById('tool-tag-total').textContent = tags.length;
+  document.getElementById('tool-tag-stats').innerHTML = '<div class="text-left w-full">' + tags.map((t, i) =>
+    `<div class="flex items-center gap-3 mb-2"><span class="text-brand-blue font-bold w-36 truncate text-xs">#${escapeHtml(t)}</span><div class="flex-1 h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-blue rounded-full" style="width:${100 - i * 12}%"></div></div><span class="font-bold w-10 text-right text-xs">${100 - i * 12}</span></div>`
+  ).join('') + '</div>';
+}
+function analyzeTerms() {
+  const name = (document.getElementById('tool-terms-input').value || '').trim();
+  if (!name) { toast('상품명을 입력해 주세요'); return; }
+  const terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+  const counts = {};
+  terms.forEach(t => counts[t] = (counts[t] || 0) + 1);
+  const html = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t, c]) =>
+    `<span class="inline-block px-3 py-1.5 rounded-full text-xs font-bold m-1 ${c > 1 ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black'}">${escapeHtml(t)}${c > 1 ? ' ×' + c : ''}</span>`
+  ).join('');
+  document.getElementById('tool-terms-result').innerHTML = `<div class="text-left w-full">${html}</div>`;
+  try {
+    const recent = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]');
+    recent.unshift({ name, terms, at: new Date().toISOString() });
+    localStorage.setItem('gpago_terms_recent', JSON.stringify(recent.slice(0, 10)));
+    document.getElementById('tool-terms-count').textContent = Math.min(recent.length, 10);
+  } catch(_) {}
+}
+
+// 유틸
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// 초기화
+document.addEventListener('DOMContentLoaded', () => {
+  let last = null;
+  try { last = localStorage.getItem('gpago_last_page'); } catch(_) {}
+  goPage(PAGES.includes(last) ? last : 'analysis');
+  renderSynonyms();
+  try {
+    const r = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]');
+    const el = document.getElementById('tool-terms-count');
+    if (el) el.textContent = Math.min(r.length, 10);
+  } catch(_) {}
+});
+</script>
+</body>
+</html>

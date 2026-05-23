@@ -1,0 +1,6 @@
+{
+  "name": "gpago-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GPAGO — 키워드 분석 · 네이버 쇼핑 API 기반 SEO 도구"
+}
