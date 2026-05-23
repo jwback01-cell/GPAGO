@@ -297,7 +297,7 @@
           <div class="flex flex-col gap-2.5">
             <div class="flex items-center gap-2">
               <span class="text-xs font-bold text-brand-gray w-16 shrink-0">기준 키워드</span>
-              <input id="kw-base" class="pill-input flex-1 min-w-0" placeholder="예: 마스크">
+              <input id="kw-base" class="pill-input flex-1 min-w-0" placeholder="예: 마스크 (쉼표로 여러 키워드 동시 분석 가능)">
             </div>
             <div class="flex items-center gap-2">
               <span class="text-xs font-black text-brand-pink w-16 shrink-0">FITER+</span>
@@ -357,6 +357,9 @@
         </div>
         <div id="category-ratio-list" class="flex flex-col gap-2"></div>
       </section>
+
+      <!-- 키워드 탭 (다중 키워드 분석 시) -->
+      <div id="multi-kw-tabs" class="hidden flex items-center gap-2 flex-wrap"></div>
 
       <!-- 결과 테이블 -->
       <section class="bg-white rounded-4xl panel overflow-hidden">
@@ -2116,23 +2119,72 @@ async function runAnalysisWithNaverKw() {
   return runAnalysis();
 }
 
+// 다중 키워드 분석 결과 저장 (탭 전환용)
+let _multiAnalysisResults = []; // [{ query, items, total, baseKw, filterKw }]
+let _multiActiveIndex = 0;
+
 async function runAnalysis() {
-  const baseKw = (document.getElementById('kw-base').value || '').trim();
+  const baseRaw = (document.getElementById('kw-base').value || '').trim();
   const filterKw = (document.getElementById('kw-filter').value || '').trim();
   const naverKw = (document.getElementById('kw-naver').value || '').trim();
-  if (!baseKw && !filterKw && !naverKw) { toast('기준 키워드를 입력해 주세요'); return; }
+  if (!baseRaw && !filterKw && !naverKw) { toast('기준 키워드를 입력해 주세요'); return; }
   const api = _getApi();
   if (!api.id || !api.secret) {
     toast('먼저 API 설정에서 Client ID/Secret 을 등록해 주세요');
     openApiSettings();
     return;
   }
+
+  // 다중 키워드 분리 (쉼표 / 줄바꿈 구분)
+  const baseList = baseRaw ? baseRaw.split(/[,\n]+/).map(s => s.trim()).filter(Boolean) : [''];
+
+  // N 키워드 단독 검색이면 다중 분기 없이 단일 실행
+  if (naverKw && !baseRaw) {
+    return _runSingleAnalysis(naverKw, '', naverKw);
+  }
+
+  if (baseList.length === 1) {
+    // 단일 키워드 — 기존 동작
+    const baseKw = baseList[0];
+    const query = filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw;
+    document.getElementById('multi-kw-tabs').classList.add('hidden');
+    return _runSingleAnalysis(baseKw, filterKw, query);
+  }
+
+  // 다중 키워드 — 각각 분석 후 탭으로 전환
+  _multiAnalysisResults = [];
+  _multiActiveIndex = 0;
+  const tbody = document.getElementById('analysis-tbody');
+  _resetStats();
+  for (let i = 0; i < baseList.length; i++) {
+    const bk = baseList[i];
+    const q = filterKw ? (bk + ' ' + filterKw).trim() : bk;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
+    try {
+      const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(q) + '&display=80&sort=sim';
+      const resp = await fetch(proxyUrl, { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const items = data.items || [];
+      _multiAnalysisResults.push({ query: q, baseKw: bk, filterKw, items, total: data.total || items.length });
+    } catch (e) {
+      _multiAnalysisResults.push({ query: q, baseKw: bk, filterKw, items: [], total: 0, error: e.message });
+    }
+  }
+  // 탭 렌더링 + 첫 키워드 활성화
+  renderMultiKwTabs();
+  activateMultiKwTab(0);
+  toast(`✅ ${baseList.length}개 키워드 분석 완료`);
+}
+
+// 단일 키워드 분석 (기존 동작 + 첫 진입점 분리)
+async function _runSingleAnalysis(baseKw, filterKw, query) {
+  _multiAnalysisResults = [];
+  document.getElementById('multi-kw-tabs').classList.add('hidden');
+  const api = _getApi();
   const tbody = document.getElementById('analysis-tbody');
   tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
-
-  // 검색 쿼리: N 키워드가 있으면 그것을 우선 사용, 없으면 기준+필터 조합
-  const query = naverKw || (filterKw ? (baseKw + ' ' + filterKw).trim() : baseKw);
   try {
     // 분석 히스토리 저장
     try {
@@ -2330,6 +2382,45 @@ function _highlightTerms(text, terms) {
     result = result.replace(re, '<span class="inline-block bg-brand-green-light text-brand-green font-bold px-2 py-0.5 rounded-full text-[11px] mx-0.5">$1</span>');
   });
   return result;
+}
+
+// 다중 키워드 탭 렌더링
+function renderMultiKwTabs() {
+  const wrap = document.getElementById('multi-kw-tabs');
+  if (!wrap) return;
+  if (!_multiAnalysisResults.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  wrap.classList.add('flex');
+  wrap.innerHTML = _multiAnalysisResults.map((r, i) => {
+    const active = i === _multiActiveIndex;
+    const cls = active
+      ? 'px-4 py-2 rounded-full text-sm font-black bg-brand-black text-white shadow-md'
+      : 'px-4 py-2 rounded-full text-sm font-bold bg-white border border-brand-border text-brand-gray hover:text-brand-black hover:border-brand-black';
+    const errBadge = r.error ? '<span class="text-[10px] text-brand-pink ml-1">⚠</span>' : '';
+    return `<button class="${cls}" onclick="activateMultiKwTab(${i})">${escapeHtml(r.baseKw)} <span class="text-[10px] ml-1 opacity-70">${r.items.length}</span>${errBadge}</button>`;
+  }).join('');
+}
+
+// 다중 키워드 탭 활성화
+function activateMultiKwTab(idx) {
+  if (!_multiAnalysisResults[idx]) return;
+  _multiActiveIndex = idx;
+  const r = _multiAnalysisResults[idx];
+  if (r.error || !r.items.length) {
+    const tbody = document.getElementById('analysis-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    renderMultiKwTabs();
+    return;
+  }
+  _lastAnalysisItems = r.items;
+  _lastBaseKw = r.baseKw;
+  _lastFilterKw = r.filterKw;
+  const terms = _extractTerms(r.baseKw, r.filterKw);
+  document.getElementById('terms-display').textContent = terms.join(',') || '-';
+  document.getElementById('total-count').textContent = (r.total || r.items.length).toLocaleString('ko-KR');
+  computeStats(r.items, terms, r.baseKw, r.filterKw);
+  renderAnalysisResults();
+  renderMultiKwTabs();
 }
 
 function renderAnalysisResults() {
