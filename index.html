@@ -8311,9 +8311,29 @@ function prodsrcRenderDetail() {
     if (dateCols.length === 0) {
       dateCells = '<td class="p-3 text-right w-40 text-brand-gray">-</td>';
     } else {
-      dateCols.forEach(d => {
+      dateCols.forEach((d, idx) => {
         const v = histMap.get(d);
-        dateCells += `<td class="p-3 text-right w-28 font-bold">${v == null ? '<span class="text-brand-gray">-</span>' : _prodsrcFmt(v)}</td>`;
+        let diffHtml = '';
+        if (idx > 0 && v != null) {
+          // 직전 컬럼과의 변동폭 계산
+          const prevV = histMap.get(dateCols[idx - 1]);
+          if (prevV != null) {
+            const diff = Number(v) - Number(prevV);
+            if (diff > 0) {
+              diffHtml = `<div class="text-[10px] font-bold text-brand-pink mt-0.5 flex items-center justify-end gap-0.5"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,4 22,20 2,20"/></svg>${_prodsrcFmt(diff)}</div>`;
+            } else if (diff < 0) {
+              diffHtml = `<div class="text-[10px] font-bold text-brand-blue mt-0.5 flex items-center justify-end gap-0.5"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,20 22,4 2,4"/></svg>${_prodsrcFmt(Math.abs(diff))}</div>`;
+            } else {
+              diffHtml = `<div class="text-[10px] font-bold text-brand-gray mt-0.5">-</div>`;
+            }
+          } else {
+            diffHtml = `<div class="text-[10px] font-bold text-brand-green mt-0.5">신규</div>`;
+          }
+        }
+        dateCells += `<td class="p-3 text-right w-28 font-bold align-top">
+          ${v == null ? '<span class="text-brand-gray">-</span>' : _prodsrcFmt(v)}
+          ${diffHtml}
+        </td>`;
       });
     }
     return `<tr class="border-b border-brand-border hover:bg-brand-bg/40">
