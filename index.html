@@ -137,10 +137,17 @@
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="archive">기록 보관소</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="tools">키워드 도구</a>
       </div>
-      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="keywords">
+      <!-- 키워드 순위 그룹 (접기/펼치기) -->
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page-group="keywords" onclick="toggleKwGroup(event)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        키워드 순위
+        <span class="flex-1">키워드 순위</span>
+        <svg id="kw-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="transition-transform"><polyline points="6 9 12 15 18 9"/></svg>
       </a>
+      <div id="kw-submenu" class="hidden flex-col gap-1.5 ml-7 mb-1">
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="trend">순위 변동 추이</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="track">순위 추적</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="settings">설정</a>
+      </div>
       <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="sourcing">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
         상품 정제
@@ -547,8 +554,8 @@
         <p class="text-brand-gray text-base md:text-[1.1rem]">검색 키워드로 내 상품의 네이버 쇼핑 순위를 실시간으로 확인하세요.</p>
       </section>
 
-      <!-- 탭 네비게이션 -->
-      <div class="flex">
+      <!-- 탭 네비게이션 — 사이드바 하위 메뉴로 이동, 페이지 내 버튼은 숨김 (setKwTab의 active 표시를 위해 ID 유지) -->
+      <div class="flex hidden">
         <div class="bg-white p-1.5 rounded-full panel inline-flex gap-1">
           <button id="kw-tab-btn-trend" type="button" onclick="setKwTab('trend')" class="px-6 py-2.5 rounded-full text-sm font-bold bg-brand-black text-white transition-all">순위 변동 추이</button>
           <button id="kw-tab-btn-track" type="button" onclick="setKwTab('track')" class="px-6 py-2.5 rounded-full text-sm font-medium text-brand-gray hover:text-brand-black transition-all">순위 추적</button>
@@ -1558,6 +1565,38 @@ function toggleSemiGroup(e) {
   }
 }
 
+// 키워드 순위 그룹 접기/펼치기
+function toggleKwGroup(e) {
+  if (e) e.preventDefault();
+  const sub = document.getElementById('kw-submenu');
+  const chev = document.getElementById('kw-chevron');
+  if (!sub) return;
+  const isHidden = sub.classList.contains('hidden');
+  if (isHidden) {
+    // 펼치며 키워드 페이지로 이동
+    sub.classList.remove('hidden');
+    sub.classList.add('flex');
+    if (chev) chev.style.transform = 'rotate(180deg)';
+    if (typeof goPage === 'function') goPage('keywords');
+  } else {
+    sub.classList.add('hidden');
+    sub.classList.remove('flex');
+    if (chev) chev.style.transform = '';
+  }
+}
+
+// 키워드 하위 메뉴 클릭 → 페이지 이동 + 탭 전환
+document.addEventListener('click', (e) => {
+  const sub = e.target.closest('[data-kw-tab]');
+  if (!sub) return;
+  e.preventDefault();
+  const tab = sub.dataset.kwTab;
+  if (typeof goPage === 'function') goPage('keywords');
+  setTimeout(() => { if (typeof setKwTab === 'function') setKwTab(tab); }, 0);
+  // 하위 메뉴 active 표시
+  document.querySelectorAll('[data-kw-tab]').forEach(a => a.classList.toggle('active', a === sub));
+});
+
 function goPage(pageId) {
   PAGES.forEach(p => {
     const el = document.getElementById('page-' + p);
@@ -1574,6 +1613,16 @@ function goPage(pageId) {
     semiSub.classList.remove('hidden');
     semiSub.classList.add('flex');
     if (semiChev) semiChev.style.transform = 'rotate(180deg)';
+  }
+  // 키워드 그룹: keywords 페이지면 펼침 + 부모 active
+  const isKw = (pageId === 'keywords');
+  document.querySelectorAll('[data-page-group="keywords"]').forEach(a => a.classList.toggle('active', isKw));
+  const kwSub = document.getElementById('kw-submenu');
+  const kwChev = document.getElementById('kw-chevron');
+  if (isKw && kwSub) {
+    kwSub.classList.remove('hidden');
+    kwSub.classList.add('flex');
+    if (kwChev) kwChev.style.transform = 'rotate(180deg)';
   }
   try { localStorage.setItem('gpago_last_page', pageId); } catch(_) {}
   if (pageId === 'archive') renderSlots();
