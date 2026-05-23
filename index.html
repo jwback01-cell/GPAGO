@@ -1483,6 +1483,14 @@ PBT키캡	1180
 
 <div id="toast"></div>
 
+<!-- 상품 소싱 날짜 헤더 우클릭 컨텍스트 메뉴 -->
+<div id="prodsrc-date-menu" class="hidden fixed z-[90] bg-white border border-brand-border rounded-xl shadow-2xl py-1 min-w-[140px] text-sm">
+  <button id="prodsrc-date-menu-delete" class="w-full text-left px-4 py-2 hover:bg-brand-pink-light text-brand-pink font-semibold flex items-center gap-2">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+    삭제
+  </button>
+</div>
+
 <!-- 로그인 / 회원가입 모달 -->
 <div id="auth-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeAuthModal()">
   <div class="bg-white rounded-3xl shadow-2xl w-[90%] max-w-md overflow-hidden flex flex-col">
@@ -8233,7 +8241,7 @@ function prodsrcRenderDetail() {
     } else {
       dateCols.forEach(d => {
         const esc = _prodsrcEsc(d);
-        theadHtml += `<th class="p-3 text-right font-bold w-28 cursor-context-menu select-none hover:bg-brand-bg/40 transition-colors" oncontextmenu="event.preventDefault();prodsrcDeleteDate('${esc}')" title="우클릭: 이 날짜 삭제">${esc}</th>`;
+        theadHtml += `<th class="p-3 text-right font-bold w-28 cursor-context-menu select-none hover:bg-brand-bg/40 transition-colors" oncontextmenu="showProdsrcDateMenu(event,'${esc}')" title="우클릭하여 옵션 보기">${esc}</th>`;
       });
     }
     theadHtml += '<th class="p-3 pr-4 text-right font-semibold">상세</th>';
@@ -8264,6 +8272,50 @@ function prodsrcRenderDetail() {
     </tr>`;
   }).join('') : `<tr><td colspan="${colCount}" class="p-8 text-center text-brand-gray text-sm">키워드가 없습니다</td></tr>`;
 }
+
+// 날짜 헤더 우클릭 시 커스텀 메뉴 표시
+let _prodsrcMenuTargetDate = null;
+function showProdsrcDateMenu(evt, date) {
+  evt.preventDefault();
+  evt.stopPropagation();
+  _prodsrcMenuTargetDate = date;
+  const menu = document.getElementById('prodsrc-date-menu');
+  if (!menu) return;
+  menu.classList.remove('hidden');
+  // 화면 경계 고려 위치 보정
+  const x = Math.min(evt.clientX, window.innerWidth - 160);
+  const y = Math.min(evt.clientY, window.innerHeight - 60);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+function hideProdsrcDateMenu() {
+  const menu = document.getElementById('prodsrc-date-menu');
+  if (menu) menu.classList.add('hidden');
+  _prodsrcMenuTargetDate = null;
+}
+// 메뉴 외부 클릭/스크롤/ESC 시 닫기 — 1회 바인딩
+(function bindProdsrcMenu() {
+  if (window._prodsrcMenuBound) return;
+  window._prodsrcMenuBound = true;
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('prodsrc-date-menu');
+    if (menu && !menu.contains(e.target)) hideProdsrcDateMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideProdsrcDateMenu(); });
+  document.addEventListener('scroll', hideProdsrcDateMenu, true);
+  // 메뉴의 삭제 버튼
+  setTimeout(() => {
+    const delBtn = document.getElementById('prodsrc-date-menu-delete');
+    if (delBtn) {
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        const d = _prodsrcMenuTargetDate;
+        hideProdsrcDateMenu();
+        if (d) prodsrcDeleteDate(d);
+      };
+    }
+  }, 0);
+})();
 
 // 특정 날짜의 데이터 삭제 (모든 행의 history에서 해당 날짜 제거)
 function prodsrcDeleteDate(date) {
