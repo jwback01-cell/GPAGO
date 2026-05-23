@@ -781,22 +781,34 @@ function computeStats(items, terms, baseKw) {
   if (termCounts[1]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
   else _fillCell('stat-cell-5', '-');
 
-  // 카테고리·스토어 순위
-  const catCounts = {};
+  // 파트 가중치 — FITER+ 값을 포함하지 않는 가장 높은 순위 (= 가장 위쪽 상품)
+  const filterKwLower = (filterKw || '').trim().toLowerCase();
+  if (filterKwLower) {
+    let missingRank = -1, missingTitle = '';
+    for (let i = 0; i < items.length; i++) {
+      const title = _stripHtml(items[i].title || '').toLowerCase();
+      if (!title.includes(filterKwLower)) {
+        missingRank = i + 1;
+        missingTitle = _stripHtml(items[i].title || '');
+        break;
+      }
+    }
+    if (missingRank > 0) {
+      const shortTitle = missingTitle.length > 18 ? missingTitle.slice(0, 18) + '…' : missingTitle;
+      _fillCell('stat-cell-3', `<b>${escapeHtml(filterKw)}</b> 없음 - <b class="text-brand-blue">${missingRank}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(shortTitle)}]</span>`);
+    } else {
+      _fillCell('stat-cell-3', `<b>${escapeHtml(filterKw)}</b> 모두 포함 <span class="text-brand-gray text-[10px] ml-1">(전체)</span>`);
+    }
+  } else {
+    _fillCell('stat-cell-3', '<span class="text-brand-gray text-[11px]">FITER+ 값 없음</span>');
+  }
+
+  // 스토어 순위 (stat-cell-6에 유지)
   const storeCounts = {};
   items.slice(0, topN).forEach(it => {
-    const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
-    if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
     if (it.mallName) storeCounts[it.mallName] = (storeCounts[it.mallName] || 0) + 1;
   });
-  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
   const topStore = Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0];
-
-  if (topCat) {
-    const catName = topCat[0].split(' > ').slice(-1)[0] || '';
-    _fillCell('stat-cell-3', `속성 - <b class="text-brand-blue">${topCat[1]}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(catName)}]</span>`);
-  } else _fillCell('stat-cell-3', '-');
-
   if (topStore) {
     _fillCell('stat-cell-6', `스토어 - <b class="text-brand-blue">${topStore[1]}</b>등 <span class="text-brand-gray text-[10px] ml-1">[${escapeHtml(topStore[0])}]</span>`);
   } else _fillCell('stat-cell-6', '-');
