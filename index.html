@@ -2147,23 +2147,34 @@ function computeStats(items, terms, baseKw, filterKw) {
   // 1행 — 각 모드별 상위 상품 개수
   _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
 
-  // 상품명 가중치 — 각 텀이 포함된 상품의 개수 (1개 상품당 최대 1개로 카운트)
+  // 상품명 가중치 — 각 텀이 포함된 상품 개수 + 텀 미포함 첫 상품의 순위
   // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
   const termCounts = terms.map(t => {
     let cnt = 0;
+    let missingRank = -1; // 텀을 포함하지 않는 첫 상품의 순위 (1부터)
     const tNoSpace = t.toLowerCase().replace(/\s+/g, '');
-    items.forEach(it => {
+    items.forEach((it, idx) => {
       const titleNoSpace = _stripHtml(it.title).toLowerCase().replace(/\s+/g, '');
-      if (titleNoSpace.includes(tNoSpace)) cnt++;
+      const has = titleNoSpace.includes(tNoSpace);
+      if (has) cnt++;
+      else if (missingRank === -1) missingRank = idx + 1;
     });
-    return { term: t, count: cnt };
+    return { term: t, count: cnt, missingRank };
   });
 
+  function _fmtTermStat(tc) {
+    const head = `<b>${escapeHtml(tc.term)}</b> <span class="text-brand-blue font-black">${tc.count}</span> 개`;
+    if (tc.missingRank > 0) {
+      return `${head} <span class="text-brand-gray text-[10px] ml-1">· 미포함 <b class="text-brand-pink">${tc.missingRank}</b>등</span>`;
+    }
+    return `${head} <span class="text-brand-green text-[10px] ml-1 font-bold">· 전체 포함</span>`;
+  }
+
   // 텀 1, 2를 2/5 셀에 표시
-  if (termCounts[0]) _fillCell('stat-cell-2', `<b>${escapeHtml(termCounts[0].term)}</b> <span class="text-brand-blue font-black">${termCounts[0].count}</span> 개`);
+  if (termCounts[0]) _fillCell('stat-cell-2', _fmtTermStat(termCounts[0]));
   else _fillCell('stat-cell-2', '-');
 
-  if (termCounts[1]) _fillCell('stat-cell-5', `<b>${escapeHtml(termCounts[1].term)}</b> <span class="text-brand-blue font-black">${termCounts[1].count}</span> 개`);
+  if (termCounts[1]) _fillCell('stat-cell-5', _fmtTermStat(termCounts[1]));
   else _fillCell('stat-cell-5', '-');
 
   // 파트 가중치 — FITER+ 값을 포함하지 않는 가장 높은 순위 (= 가장 위쪽 상품)
