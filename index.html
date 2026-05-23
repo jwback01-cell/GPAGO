@@ -8233,14 +8233,7 @@ function prodsrcRenderDetail() {
     } else {
       dateCols.forEach(d => {
         const esc = _prodsrcEsc(d);
-        theadHtml += `<th class="p-3 text-right font-bold w-28">
-          <div class="flex items-center justify-end gap-1.5">
-            <span>${esc}</span>
-            <button onclick="prodsrcDeleteDate('${esc}')" title="이 날짜 데이터 삭제" class="w-5 h-5 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-        </th>`;
+        theadHtml += `<th class="p-3 text-right font-bold w-28 cursor-context-menu select-none hover:bg-brand-bg/40 transition-colors" oncontextmenu="event.preventDefault();prodsrcDeleteDate('${esc}')" title="우클릭: 이 날짜 삭제">${esc}</th>`;
       });
     }
     theadHtml += '<th class="p-3 pr-4 text-right font-semibold">상세</th>';
