@@ -859,24 +859,14 @@ function renderAnalysisResults() {
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const isPriceCompare = ['1','2','3','4','5'].includes(String(it.productType));
     const isNaverPay = ['6','7'].includes(String(it.productType));
-    // 그룹 배지 — 상품 타입에 따라 색상/라벨 다르게 (ROPAGO 스타일)
     const groupBadge = isPriceCompare
       ? '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">그룹</span>'
       : isNaverPay
         ? '<span class="inline-block text-[10px] font-black bg-brand-pink-light text-brand-pink px-2.5 py-0.5 rounded-full">가격</span>'
         : '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>';
-    // 속성 — 추출 가능한 정보(브랜드/메이커/카테고리/가격) 를 점(·)으로 구분
-    const attrParts = [];
-    if (it.brand) attrParts.push(escapeHtml(it.brand));
-    if (it.maker && it.maker !== it.brand) attrParts.push(escapeHtml(it.maker));
-    if (it.category4) attrParts.push(escapeHtml(it.category4));
-    if (it.lprice) attrParts.push(Number(it.lprice).toLocaleString('ko-KR') + '원');
-    const attrText = attrParts.join(' · ') || '-';
-    // 태그 — 브랜드/카테고리 키워드 기반
-    const tags = [];
-    if (it.brand) tags.push('#' + it.brand);
-    if (it.category3) tags.push('#' + it.category3.replace(/[\s/]/g, ''));
-    const tagText = tags.length ? tags.map(t => `<span class="text-brand-blue font-bold">${escapeHtml(t)}</span>`).join(' ') : '<span class="text-brand-gray">-</span>';
+    // 속성·태그 — 상품명에서 풍부하게 추출
+    const attrText = _extractAttributes(it);
+    const tagText = _extractTagsFromTitle(it);
     return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
@@ -889,6 +879,62 @@ function renderAnalysisResults() {
       <td class="px-5 py-3.5 text-[11px] align-middle">${tagText}</td>
     </tr>`;
   }).join('');
+}
+
+// 상품명에서 속성(호환모델·색상·재질·기능) 추출 — ROPAGO 의 풍부한 속성 흉내내기
+function _extractAttributes(item) {
+  const title = _stripHtml(item.title);
+  const found = new Set();
+  // 호환 모델 패턴
+  const modelPatterns = [
+    /갤럭시\s*버즈\s*\d*\s*프로?(?:\s*\d+)?/gi,
+    /에어팟\s*프로?\s*\d*세대?/gi,
+    /에어팟\s*\d*세대/gi,
+    /아이폰\s*\d+\s*프로?\s*맥스?/gi,
+    /갤럭시\s*S\d+\s*울트라?/gi,
+    /KF\s*\d+/gi,
+    /버즈\s*\d+\s*프로?\s*\d*/gi,
+  ];
+  modelPatterns.forEach(re => {
+    const matches = title.match(re);
+    if (matches) matches.forEach(m => found.add(m.replace(/\s+/g, ' ').trim()));
+  });
+  // 색상
+  const colors = ['블랙','화이트','실버','핑크','옐로우','노랑','그레이','블루','파랑','레드','빨강','클리어','투명','베이지','네이비','민트','퍼플','보라','오렌지','브라운','갈색','골드','크림'];
+  colors.forEach(c => { if (title.includes(c)) found.add(c); });
+  // 재질
+  const materials = ['PC+TPU','TPU','PC','폴리카보네이트','실리콘','가죽','메탈','알루미늄','우레탄','Shell','쉘','젤리'];
+  materials.forEach(m => { if (title.includes(m)) found.add(m); });
+  // 기능·특징
+  const features = ['무선','무전원','잠금','충전','카라비너','키링','스트랩','방수','방진','범퍼','보호','자석','마그네틱','분실방지'];
+  features.forEach(f => { if (title.includes(f)) found.add(f); });
+  // 카테고리 마지막 세그먼트
+  if (item.category4) found.add(item.category4);
+  if (item.brand) found.add(item.brand);
+  // 가격
+  if (item.lprice) found.add(Number(item.lprice).toLocaleString('ko-KR') + '원');
+  const list = [...found].slice(0, 8); // 최대 8개
+  if (!list.length) return '<span class="text-brand-gray">-</span>';
+  return list.map(t => escapeHtml(t)).join(' · ');
+}
+
+// 상품명에서 의미 있는 태그 키워드 추출
+function _extractTagsFromTitle(item) {
+  const title = _stripHtml(item.title);
+  const tags = new Set();
+  // 패턴 1 — 의미 있는 명사 추출 (끝맺음 패턴)
+  const tokenizable = title.split(/[\s,\/\-_()\[\]+]+/).filter(t => t && /[가-힣]/.test(t) && t.length >= 2 && t.length <= 8);
+  const suffixPatterns = [/케이스$/, /파우치$/, /커버$/, /홀더$/, /매트$/, /그립$/, /키링$/, /스트랩$/, /거치대$/, /보호$/, /가방$/, /젤리$/, /부착$/];
+  tokenizable.forEach(t => {
+    if (suffixPatterns.some(re => re.test(t))) tags.add('#' + t);
+  });
+  // 패턴 2 — 의미 키워드 직접 매칭
+  const keywords = ['정품','선물','생일선물','단단한','튼튼한','편리한','특이한','귀여운','감성','커플','c타입','자석','분실방지','말랑한','얇은','가벼운'];
+  keywords.forEach(k => { if (title.includes(k)) tags.add('#' + k); });
+  if (item.brand) tags.add('#' + item.brand);
+  const list = [...tags].slice(0, 6);
+  if (!list.length) return '<span class="text-brand-gray">-</span>';
+  return list.map(t => `<span class="text-brand-blue font-bold">${escapeHtml(t)}</span>`).join(' ');
 }
 
 // ═════════════ 특수 키워드 ═════════════
