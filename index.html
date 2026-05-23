@@ -837,7 +837,11 @@ function _highlightTerms(text, terms) {
   let result = escapeHtml(text);
   terms.forEach(t => {
     if (!t) return;
-    const re = new RegExp('(' + t.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + ')', 'gi');
+    // 띄어쓰기 무시 매칭 — 텀의 각 글자 사이에 \s* 삽입
+    const tNoSpace = t.replace(/\s+/g, '');
+    if (!tNoSpace) return;
+    const pattern = tNoSpace.split('').map(c => c.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')).join('\\s*');
+    const re = new RegExp('(' + pattern + ')', 'gi');
     result = result.replace(re, '<span class="inline-block bg-brand-green-light text-brand-green font-bold px-2 py-0.5 rounded-full text-[11px] mx-0.5">$1</span>');
   });
   return result;
