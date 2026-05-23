@@ -2154,8 +2154,19 @@ function scrollToRank(rank) {
 function computeStats(items, terms, baseKw, filterKw) {
   if (!items.length) return;
   const topN = Math.min(10, items.length);
-  // 1행 — 각 모드별 상위 상품 개수
-  _fillCell('stat-cell-1', `<span class="font-black">${topN}</span> 개`);
+  // 순서 고정 — FITER+ 키워드의 단어 순서가 그대로 들어있는 상품 개수
+  // "덴탈 마스크" → 띄어쓰기 무시하고 "덴탈마스크"가 상품명에 포함되어 있으면 카운트
+  const filterNoSpace = (filterKw || '').toLowerCase().replace(/\s+/g, '');
+  let orderFixedCount = 0;
+  if (filterNoSpace) {
+    items.forEach(it => {
+      const titleNoSpace = _stripHtml(it.title || '').toLowerCase().replace(/\s+/g, '');
+      if (titleNoSpace.includes(filterNoSpace)) orderFixedCount++;
+    });
+    _fillCell('stat-cell-1', `<span class="font-black">${orderFixedCount}</span> 개`);
+  } else {
+    _fillCell('stat-cell-1', '<span class="text-brand-gray text-[11px]">FITER+ 없음</span>');
+  }
 
   // 상품명 가중치 — 각 텀이 포함된 상품 개수 + 텀 미포함 모든 순위
   // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
