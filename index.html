@@ -125,12 +125,13 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         키워드 스크랩
       </a>
-      <!-- 반자동 프로그램 그룹 -->
-      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page-group="semi">
+      <!-- 반자동 프로그램 그룹 (접기/펼치기) -->
+      <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page-group="semi" onclick="toggleSemiGroup(event)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        반자동 프로그램
+        <span class="flex-1">반자동 프로그램</span>
+        <svg id="semi-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="transition-transform"><polyline points="6 9 12 15 18 9"/></svg>
       </a>
-      <div class="flex flex-col gap-1.5 ml-7 mb-1">
+      <div id="semi-submenu" class="hidden flex-col gap-1.5 ml-7 mb-1">
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="analysis">키워드 분석</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="special">특수 키워드</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="archive">기록 보관소</a>
@@ -1539,6 +1540,24 @@ PBT키캡	1180
 // ═════════════ 페이지 전환 ═════════════
 const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords','sourcing','prodsrc'];
 const SEMI_PAGES = ['analysis','special','archive','tools'];
+// 반자동 프로그램 그룹 접기/펼치기
+function toggleSemiGroup(e) {
+  if (e) e.preventDefault();
+  const sub = document.getElementById('semi-submenu');
+  const chev = document.getElementById('semi-chevron');
+  if (!sub) return;
+  const isHidden = sub.classList.contains('hidden');
+  if (isHidden) {
+    sub.classList.remove('hidden');
+    sub.classList.add('flex');
+    if (chev) chev.style.transform = 'rotate(180deg)';
+  } else {
+    sub.classList.add('hidden');
+    sub.classList.remove('flex');
+    if (chev) chev.style.transform = '';
+  }
+}
+
 function goPage(pageId) {
   PAGES.forEach(p => {
     const el = document.getElementById('page-' + p);
@@ -1546,9 +1565,16 @@ function goPage(pageId) {
   });
   document.querySelectorAll('.nav-item[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
   document.querySelectorAll('.nav-sub[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
-  // 반자동 그룹은 하위 페이지 중 하나가 활성일 때 부모도 active
+  // 반자동 그룹은 하위 페이지 중 하나가 활성일 때 부모도 active + 자동 펼침
   const isSemi = SEMI_PAGES.includes(pageId);
   document.querySelectorAll('[data-page-group="semi"]').forEach(a => a.classList.toggle('active', isSemi));
+  const semiSub = document.getElementById('semi-submenu');
+  const semiChev = document.getElementById('semi-chevron');
+  if (isSemi && semiSub) {
+    semiSub.classList.remove('hidden');
+    semiSub.classList.add('flex');
+    if (semiChev) semiChev.style.transform = 'rotate(180deg)';
+  }
   try { localStorage.setItem('gpago_last_page', pageId); } catch(_) {}
   if (pageId === 'archive') renderSlots();
   if (pageId === 'special') renderSynonyms();
