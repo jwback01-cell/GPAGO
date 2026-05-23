@@ -2555,28 +2555,122 @@ function renameSlot(i, name) {
 }
 
 // ═════════════ 키워드 도구 ═════════════
-function extractTags() {
+
+// 1) 마누태그 자동추출 — 키워드로 상위 상품 검색 → 각 상품의 태그 집계
+async function extractTags() {
   const kw = (document.getElementById('tool-tag-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
-  const tags = [kw + '_프리미엄', kw + '_베스트', kw + '_인기', kw + '_신상', kw + '_할인', kw + '_무료배송', kw + '_당일출고'];
-  document.getElementById('tool-tag-result').innerHTML = '<div class="text-left w-full">' + tags.map(t =>
-    `<span class="inline-block bg-brand-blue-light text-brand-blue px-3 py-1.5 rounded-full text-xs font-bold m-1">#${escapeHtml(t)}</span>`
-  ).join('') + '</div>';
-  document.getElementById('tool-tag-total').textContent = tags.length;
-  document.getElementById('tool-tag-stats').innerHTML = '<div class="text-left w-full">' + tags.map((t, i) =>
-    `<div class="flex items-center gap-3 mb-2"><span class="text-brand-blue font-bold w-36 truncate text-xs">#${escapeHtml(t)}</span><div class="flex-1 h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-blue rounded-full" style="width:${100 - i * 12}%"></div></div><span class="font-bold w-10 text-right text-xs">${100 - i * 12}</span></div>`
-  ).join('') + '</div>';
+  const resultBox = document.getElementById('tool-tag-result');
+  const statsBox  = document.getElementById('tool-tag-stats');
+  const totalEl   = document.getElementById('tool-tag-total');
+  resultBox.innerHTML = '<span class="text-brand-gray text-xs animate-pulse">🔍 상위 상품에서 태그 추출 중...</span>';
+  statsBox.innerHTML  = '<span class="text-brand-gray text-xs animate-pulse">집계 중...</span>';
+  const api = _getApi();
+  if (!api.id || !api.secret) { toast('먼저 API 설정에서 Client ID/Secret을 등록하세요'); openApiSettings(); return; }
+  try {
+    const r = await fetch(`/api/naver-shop?query=${encodeURIComponent(kw)}&display=80&sort=sim`, {
+      headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const items = data.items || [];
+    if (!items.length) { resultBox.textContent = '검색 결과 없음'; statsBox.textContent = '-'; totalEl.textContent = '0'; return; }
+    // 각 상품에서 태그 추출 (속성 + 타이틀 기반)
+    const allTags = [];
+    items.forEach(it => {
+      const titleTags = _extractTagsFromTitle(it) || '';
+      // _extractTagsFromTitle은 HTML 문자열을 반환 → 텍스트 추출
+      const m = titleTags.match(/#[가-힣A-Za-z0-9]+/g) || [];
+      m.forEach(t => allTags.push(t.replace(/^#/, '')));
+    });
+    if (!allTags.length) { resultBox.textContent = '태그를 추출할 수 없음'; statsBox.textContent = '-'; totalEl.textContent = '0'; return; }
+    // 빈도 집계
+    const counts = {};
+    allTags.forEach(t => counts[t] = (counts[t] || 0) + 1);
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const totalHits = allTags.length;
+    totalEl.textContent = sorted.length.toLocaleString('ko-KR');
+    // 좌측 — 모든 태그 칩 (상위 30개)
+    resultBox.classList.remove('text-center', 'items-center', 'justify-center');
+    resultBox.classList.add('text-left');
+    resultBox.innerHTML = sorted.slice(0, 30).map(([t]) =>
+      `<span class="inline-block bg-brand-blue-light text-brand-blue px-3 py-1 rounded-full text-xs font-bold m-1">#${escapeHtml(t)}</span>`
+    ).join('');
+    // 우측 — 상위 12개 빈도 막대
+    statsBox.classList.remove('text-center', 'items-center', 'justify-center');
+    statsBox.classList.add('text-left');
+    const top12 = sorted.slice(0, 12);
+    const max = top12[0] ? top12[0][1] : 1;
+    statsBox.innerHTML = top12.map(([t, c]) => {
+      const pct = Math.round(c / totalHits * 100);
+      const barPct = Math.max(6, Math.round(c / max * 100));
+      return `<div class="flex items-center gap-3 mb-2">
+        <span class="text-brand-blue font-bold w-32 truncate text-xs" title="${escapeHtml(t)}">#${escapeHtml(t)}</span>
+        <div class="flex-1 h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-blue rounded-full" style="width:${barPct}%"></div></div>
+        <span class="text-brand-gray text-[10px] w-8 text-right">${c}회</span>
+        <span class="font-black w-10 text-right text-xs text-brand-blue">${pct}%</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    resultBox.textContent = '오류: ' + (e.message || String(e));
+    statsBox.textContent = '-';
+    totalEl.textContent = '0';
+  }
 }
-function analyzeTerms() {
+
+// 2) 상품명 텀즈 마스터 — 네이버 API의 terms 분해 결과 활용
+async function analyzeTerms() {
   const name = (document.getElementById('tool-terms-input').value || '').trim();
   if (!name) { toast('상품명을 입력해 주세요'); return; }
-  const terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+  const result = document.getElementById('tool-terms-result');
+  result.classList.remove('text-center', 'items-center', 'justify-center');
+  result.classList.add('text-left');
+  result.innerHTML = '<span class="text-brand-gray text-xs animate-pulse">🔍 네이버 검색에 분해 요청 중...</span>';
+  const api = _getApi();
+  let terms = [];
+  let sourceLabel = '';
+  if (api.id && api.secret) {
+    try {
+      // 네이버 검색 백엔드가 분해한 terms 시도
+      const r = await fetch(`/api/naver-shop?query=${encodeURIComponent(name)}&display=1&sort=sim`, {
+        headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data.terms) && data.terms.length) {
+          terms = data.terms.filter(t => typeof t === 'string' && t.trim());
+          sourceLabel = '네이버 검색 분해';
+        }
+      }
+    } catch(_) {}
+  }
+  // 폴백 — 공백/특수문자 기준 분해
+  if (!terms.length) {
+    terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+    sourceLabel = '간단 분해 (공백 기준)';
+  }
+  const charLen = name.replace(/\s+/g, '').length;
   const counts = {};
   terms.forEach(t => counts[t] = (counts[t] || 0) + 1);
-  const html = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t, c]) =>
-    `<span class="inline-block px-3 py-1.5 rounded-full text-xs font-bold m-1 ${c > 1 ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black'}">${escapeHtml(t)}${c > 1 ? ' ×' + c : ''}</span>`
+  const dupCount = Object.values(counts).filter(c => c > 1).length;
+  const chipsHtml = Object.entries(counts).map(([t, c], i) =>
+    `<span class="inline-block px-3 py-1.5 rounded-full text-xs font-bold m-1 ${c > 1 ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black'}">
+      <span class="text-brand-gray font-black mr-1">${i + 1}</span>${escapeHtml(t)}${c > 1 ? ' <span class="text-brand-pink">×' + c + '</span>' : ''}
+    </span>`
   ).join('');
-  document.getElementById('tool-terms-result').innerHTML = `<div class="text-left w-full">${html}</div>`;
+  result.innerHTML = `
+    <div class="flex items-center gap-3 mb-3 flex-wrap">
+      <span class="text-xs font-bold text-brand-gray">글자 수</span>
+      <span class="font-black text-base text-brand-black">${charLen}</span>
+      <span class="text-brand-border">|</span>
+      <span class="text-xs font-bold text-brand-gray">Terms</span>
+      <span class="font-black text-base text-brand-blue">${terms.length}</span>
+      <span class="text-brand-border">|</span>
+      <span class="text-xs font-bold text-brand-gray">중복</span>
+      <span class="font-black text-base ${dupCount > 0 ? 'text-brand-pink' : 'text-brand-green'}">${dupCount}</span>
+      <span class="text-[10px] text-brand-gray ml-auto">${sourceLabel}</span>
+    </div>
+    <div>${chipsHtml}</div>`;
   try {
     const recent = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]');
     recent.unshift({ name, terms, at: new Date().toISOString() });
