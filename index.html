@@ -1437,7 +1437,13 @@ PBT키캡	1180
             <h3 class="font-bold text-base" id="prodsrc-detail-title"></h3>
             <span class="text-xs text-brand-gray" id="prodsrc-detail-meta"></span>
           </div>
-          <input id="prodsrc-detail-search" type="text" placeholder="키워드 검색..." oninput="prodsrcRenderDetail()" class="px-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[200px]">
+          <div class="flex items-center gap-2">
+            <input id="prodsrc-detail-search" type="text" placeholder="키워드 검색..." oninput="prodsrcRenderDetail()" class="px-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[200px]">
+            <button onclick="prodsrcExportExcel()" title="현재 폴더 데이터를 엑셀로 다운로드" class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              엑셀 다운로드
+            </button>
+          </div>
         </div>
         <!-- 카테고리별 변동 요약 — 재업로드 후만 표시 -->
         <div id="prodsrc-detail-diff" class="hidden px-5 py-4 border-b border-brand-border bg-brand-bg/40">
@@ -8269,8 +8275,14 @@ function prodsrcRenderDetail() {
   }
 
   if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
-  // 총검색수 내림차순 (값이 null/없으면 맨 아래로)
+  // 정렬 우선순위:
+  // 1) 신규 키워드 + 검색량 1000 이상 → 최상단
+  // 2) 그 외는 총검색수 내림차순 (null은 맨 아래)
   rows.sort((a, b) => {
+    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 1000);
+    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 1000);
+    if (aHotNew && !bHotNew) return -1;
+    if (!aHotNew && bHotNew) return 1;
     const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
     const bv = b.totalSearch == null ? -Infinity : Number(b.totalSearch);
     return bv - av;
@@ -8343,6 +8355,62 @@ function prodsrcRenderDetail() {
       <td class="p-3 pr-4 text-xs text-right">${urlCell}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="${colCount}" class="p-8 text-center text-brand-gray text-sm">키워드가 없습니다</td></tr>`;
+}
+
+// 현재 폴더 상세 데이터를 엑셀로 다운로드
+function prodsrcExportExcel() {
+  if (typeof XLSX === 'undefined') { alert('엑셀 라이브러리 로딩 실패'); return; }
+  const cat = _prodsrcCurrentCategory;
+  if (!cat) { alert('카테고리를 먼저 선택해 주세요'); return; }
+  const search = (document.getElementById('prodsrc-detail-search')?.value || '').trim().toLowerCase();
+  let rows = (_prodsrcState.rows || []).filter(r => (r.folderName || r.category) === cat);
+  if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
+  // 정렬 (화면과 동일)
+  rows.sort((a, b) => {
+    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 1000);
+    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 1000);
+    if (aHotNew && !bHotNew) return -1;
+    if (!aHotNew && bHotNew) return 1;
+    const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
+    const bv = b.totalSearch == null ? -Infinity : Number(b.totalSearch);
+    return bv - av;
+  });
+  if (!rows.length) { alert('내보낼 데이터가 없습니다'); return; }
+  // 날짜 컬럼 수집
+  const allDatesSet = new Set();
+  rows.forEach(r => _prodsrcGetHistory(r).forEach(h => { if (h.date) allDatesSet.add(h.date); }));
+  const dateCols = [...allDatesSet].sort((a, b) => String(a).localeCompare(String(b)));
+  // 헤더
+  const header = ['순위', '키워드', ...dateCols];
+  // 날짜별 변동폭 컬럼 (두 번째 날짜부터)
+  for (let i = 1; i < dateCols.length; i++) header.push(`${dateCols[i]} 변동`);
+  header.push('신규여부', 'URL');
+  // 본문
+  const data = rows.map(r => {
+    const histMap = new Map();
+    _prodsrcGetHistory(r).forEach(h => { if (h.date) histMap.set(h.date, h.totalSearch); });
+    const row = [r.rank ?? '', r.keyword || ''];
+    dateCols.forEach(d => row.push(histMap.get(d) ?? ''));
+    for (let i = 1; i < dateCols.length; i++) {
+      const v = histMap.get(dateCols[i]);
+      const pv = histMap.get(dateCols[i-1]);
+      if (v != null && pv != null) row.push(Number(v) - Number(pv));
+      else if (v != null && pv == null) row.push('신규');
+      else row.push('');
+    }
+    row.push(r.isNew ? 'Y' : '');
+    row.push(r.url || '');
+    return row;
+  });
+  // 워크북 생성
+  const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+  // 컬럼 폭 자동 (간단)
+  ws['!cols'] = header.map((_, i) => ({ wch: i === 1 ? 30 : 14 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '상품소싱');
+  const today = new Date().toISOString().slice(0, 10);
+  const safeName = String(cat).replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+  XLSX.writeFile(wb, `GPAGO_상품소싱_${safeName}_${today}.xlsx`);
 }
 
 // 날짜 헤더 우클릭 시 커스텀 메뉴 표시
