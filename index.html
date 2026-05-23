@@ -180,14 +180,13 @@
         </button>
       </section>
 
-      <!-- 분석 헤더 영역 — 좌우 2열 (영상 레이아웃) -->
+      <!-- 분석 헤더 영역 — ROPAGO 와 동일한 3열 그리드 -->
       <section class="bg-white rounded-4xl panel p-5 md:p-6">
-        <div class="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 lg:gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr_1fr] gap-5 lg:gap-6">
 
-          <!-- ◀ 좌측: 가중치 모드 chip + 결과 바 -->
+          <!-- ◀ 좌측 (1.5fr): 가중치 모드 chip + 결과 바 -->
           <div class="flex flex-col gap-2">
-            <!-- 모드 chip 3개 + 그 아래 결과 바 2줄 (3열 그리드 정렬) -->
-            <div class="grid grid-cols-[110px_130px_1fr] gap-2 items-center">
+            <div class="grid grid-cols-[90px_120px_1fr] gap-2 items-center">
               <button class="weight-chip" data-mode="order">순서 고정</button>
               <button class="weight-chip" data-mode="name">상품명 가중치</button>
               <button class="weight-chip weight-chip-active" data-mode="part">파트 가중치</button>
@@ -198,66 +197,62 @@
               <div class="empty-bar" id="stat-cell-5">-</div>
               <div class="empty-bar" id="stat-cell-6">-</div>
             </div>
-            <!-- 위치 가중치 -->
-            <div class="grid grid-cols-[110px_1fr] gap-2 items-center">
+            <div class="grid grid-cols-[90px_1fr] gap-2 items-center">
               <button class="weight-chip weight-chip-active">위치 가중치</button>
               <div class="empty-bar text-left" id="position-bar">-</div>
             </div>
           </div>
 
-          <!-- ▶ 우측: 키워드 입력 -->
-          <div class="flex flex-col gap-3">
-            <div class="flex items-center gap-3">
+          <!-- ▣ 가운데 (1fr): 기준 키워드 + FITER+ + 가중치 분석 버튼 -->
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center gap-2">
               <span class="text-xs font-bold text-brand-gray w-16 shrink-0">기준 키워드</span>
-              <input id="kw-base" class="pill-input flex-1" placeholder="예: 마스크">
+              <input id="kw-base" class="pill-input flex-1 min-w-0" placeholder="예: 마스크">
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
               <span class="text-xs font-black text-brand-pink w-16 shrink-0">FITER+</span>
-              <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1">
-                <input id="kw-filter" class="bg-transparent outline-none text-sm flex-1" placeholder="예: kf 94">
-                <button class="text-brand-gray hover:text-brand-black" onclick="runAnalysis()">
+              <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1 min-w-0">
+                <input id="kw-filter" class="bg-transparent outline-none text-sm flex-1 min-w-0" placeholder="예: kf 94">
+                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysis()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
               </div>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="pill-btn pill-btn-dark" onclick="runAnalysis()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                가중치 분석
+              </button>
+              <button class="pill-btn pill-btn-blue" onclick="goPage('special')">+ 동의어/순서고정</button>
+              <button class="pill-btn pill-btn-light w-9 h-9 justify-center p-0" onclick="openApiSettings()" title="API 설정">⚙</button>
+            </div>
+          </div>
+
+          <!-- ▶ 우측 (1fr): N 키워드 + 우선/혼합/텀즈 + 전체/가격비교/네이버페이 -->
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center gap-2">
               <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm shrink-0">N</span>
-              <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1">
-                <span id="kw-naver-label" class="text-sm text-brand-gray flex-1">키워드 없음</span>
+              <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
+                <span id="kw-naver-label" class="text-sm text-brand-gray flex-1 truncate">키워드 없음</span>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               </div>
             </div>
-            <div class="flex items-center gap-2 mt-1">
-              <div class="flex gap-1 bg-brand-bg rounded-full p-1" id="match-mode">
-                <button class="weight-chip" data-match="priority">우선</button>
-                <button class="weight-chip" data-match="mixed">혼합</button>
-              </div>
-              <div class="flex items-center gap-2 bg-brand-bg rounded-full px-2 py-1 flex-1">
-                <span class="weight-chip weight-chip-active text-[11px]">텀즈</span>
-                <span class="text-sm text-brand-gray flex-1 truncate" id="terms-display">-</span>
+            <div class="flex items-center gap-2 flex-wrap" id="match-mode">
+              <button class="weight-chip" data-match="priority">우선</button>
+              <button class="weight-chip" data-match="mixed">혼합</button>
+              <button class="weight-chip weight-chip-active">텀즈</button>
+              <span class="text-sm text-brand-gray flex-1 truncate" id="terms-display">-</span>
+            </div>
+            <div class="flex items-center gap-1 flex-wrap" id="result-filter">
+              <button class="weight-chip weight-chip-active" data-rfilter="all">전체</button>
+              <button class="weight-chip" data-rfilter="price">가격비교</button>
+              <button class="weight-chip" data-rfilter="naverpay">네이버페이</button>
+              <div class="bg-brand-bg rounded-full px-3 py-1 text-xs font-bold text-brand-gray ml-auto">
+                <span id="total-count">0</span>
               </div>
             </div>
           </div>
 
-        </div>
-      </section>
-
-      <!-- 액션 + 필터 -->
-      <section class="flex items-center gap-3 flex-wrap">
-        <button class="pill-btn pill-btn-dark" onclick="runAnalysis()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          가중치 분석
-        </button>
-        <button class="pill-btn pill-btn-blue" onclick="goPage('special')">+ 동의어/순서고정</button>
-        <button class="pill-btn pill-btn-light w-10 h-10 justify-center" onclick="openApiSettings()" title="API 설정">⚙</button>
-        <div class="flex-1"></div>
-        <div class="flex items-center gap-1 bg-white rounded-full p-1 panel" id="result-filter">
-          <button class="weight-chip weight-chip-active" data-rfilter="all">전체</button>
-          <button class="weight-chip" data-rfilter="price">가격비교</button>
-          <button class="weight-chip" data-rfilter="naverpay">네이버페이</button>
-          <div class="bg-brand-bg rounded-full px-3 py-1 text-xs font-bold text-brand-gray ml-1">
-            <span id="total-count">0</span>
-          </div>
         </div>
       </section>
 
