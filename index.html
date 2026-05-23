@@ -343,6 +343,16 @@
         </div>
       </section>
 
+      <!-- 카테고리 비율 (셀하 스타일) -->
+      <section id="category-ratio-section" class="hidden bg-white rounded-4xl panel p-5 md:p-6">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <h3 class="font-black text-[15px]">상품의 카테고리 비율</h3>
+          <span class="text-xs text-brand-gray">검색된 상품들이 속한 카테고리 분포</span>
+        </div>
+        <div id="category-ratio-list" class="flex flex-col gap-2"></div>
+      </section>
+
       <!-- 결과 테이블 -->
       <section class="bg-white rounded-4xl panel overflow-hidden">
         <div class="overflow-x-auto">
@@ -2212,6 +2222,42 @@ function computeStats(items, terms, baseKw, filterKw) {
     posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTerms(_stripHtml(top1.title), terms) + '</span>';
     posBar.classList.add('filled');
   }
+
+  // 카테고리 비율 — 전체 검색 결과 기준
+  renderCategoryRatio(items);
+}
+
+// 카테고리 풀패스별 비율 계산 + 렌더링
+function renderCategoryRatio(items) {
+  const section = document.getElementById('category-ratio-section');
+  const listEl = document.getElementById('category-ratio-list');
+  if (!section || !listEl) return;
+  if (!items.length) { section.classList.add('hidden'); return; }
+  const total = items.length;
+  const counts = {};
+  items.forEach(it => {
+    const path = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
+    if (!path) return;
+    counts[path] = (counts[path] || 0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!sorted.length) { section.classList.add('hidden'); return; }
+  listEl.innerHTML = sorted.map(([path, cnt]) => {
+    const pct = (cnt / total) * 100;
+    const pctStr = pct.toFixed(2);
+    return `
+      <div class="flex items-center gap-3 text-sm">
+        <div class="font-black text-brand-blue w-20 shrink-0 text-right">${pctStr}%</div>
+        <div class="flex-1 min-w-0">
+          <div class="h-2 bg-brand-bg rounded-full overflow-hidden">
+            <div class="h-full bg-brand-blue rounded-full transition-all" style="width:${pct}%"></div>
+          </div>
+        </div>
+        <div class="font-semibold text-brand-black truncate max-w-[50%]" title="${escapeHtml(path)}">${escapeHtml(path)}</div>
+        <div class="text-xs text-brand-gray shrink-0">${cnt}개</div>
+      </div>`;
+  }).join('');
+  section.classList.remove('hidden');
 }
 
 // 통계 초기화 (분석 전 빈 상태)
