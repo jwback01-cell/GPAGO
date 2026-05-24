@@ -2775,12 +2775,14 @@ function renderAnalysisResults() {
     const tagCell = tagText
       ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
-    const _rowExtra = isOrderFixed ? ' bg-brand-green-light/60 border-l-4 border-l-brand-green' : '';
-    return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors${_rowExtra}">
+    const _titleLinkCls = isOrderFixed
+      ? 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-green-light px-3 py-1.5 rounded-xl'
+      : 'font-semibold hover:text-brand-blue leading-relaxed';
+    return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
       <td class="px-3 py-3.5 text-sm align-middle">
-        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
+        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="${_titleLinkCls}">${highlighted}</a>
       </td>
       <td class="px-5 py-3.5 text-sm text-brand-black font-bold align-middle whitespace-nowrap">${_highlightTermsInline(it.mallName || '-', terms)}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${attrCell}</td>
