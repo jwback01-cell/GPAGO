@@ -8733,9 +8733,12 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   const todayStr = (typeof _prodsrcTodayDateStr === 'function') ? _prodsrcTodayDateStr() : new Date().toISOString().slice(0,10);
   const nowIso = new Date().toISOString();
 
-  // 폴더 안에서 호출됐으면 → 현재 폴더에 갱신
-  if (_prodsrcCurrentCategory) {
-    const currentFolder = _prodsrcCurrentCategory;
+  // 폴더 안에서 호출됐거나, 같은 이름의 폴더가 이미 존재하면 → 자동 갱신 모드
+  // (이전: 폴더 밖 + 중복 이름 → 에러. 변경: 폴더 밖 + 중복 → 자동 갱신)
+  const existingFolderNames = new Set(existing.map(r => r.folderName || r.category).filter(Boolean));
+  const isUpdate = !!_prodsrcCurrentCategory || existingFolderNames.has(folderName);
+  if (isUpdate) {
+    const currentFolder = _prodsrcCurrentCategory || folderName;
     const existingFolderRows = existing.filter(r => (r.folderName || r.category) === currentFolder);
     const existingByKw = new Map();
     existingFolderRows.forEach(r => existingByKw.set(r.keyword, r));
@@ -8786,12 +8789,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     return;
   }
 
-  // 폴더 밖이면 새 폴더 생성 (중복 차단)
-  const existingFolderNames = new Set(existing.map(r => r.folderName || r.category).filter(Boolean));
-  if (existingFolderNames.has(folderName)) {
-    _prodsrcMsg(`❌ "${folderName}" 폴더가 이미 존재합니다. 폴더 안에서 다시 시도하면 갱신됩니다.`, 'error');
-    return;
-  }
+  // 새 폴더 생성 (위에서 중복은 갱신으로 처리됐으므로 여기 도달 시는 신규)
   newRows.forEach(r => {
     r.folderName = folderName;
     r.uploadedAt = nowIso;
