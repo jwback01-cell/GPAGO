@@ -2742,7 +2742,7 @@ function renderAnalysisResults() {
   }
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
-    const highlighted = _highlightTerms(title, terms);
+    const highlighted = _highlightTermsInline(title, terms);
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const matched = _findJsonMatch(it);
     // 가격비교 판정 (우선) — productType='1' 또는 lowMallList 2개+ 또는 mallCount 2+
@@ -2765,7 +2765,7 @@ function renderAnalysisResults() {
       ? `<span class="text-brand-black font-semibold leading-relaxed">${attrText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
     const tagCell = tagText
-      ? `<span class="text-brand-blue font-semibold leading-relaxed">${tagText}</span>`
+      ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
@@ -2773,7 +2773,7 @@ function renderAnalysisResults() {
       <td class="px-3 py-3.5 text-sm align-middle">
         <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
       </td>
-      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle whitespace-nowrap">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-black font-bold align-middle whitespace-nowrap">${escapeHtml(it.mallName || '-')}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${attrCell}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${tagCell}</td>
     </tr>`;
