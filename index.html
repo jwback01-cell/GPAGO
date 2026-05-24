@@ -2869,6 +2869,11 @@ function parseShopJson() {
   // KEY WORD 표시
   const query = data.query || data.q || '';
   if (kwBox) { kwBox.textContent = query || '(query 필드 없음)'; kwBox.classList.remove('text-brand-gray'); kwBox.classList.add('text-brand-black','font-bold'); }
+  // N 입력란에 자동으로 키워드 채우기 (사용자가 바로 분석 실행 가능)
+  if (query) {
+    const nInput = document.getElementById('kw-naver');
+    if (nInput) nInput.value = query;
+  }
   // Terms 표시
   const terms = Array.isArray(data.terms) ? data.terms.filter(t => typeof t === 'string' && t.trim()) : [];
   const nluTerms = Array.isArray(data.nluTerms) ? data.nluTerms : [];
