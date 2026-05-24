@@ -2553,6 +2553,22 @@ function _highlightTerms(text, terms) {
   return result;
 }
 
+// 속성·태그 컬럼용 — 키워드별 다른 색으로 인라인 강조 (배지 X, ROPAGO 스타일)
+const _TERM_INLINE_COLORS = ['#0AA060','#E91E63','#2196F3','#FF9800','#9C27B0','#00BCD4'];
+function _highlightTermsInline(text, terms) {
+  let result = escapeHtml(text);
+  (terms || []).forEach((t, i) => {
+    if (!t) return;
+    const tNoSpace = t.replace(/\s+/g, '');
+    if (!tNoSpace) return;
+    const pattern = tNoSpace.split('').map(c => c.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')).join('\\s*');
+    const re = new RegExp('(' + pattern + ')', 'gi');
+    const color = _TERM_INLINE_COLORS[i % _TERM_INLINE_COLORS.length];
+    result = result.replace(re, `<span style="color:${color};font-weight:700;">$1</span>`);
+  });
+  return result;
+}
+
 // 다중 키워드 탭 렌더링
 function renderMultiKwTabs() {
   const wrap = document.getElementById('multi-kw-tabs');
@@ -2672,15 +2688,16 @@ function _findJsonMatch(item) {
 }
 
 // JSON 상품의 속성 — ROPAGO 스타일 인라인 텍스트 (characterValue를 · 로 연결)
-function _renderAttrInline(p) {
+function _renderAttrInline(p, terms) {
   if (!p) return '';
   const chars = String(p.characterValue || '').split('|').map(s => s.trim()).filter(Boolean);
   if (!chars.length) return '';
-  return chars.map(c => escapeHtml(c)).join(' · ');
+  const render = (s) => (terms && terms.length) ? _highlightTermsInline(s, terms) : escapeHtml(s);
+  return chars.map(render).join(' · ');
 }
 
 // JSON 상품의 manuTag — ROPAGO 스타일 #태그 인라인 텍스트 (운영태그 제외)
-function _renderTagInline(p) {
+function _renderTagInline(p, terms) {
   if (!p) return '';
   const EXCLUDE = new Set([
     '오늘출발','오늘발송','당일출발','당일발송','내일발송','내일도착',
@@ -2689,7 +2706,8 @@ function _renderTagInline(p) {
   ]);
   const tags = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !EXCLUDE.has(t));
   if (!tags.length) return '';
-  return tags.map(t => '#' + escapeHtml(t)).join(' ');
+  const render = (s) => (terms && terms.length) ? _highlightTermsInline(s, terms) : escapeHtml(s);
+  return tags.map(t => '#' + render(t)).join(' ');
 }
 
 function renderAnalysisResults() {
@@ -2743,8 +2761,8 @@ function renderAnalysisResults() {
         : isNaverPay
           ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
           : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
-    const attrText = _renderAttrInline(matched);
-    const tagText  = _renderTagInline(matched);
+    const attrText = _renderAttrInline(matched, terms);
+    const tagText  = _renderTagInline(matched, terms);
     const attrCell = attrText
       ? `<span class="text-brand-black font-semibold leading-relaxed">${attrText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
