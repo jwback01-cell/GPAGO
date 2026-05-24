@@ -2775,6 +2775,7 @@ function renderAnalysisResults() {
     const tagCell = tagText
       ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
+    // 순서고정 매칭: 상품명 링크에만 둥근 초록 배경 (v2 - cache bust)
     const _titleLinkCls = isOrderFixed
       ? 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-green-light px-3 py-1.5 rounded-xl'
       : 'font-semibold hover:text-brand-blue leading-relaxed';
