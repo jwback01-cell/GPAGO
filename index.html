@@ -1396,7 +1396,7 @@ PBT키캡	1180
             <div class="text-xs text-brand-gray mt-0.5">키워드·대표 카테고리·총검색수 등 컬럼이 포함된 엑셀 (.xlsx / .xls / .csv)</div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <input id="prodsrc-itemscout-input" type="search" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
+            <input id="prodsrc-itemscout-input" type="search" placeholder="URL / 카테고리 ID / 범위(2100-2150) / 비우면 전체 갱신"
               name="prodsrc-itemscout-cat" autocomplete="off" data-form-type="other" data-lpignore="true"
               aria-autocomplete="none" role="searchbox" inputmode="text" readonly
               class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-[380px] focus:outline-none focus:border-brand-blue"
@@ -8637,6 +8637,16 @@ function prodsrcAutoFetchItemscout() {
   }
 
   if (val) {
+    // 범위 입력 감지 — "2100-2150" / "2100~2150" / URL 범위 패턴
+    const rangeMatch = val.match(/(\d+)\s*[-~]\s*(\d+)/);
+    if (rangeMatch) {
+      const a = Number(rangeMatch[1]);
+      const b = Number(rangeMatch[2]);
+      if (a > 0 && b > 0 && Math.abs(b - a) <= 200) {
+        _prodsrcAutoFetchRange(Math.min(a, b), Math.max(a, b));
+        return;
+      }
+    }
     // 단일 카테고리 자동 분석
     _prodsrcMsg(`자동 분석 시작 — 새 팝업 창에서 itemscout 페이지 열고 스크롤 후 수집합니다 (약 20-30초 소요)`, 'info');
     _prodsrcItemscoutRequestedAt = Date.now();
@@ -8656,6 +8666,74 @@ function prodsrcAutoFetchItemscout() {
   }
   // 입력 없으면 → 등록된 모든 폴더 자동 갱신
   _prodsrcAutoRefreshAllFolders();
+}
+
+// 범위로 카테고리 ID 일괄 자동 분석 (예: 2100~2150)
+async function _prodsrcAutoFetchRange(startId, endId) {
+  const count = endId - startId + 1;
+  const totalSec = count * 30;
+  if (!confirm(`itemscout 카테고리 ID ${startId} ~ ${endId} (총 ${count}개)를 순차 자동 분석합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n빈 카테고리는 자동으로 건너뜁니다.\n계속할까요?`)) return;
+  let ok = 0, empty = 0, fail = 0;
+  for (let id = startId; id <= endId; id++) {
+    const done = id - startId + 1;
+    _prodsrcMsg(`범위 자동 분석 중... (${done}/${count}) [카테고리 ${id}] — 성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`, 'info');
+    try {
+      const snap = await _prodsrcAutoFetchAndWaitRaw(id);
+      if (snap && snap.rows && snap.rows.length) {
+        try { _prodsrcImportItemscoutSnapshot(snap); } catch(err) { console.warn(err); fail++; continue; }
+        ok++;
+      } else {
+        empty++;
+      }
+    } catch (e) {
+      console.warn('[범위 자동 분석 실패]', id, e);
+      fail++;
+    }
+  }
+  _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 카테고리 ${empty} · 실패 ${fail} / 총 ${count}`, ok ? 'ok' : 'warn');
+}
+
+// 자동 분석 1건 요청 + 응답 대기 (스냅샷 반환, _prodsrcImportItemscoutSnapshot 호출은 안 함)
+function _prodsrcAutoFetchAndWaitRaw(catId) {
+  return new Promise((resolve, reject) => {
+    _prodsrcSilentMode = true;
+    const handler = (e) => {
+      if (e.source !== window) return;
+      if (!e.data || e.data.source !== 'gpago-extension') return;
+      if (e.data.type !== 'GPAGO_ITEMSCOUT_DATA') return;
+      window.removeEventListener('message', handler);
+      clearTimeout(timer);
+      _prodsrcSilentMode = false;
+      if (e.data.ok && e.data.snapshot) {
+        resolve(e.data.snapshot);
+      } else {
+        // 빈 카테고리도 ok로 처리 (스냅샷 null/empty 반환)
+        if (e.data.error && /timeout/i.test(e.data.error)) {
+          reject(new Error(e.data.error));
+        } else {
+          resolve(null);
+        }
+      }
+    };
+    window.addEventListener('message', handler);
+    try {
+      window.postMessage({
+        source: 'gpago-page',
+        type: 'GPAGO_AUTO_FETCH_ITEMSCOUT',
+        categoryIdOrUrl: String(catId)
+      }, window.location.origin);
+    } catch (e) {
+      window.removeEventListener('message', handler);
+      _prodsrcSilentMode = false;
+      reject(e);
+      return;
+    }
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      _prodsrcSilentMode = false;
+      reject(new Error('timeout (60s)'));
+    }, 60000);
+  });
 }
 
 // 등록된(itemscoutCategoryId 메타 있는) 모든 폴더 순차 자동 갱신
