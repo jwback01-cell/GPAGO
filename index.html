@@ -1396,10 +1396,12 @@ PBT키캡	1180
             <div class="text-xs text-brand-gray mt-0.5">키워드·대표 카테고리·총검색수 등 컬럼이 포함된 엑셀 (.xlsx / .xls / .csv)</div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <input id="prodsrc-itemscout-input" type="text" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
+            <input id="prodsrc-itemscout-input" type="search" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
               name="prodsrc-itemscout-cat" autocomplete="off" data-form-type="other" data-lpignore="true"
+              aria-autocomplete="none" role="searchbox" inputmode="text"
               class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-56 focus:outline-none focus:border-brand-blue"
-              onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}">
+              onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}"
+              onfocus="if(this.value.includes('@')){this.value='';}">
             <button onclick="prodsrcAutoFetchItemscout()" id="prodsrc-itemscout-auto-btn"
               class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5"
               title="입력란에 카테고리 ID/URL 있으면 → 그 카테고리만 자동 분석. 비어있으면 → 등록된 모든 폴더 자동 갱신.">
@@ -8581,8 +8583,29 @@ function prodsrcImportFromItemscout() {
   }, 5000);
 }
 
+// 자동 분석 입력란이 브라우저 자동완성으로 채워지는 것 방지 (페이지 로드 시 + 페이지 진입 시)
+function _prodsrcClearItemscoutInput() {
+  const el = document.getElementById('prodsrc-itemscout-input');
+  if (!el) return;
+  // 이메일/사용자 정보로 보이는 자동완성 값을 제거 (URL 이나 숫자 ID 가 아니면 비움)
+  const v = (el.value || '').trim();
+  if (v && (v.includes('@') || /^[A-Za-z가-힣]+$/.test(v))) {
+    el.value = '';
+  }
+}
+// 페이지 로드 후 여러 시점에 시도 (브라우저 자동완성이 느리게 채우는 경우 대응)
+if (document.readyState !== 'loading') {
+  [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearItemscoutInput, d));
+} else {
+  document.addEventListener('DOMContentLoaded', () => {
+    [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearItemscoutInput, d));
+  });
+}
+
 // 자동 분석 — 입력 있으면 그 카테고리만, 없으면 등록된 모든 폴더 자동 갱신
 function prodsrcAutoFetchItemscout() {
+  // 자동완성으로 들어간 잘못된 값(이메일 등)이면 비우고 시작
+  _prodsrcClearItemscoutInput();
   const inputEl = document.getElementById('prodsrc-itemscout-input');
   const val = (inputEl?.value || '').trim();
   if (val) {
