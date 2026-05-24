@@ -2107,10 +2107,13 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
     // (network에서 받은 진짜 네이버페이/전체 탭 데이터)
     const tabMap = { 'all': '전체', 'price': '가격비교', 'naverpay': '네이버페이' };
     const tabName = tabMap[_resultFilter];
+    const captured = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads) : [];
+    console.log(`[GPAGO 필터] '${_resultFilter}' → '${tabName}' 탭 요청 | 캡처된 탭: ${captured.join(', ') || '(없음)'}`);
     if (tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
       _switchToExtensionTab(tabName);
     } else {
       // 캡처된 탭 데이터 없으면 기존처럼 productType 필터링만
+      try { toast && toast(`⚠️ '${tabName}' 탭이 캡처되지 않았습니다. 캡처된 탭: ${captured.join(', ') || '없음'}`); } catch(_) {}
       renderAnalysisResults();
     }
   });
