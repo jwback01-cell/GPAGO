@@ -1398,10 +1398,11 @@ PBT키캡	1180
           <div class="flex items-center gap-2 flex-wrap">
             <input id="prodsrc-itemscout-input" type="search" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
               name="prodsrc-itemscout-cat" autocomplete="off" data-form-type="other" data-lpignore="true"
-              aria-autocomplete="none" role="searchbox" inputmode="text"
+              aria-autocomplete="none" role="searchbox" inputmode="text" readonly
               class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-56 focus:outline-none focus:border-brand-blue"
               onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}"
-              onfocus="if(this.value.includes('@')){this.value='';}">
+              onfocus="this.removeAttribute('readonly'); if(this.value && (this.value.includes('@')||/^[A-Za-z가-힣]+$/.test(this.value.trim()))){this.value='';}"
+              oninput="if(this.value.includes('@'))this.value=this.value.replace(/[^0-9a-zA-Z\/:.\-?=&_]/g,'');">
             <button onclick="prodsrcAutoFetchItemscout()" id="prodsrc-itemscout-auto-btn"
               class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5"
               title="입력란에 카테고리 ID/URL 있으면 → 그 카테고리만 자동 분석. 비어있으면 → 등록된 모든 폴더 자동 갱신.">
