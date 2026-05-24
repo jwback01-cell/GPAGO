@@ -2042,6 +2042,7 @@ function goPage(pageId) {
   }
   if (pageId === 'prodsrc') {
     try {
+      _prodsrcCurrentCategory = null; // 사이드바 '상품 소싱' 메뉴 클릭 시 폴더 안에서 빠져나와 폴더 목록 표시
       if (typeof _prodsrcRender === 'function') _prodsrcRender();
     } catch(e) { console.error('[prodsrc init]', e); }
   }
