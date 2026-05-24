@@ -2139,24 +2139,97 @@ async function runAnalysisWithNaverKw() {
   return runAnalysis();
 }
 
+// 로딩 오버레이 표시/숨김
+function _showLoadingOverlay(keyword) {
+  let el = document.getElementById('gpago-loading-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'gpago-loading-overlay';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(255,255,255,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-family:Pretendard,-apple-system,BlinkMacSystemFont,sans-serif;';
+    el.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:28px 36px;box-shadow:0 24px 64px rgba(0,0,0,.18);min-width:420px;max-width:520px;">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+          <div style="width:44px;height:44px;border-radius:50%;background:#00C853;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" class="anim"/></svg>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:16px;font-weight:800;color:#111;line-height:1.3;">쇼핑 데이터 가져오는 중</div>
+            <div id="gpago-loading-detail" style="font-size:12px;color:#666;margin-top:4px;line-height:1.4;"></div>
+          </div>
+          <div id="gpago-loading-pct" style="font-size:18px;font-weight:900;color:#00C853;">0%</div>
+        </div>
+        <div style="background:#E5E5EA;border-radius:8px;height:8px;overflow:hidden;">
+          <div id="gpago-loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#00C853,#3478F6);border-radius:8px;transition:width .35s;"></div>
+        </div>
+      </div>
+      <style>@keyframes gpagoSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}#gpago-loading-overlay .anim{transform-origin:center;animation:gpagoSpin 1s linear infinite;}</style>
+    `;
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+  _updateLoadingOverlay(0, `"${keyword}" 분석 준비 중...`);
+}
+
+function _updateLoadingOverlay(percent, detail) {
+  const bar = document.getElementById('gpago-loading-bar');
+  const pct = document.getElementById('gpago-loading-pct');
+  const det = document.getElementById('gpago-loading-detail');
+  if (bar) bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+  if (pct) pct.textContent = Math.round(percent) + '%';
+  if (det && detail) det.textContent = detail;
+}
+
+function _hideLoadingOverlay() {
+  const el = document.getElementById('gpago-loading-overlay');
+  if (el) el.style.display = 'none';
+}
+
+// 진행 단계 자동 진행 (시각적 진행 표시 — 실제 진행률과 약간 다를 수 있음)
+let _loadingProgressTimer = null;
+function _startLoadingProgress(keyword) {
+  _showLoadingOverlay(keyword);
+  let p = 0;
+  const steps = [
+    { p: 15, t: '네이버 쇼핑 페이지 로딩 중...' },
+    { p: 35, t: '네이버페이 탭으로 이동 중...' },
+    { p: 55, t: '네이버페이 상품 데이터 캡처 중...' },
+    { p: 75, t: '전체 탭으로 이동 중...' },
+    { p: 90, t: '전체 상품 데이터 캡처 중...' },
+    { p: 95, t: 'GPAGO로 데이터 전송 중...' },
+  ];
+  let idx = 0;
+  if (_loadingProgressTimer) clearInterval(_loadingProgressTimer);
+  _loadingProgressTimer = setInterval(() => {
+    if (idx < steps.length) {
+      _updateLoadingOverlay(steps[idx].p, steps[idx].t);
+      idx++;
+    } else {
+      clearInterval(_loadingProgressTimer);
+      _loadingProgressTimer = null;
+    }
+  }, 1100);
+}
+
 // N 입력란 Enter / 돋보기 클릭 시 — 확장 프로그램에게 트리거 요청
-// (Ctrl+Q와 동일하게 동작: 새 네이버 탭 → 검색 → 네이버페이/전체 캡처 → GPAGO에 표시)
-// 확장이 설치되어 있지 않으면 기존 runAnalysisWithNaverKw로 폴백
 let _extensionAckReceived = false;
 function _triggerExtensionFromN() {
   const naverKw = (document.getElementById('kw-naver').value || '').trim();
   if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
   _extensionAckReceived = false;
-  // 확장이 있으면 응답해줌
   window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: naverKw }, window.location.origin);
-  toast('🔄 확장 프로그램에 분석 요청 — 잠시만 기다려주세요...');
   // 1초 후 확장 응답이 없으면 폴백 (API 호출 방식)
   setTimeout(() => {
     if (!_extensionAckReceived) {
       toast('확장 프로그램 미설치 — API 방식으로 분석');
       runAnalysisWithNaverKw();
+    } else {
+      // 확장이 응답함 → 로딩 오버레이 시작
+      _startLoadingProgress(naverKw);
     }
   }, 1000);
+  // 미리 0% 단계 표시 (응답 대기 중)
+  _showLoadingOverlay(naverKw);
+  _updateLoadingOverlay(5, '확장 프로그램 응답 대기 중...');
 }
 
 // 확장 응답 (ACK) 수신
