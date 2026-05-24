@@ -2558,8 +2558,8 @@ function _highlightTerms(text, terms) {
   return result;
 }
 
-// 속성·태그 컬럼용 — 키워드별 다른 색으로 인라인 강조 (배지 X, ROPAGO 스타일)
-const _TERM_INLINE_COLORS = ['#0AA060','#E91E63','#2196F3','#FF9800','#9C27B0','#00BCD4'];
+// 상품명·속성·태그·카테고리용 — 키워드별 색상 (1번째 파랑, 2번째 빨강, cycle)
+const _TERM_INLINE_COLORS = ['#2196F3','#F44336'];
 function _highlightTermsInline(text, terms) {
   let result = escapeHtml(text);
   (terms || []).forEach((t, i) => {
@@ -2744,8 +2744,8 @@ function renderAnalysisResults() {
   }
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
-    // 상품명 키워드 강조 — 모드와 무관하게 초록색 배지 (ROPAGO 동일 스타일, 분석 후 자동 적용)
-    const highlighted = _highlightTerms(title, terms);
+    // 상품명·속성·태그 모두 동일한 inline 색상 (1번째 파랑, 2번째 빨강)
+    const highlighted = _highlightTermsInline(title, terms);
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const matched = _findJsonMatch(it);
     // 가격비교 판정 (우선) — productType='1' 또는 lowMallList 2개+ 또는 mallCount 2+
