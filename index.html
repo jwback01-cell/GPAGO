@@ -2674,6 +2674,48 @@ function _indexJsonProducts(products) {
     const cleanTitle = String(rawTitle).replace(/<[^>]+>/g, '').trim();
     if (cleanTitle) window._jsonProductsByTitle[cleanTitle] = p;
   });
+  // 4번 vs 19번 stdPrchOpt 값 비교 진단 (그룹 vs 일반 판별 신호 찾기)
+  try { _diagPrchOptCompare(products); } catch (e) { console.warn('[GPAGO prch diag]', e); }
+}
+
+// 4번(일반), 19번(그룹), 1번(일반) 의 stdPrchOpt* 모든 값 비교
+function _diagPrchOptCompare(products) {
+  const old = document.getElementById('gpago-prch-diag');
+  if (old) old.remove();
+  if (!Array.isArray(products) || products.length < 19) return;
+  const targets = [
+    { idx: 0,  label: '1번 (일반)' },
+    { idx: 3,  label: '4번 (사용자: 일반인데 그룹으로 잡힘)' },
+    { idx: 18, label: '19번 (그룹, 정상)' }
+  ];
+  const optKeys = new Set();
+  targets.forEach(t => {
+    const p = products[t.idx];
+    if (p) Object.keys(p).forEach(k => { if (/^std.*Opt/i.test(k)) optKeys.add(k); });
+  });
+  const sorted = [...optKeys].sort();
+  const headers = targets.map(t => `<th style="padding:4px;text-align:left;color:#2196F3;">${t.label}</th>`).join('');
+  const rows = sorted.map(k => {
+    const cells = targets.map(t => {
+      const v = products[t.idx]?.[k];
+      const s = (v == null || v === '') ? '<i style="color:#bbb">""</i>' : String(v).slice(0,30);
+      return `<td style="padding:2px 6px;border-bottom:1px solid #eee;color:#444;">${s}</td>`;
+    }).join('');
+    return `<tr><td style="padding:2px 6px;border-bottom:1px solid #eee;"><b>${k}</b></td>${cells}</tr>`;
+  }).join('');
+  const box = document.createElement('div');
+  box.id = 'gpago-prch-diag';
+  box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #FF6B6B;border-radius:12px;padding:10px 14px;font-size:11px;font-family:monospace;max-width:760px;max-height:75vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);';
+  box.innerHTML = `
+    <div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#FF6B6B;">🔍 1번 · 4번 · 19번 stdPrchOpt* 값 비교
+      <button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-prch-diag').remove()">닫기</button>
+    </div>
+    <div style="font-size:10px;color:#666;margin-bottom:4px;">4번과 19번이 다른 값을 가진 필드가 그룹 식별의 정답</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px;">
+      <thead><tr style="background:#f5f5f5;"><th style="padding:4px;text-align:left;">필드</th>${headers}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  document.body.appendChild(box);
 }
 
 
