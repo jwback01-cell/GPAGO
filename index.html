@@ -2637,11 +2637,9 @@ function _adaptJsonProductToAnalysisItem(p) {
   }
 
   // 그룹(옵션묶음) 상품 감지 — 네이버 쇼핑에서 "다른 옵션 상품보기" 가 뜨는 상품
-  // 식별 필드: stdProdOptCount(옵션 개수) > 0  또는 stdProdOptHit === 1 (Prod·Proh 둘 다 대응)
-  const stdOptCount = Number(p.stdProdOptCount || p.stdProhOptCount || 0) || 0;
-  const stdOptHit = Number(p.stdProdOptHit || p.stdProhOptHit || 0) || 0;
-  const stdOptNames = String(p.stdProdOptNames || p.stdProhOptNames || '').trim();
-  const isGroup = stdOptCount > 0 || stdOptHit > 0 || (stdOptNames !== '' && stdOptNames !== '0');
+  // 식별 필드: std로 시작 + Opt 포함 + Count/Hit 으로 끝나는 키의 값 > 0
+  // (stdPrchOptCount, stdProhOptCount, stdProdOptCount 등 변형 모두 대응)
+  const isGroup = _detectGroupFromRaw(p);
 
   return {
     title: p.productTitle || p.productName || p.title || '',
@@ -2676,48 +2674,6 @@ function _indexJsonProducts(products) {
     const cleanTitle = String(rawTitle).replace(/<[^>]+>/g, '').trim();
     if (cleanTitle) window._jsonProductsByTitle[cleanTitle] = p;
   });
-  // 그룹 판정 진단 — 모든 상품의 stdProhOpt*/stdProdOpt* 값 표시 (우측 하단)
-  try { _showGroupOptDebug(products); } catch (e) { console.warn('[GPAGO opt debug]', e); }
-}
-
-// 19번 (그룹 추정) vs 1번 (일반) 전체 필드 비교 — 차이나는 값을 찾아 그룹 식별자 도출
-function _showGroupOptDebug(products) {
-  const old = document.getElementById('gpago-opt-debug');
-  if (old) old.remove();
-  if (!Array.isArray(products) || products.length < 19) return;
-  const target = products[18];   // 19번 (사용자가 그룹이라고 알려준 행)
-  const normal = products[0];    // 1번 (일반)
-  const box = document.createElement('div');
-  box.id = 'gpago-opt-debug';
-  box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #FF6B6B;border-radius:12px;padding:10px 14px;font-size:10px;font-family:monospace;max-width:760px;max-height:78vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);';
-
-  const fmt = (v) => {
-    if (v == null) return '<i style="color:#bbb">null</i>';
-    if (v === '') return '<i style="color:#bbb">""</i>';
-    if (Array.isArray(v)) return `[${v.length}]` + (v.length ? '·' + JSON.stringify(v[0]).slice(0, 30) : '');
-    if (typeof v === 'object') return '{}'+ JSON.stringify(v).slice(0, 40);
-    return String(v).slice(0, 50);
-  };
-  const allKeys = new Set([...Object.keys(target||{}), ...Object.keys(normal||{})]);
-  const sorted = [...allKeys].sort();
-  const rows = sorted.map(k => {
-    const tv = target ? target[k] : undefined;
-    const nv = normal ? normal[k] : undefined;
-    const same = JSON.stringify(tv) === JSON.stringify(nv);
-    if (same) return ''; // 같은 값은 표시 안 함 (다른 값만 보여줘서 그룹 식별자 찾기 쉽게)
-    return `<tr style="background:#FFF3CD;"><td style="padding:2px 4px;border-bottom:1px solid #eee;"><b>${k}</b></td><td style="padding:2px 4px;border-bottom:1px solid #eee;color:#0AA060;">${fmt(tv)}</td><td style="padding:2px 4px;border-bottom:1px solid #eee;color:#888;">${fmt(nv)}</td></tr>`;
-  }).filter(Boolean).join('');
-
-  box.innerHTML = `
-    <div style="font-weight:bold;font-size:12px;margin-bottom:6px;color:#FF6B6B;">🔍 19번(그룹·유앤미) vs 1번(일반) — 값이 다른 필드만 표시
-      <button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-opt-debug').remove()">닫기</button>
-    </div>
-    <div style="font-size:10px;color:#666;margin-bottom:4px;">"옵션", "group", "set", "lineup" 같은 키워드 들어간 필드를 찾으세요</div>
-    <table style="width:100%;border-collapse:collapse;font-size:10px;">
-      <thead><tr style="background:#f5f5f5;"><th style="padding:4px;text-align:left;">필드명</th><th style="padding:4px;text-align:left;">19번(그룹)</th><th style="padding:4px;text-align:left;">1번(일반)</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="3" style="padding:8px;text-align:center;color:#999;">차이 없음</td></tr>'}</tbody>
-    </table>`;
-  document.body.appendChild(box);
 }
 
 
@@ -2729,54 +2685,18 @@ function _findJsonMatch(item) {
   return null;
 }
 
-// 19번 행 판정 진단 — 좌측 하단에 실시간 판정 결과 표시
-function _diag19RowResult(it19) {
-  const old = document.getElementById('gpago-row19-result');
-  if (old) old.remove();
-  if (!it19) return;
-  const matched = _findJsonMatch(it19);
-  const _mallCount = Number(matched?.mallCount || 0) || 0;
-  const _lowMallLen = Array.isArray(matched?.lowMallList) ? matched.lowMallList.length : 0;
-  const isPriceCompare = String(it19.productType) === '1' || _lowMallLen >= 2 || _mallCount >= 2;
-  const _stdOptCount = Number(matched?.stdProhOptCount || matched?.stdProdOptCount || 0) || 0;
-  const _stdOptHit   = Number(matched?.stdProhOptHit   || matched?.stdProdOptHit   || 0) || 0;
-  const isGroup = !isPriceCompare && (_stdOptCount > 0 || _stdOptHit > 0);
-  const isNaverPay = ['2','3'].includes(String(it19.productType));
-  const badge = isGroup ? '그룹' : isPriceCompare ? '가격' : isNaverPay ? '일반' : '기타';
-  const matchedTitle = (matched?.productTitle || matched?.productName || '').replace(/<[^>]+>/g,'').slice(0,30);
-  const itTitle = (it19.title || '').replace(/<[^>]+>/g,'').slice(0,30);
-
-  // matched 객체 안의 'opt' 들어간 모든 키-값 (필드 이름 진단)
-  const optKeys = matched ? Object.keys(matched).filter(k => /opt/i.test(k)) : [];
-  const optDetails = optKeys.length
-    ? optKeys.map(k => `<div style="margin-left:8px;color:#0AA060;"><b>${k}</b> = ${JSON.stringify(matched[k]).slice(0,40)}</div>`).join('')
-    : '<div style="margin-left:8px;color:#FF6B6B;">(opt 포함된 키가 하나도 없음!)</div>';
-
-  // raw products의 19번 (인덱스 18)도 직접 비교
-  const rawList = Object.values(window._jsonProductsByPid || {});
-  const directRaw18 = rawList.find(p => String(p.id) === String(it19.productId)) || null;
-  const directOptKeys = directRaw18 ? Object.keys(directRaw18).filter(k => /opt/i.test(k)) : [];
-
-  const div = document.createElement('div');
-  div.id = 'gpago-row19-result';
-  div.style.cssText = 'position:fixed;left:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #2196F3;border-radius:12px;padding:10px 14px;font-size:11px;font-family:monospace;max-width:560px;max-height:75vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);line-height:1.5;';
-  div.innerHTML = `
-    <div style="font-weight:bold;color:#2196F3;margin-bottom:6px;font-size:12px;">📊 19번 행 실시간 판정
-      <button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-row19-result').remove()">닫기</button>
-    </div>
-    <div>화면 19번 title: <span style="color:#0AA060">${itTitle}</span></div>
-    <div>화면 19번 productId: <span style="color:#0AA060">${it19.productId}</span></div>
-    <div>matched: <b style="color:${matched?'#0AA060':'#FF6B6B'}">${matched ? '✓ 성공' : '✗ 실패'}</b> · ${matchedTitle || '-'}</div>
-    <div style="margin-top:6px;font-weight:bold;color:#444;">▶ matched 객체의 'opt' 키 (${optKeys.length}개):</div>
-    ${optDetails}
-    <div style="margin-top:6px;font-weight:bold;color:#444;">▶ _jsonProductsByPid 직접 조회 결과 (같은 productId):</div>
-    <div style="margin-left:8px;">직접조회 success: <b>${directRaw18 ? '✓' : '✗'}</b> · 'opt' 키 개수: ${directOptKeys.length}</div>
-    ${directRaw18 ? `<div style="margin-left:8px;color:#666;">키 목록: ${directOptKeys.slice(0,8).join(', ') || '(없음)'}</div>` : ''}
-    <div style="margin-top:6px;">productType: <b>${it19.productType}</b> · mallCount: ${_mallCount} · lowMallList: ${_lowMallLen}</div>
-    <div>→ isPriceCompare: <b style="color:${isPriceCompare?'#E91E63':'#888'}">${isPriceCompare}</b> · isGroup: <b style="color:${isGroup?'#2196F3':'#888'}">${isGroup}</b> · isNaverPay: <b>${isNaverPay}</b></div>
-    <div style="margin-top:6px;font-size:13px;">최종 뱃지: <b style="color:#FF6B6B">${badge}</b></div>`;
-  document.body.appendChild(div);
+// 그룹(옵션묶음) 상품 감지 — std로 시작 + Opt 포함 + Count/Hit 으로 끝나는 키의 값 > 0 이면 그룹
+// stdPrchOptCount(8), stdPrchOptHit(1) 같은 신호. Prch/Proh/Prod 변형 모두 대응
+function _detectGroupFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') return false;
+  for (const k of Object.keys(raw)) {
+    if (!/^std.*Opt.*(Count|Hit)$/i.test(k)) continue;
+    const n = Number(raw[k]);
+    if (n > 0) return true;
+  }
+  return false;
 }
+
 
 // JSON 상품의 속성 — ROPAGO 스타일 인라인 텍스트 (characterValue를 · 로 연결)
 function _renderAttrInline(p, terms) {
@@ -2816,8 +2736,6 @@ function renderAnalysisResults() {
     tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
-  // 19번 행 실시간 판정 진단 (좌측 하단)
-  try { _diag19RowResult(items[18]); } catch(_) {}
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
     const highlighted = _highlightTerms(title, terms);
@@ -2829,14 +2747,7 @@ function renderAnalysisResults() {
     const isPriceCompare = String(it.productType) === '1' || _lowMallLen >= 2 || _mallCount >= 2;
     const isNaverPay = ['2','3'].includes(String(it.productType));
     // 그룹 판정 — 가격비교가 아닐 때만 검사 (가격비교가 그룹보다 우선)
-    // stdProhOpt* / stdProdOpt* 만 검사 (14번 같은 옵션 묶음 상품의 정확한 신호)
-    let isGroup = false;
-    if (!isPriceCompare) {
-      const _so = matched || {};
-      const _stdOptCount = Number(_so.stdProhOptCount || _so.stdProdOptCount || 0) || 0;
-      const _stdOptHit   = Number(_so.stdProhOptHit   || _so.stdProdOptHit   || 0) || 0;
-      isGroup = _stdOptCount > 0 || _stdOptHit > 0;
-    }
+    const isGroup = !isPriceCompare && _detectGroupFromRaw(matched);
     const groupBadge = isGroup
       ? '<span class="inline-block text-[10px] font-black bg-brand-blue-light text-brand-blue px-2.5 py-0.5 rounded-full">그룹</span>'
       : isPriceCompare
