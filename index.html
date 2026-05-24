@@ -3113,9 +3113,22 @@ async function _processExtensionPayload(payload, tabsMap) {
 
     const tabCount = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads).length : 1;
     const tabNames = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads).join(', ') : '';
-    // 초기 화면에 표시되는 탭 (전체 우선)을 적절히 표시
-    const displayedTab = window._extensionTabPayloads?.['전체'] ? '전체' :
-                         window._extensionTabPayloads?.['네이버페이'] ? '네이버페이' : '';
+    // 초기 화면에 표시되는 탭 (네이버페이 우선)
+    const displayedTab = window._extensionTabPayloads?.['네이버페이'] ? '네이버페이' :
+                         window._extensionTabPayloads?.['전체'] ? '전체' : '';
+    // 표시되는 탭에 맞게 chip 활성화
+    if (displayedTab) {
+      const chipMap = { '전체': 'all', '가격비교': 'price', '네이버페이': 'naverpay' };
+      const targetRfilter = chipMap[displayedTab];
+      if (targetRfilter) {
+        try {
+          _resultFilter = targetRfilter;
+          document.querySelectorAll('[data-rfilter]').forEach(x => {
+            x.classList.toggle('weight-chip-active', x.dataset.rfilter === targetRfilter);
+          });
+        } catch (_) {}
+      }
+    }
     try {
       toast && toast(`✅ 분석 완료 — 현재: ${displayedTab} 데이터 (${tabCount}개 탭 캡처: ${tabNames})`);
     } catch(_) {}
