@@ -2667,35 +2667,58 @@ function _indexJsonProducts(products) {
   try { _showGroupDetectDebug(products); } catch (e) { console.warn('[GPAGO 그룹 디버그]', e); }
 }
 
-// 그룹 판정 진단 — 어떤 필드가 그룹 상품 식별에 쓰이는지 알아내기 위함
+// 그룹 판정 진단 — 14번 제품의 모든 필드를 직접 표시 (어떤 필드가 그룹 식별에 쓰이는지 찾기)
 function _showGroupDetectDebug(products) {
   if (!Array.isArray(products) || !products.length) return;
-  const candidateKeys = ['productType','productSet','productSetNo','productSetType','setNo','optionLineupCount','productOptionsLineupCount','hasOption','hasOptions','optionList','optionGroup','optionGroupId','optionLineup','groupProductYn','representativeId','seedProductNo','lowMallList','originalProductTypeCode','productSetGroupId','productOptionsLineup','productOptions','lowestPriceMallList','mallProductId','optionLineupYn'];
-  console.group('[GPAGO 그룹 판정 디버그] 첫 20개 제품의 의심 필드 (전체키는 펼쳐서 확인)');
-  products.slice(0, 20).forEach((p, i) => {
-    const v = {};
-    candidateKeys.forEach(k => { if (p[k] != null && p[k] !== '' && !(Array.isArray(p[k]) && p[k].length === 0)) v[k] = p[k]; });
-    const title = String(p.productTitle || p.productName || p.title || '').replace(/<[^>]+>/g, '').slice(0, 50);
-    console.log(`[${i+1}] ${title} | ${p.mallName || '-'}`, v, '|모든키:', Object.keys(p).sort());
-  });
+  console.group('[GPAGO 그룹 진단] 14번 제품 전체 필드 vs 다른 일반 제품 비교');
+  const target = products[13];      // 14번 (그룹으로 알려진 제품)
+  const compareA = products[0];     // 1번
+  const compareB = products[3];     // 4번 (다른 일반 제품)
+  if (target) {
+    console.log('🔵 14번 제품 (그룹 추정):', target);
+    console.log('   모든 키:', Object.keys(target).sort());
+  }
+  if (compareA) console.log('⚪ 1번 제품 (비교용):', compareA, '|키:', Object.keys(compareA).sort());
+  if (compareB) console.log('⚪ 4번 제품 (비교용):', compareB, '|키:', Object.keys(compareB).sort());
   console.groupEnd();
-  console.log('💡 14번째 제품의 모든 필드를 보려면 콘솔에 입력: copy(window._jsonProductsByPid[Object.keys(window._jsonProductsByPid)[13]])');
 
-  // 페이지 상단에 작은 진단 박스 표시 (스크린샷 보내기 쉽게)
+  // 페이지 우측 하단 진단 박스 — 14번과 1번을 동시에 비교 표시
   const old = document.getElementById('gpago-group-debug');
   if (old) old.remove();
   const box = document.createElement('div');
   box.id = 'gpago-group-debug';
-  box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #2196F3;border-radius:12px;padding:12px 16px;font-size:11px;font-family:monospace;max-width:520px;max-height:60vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);';
-  const rows = products.slice(0, 20).map((p, i) => {
-    const v = {};
-    candidateKeys.forEach(k => { if (p[k] != null && p[k] !== '' && !(Array.isArray(p[k]) && p[k].length === 0)) v[k] = Array.isArray(p[k]) ? `[배열 ${p[k].length}개]` : (typeof p[k] === 'object' ? '{객체}' : String(p[k]).slice(0, 30)); });
-    const title = String(p.productTitle || p.productName || p.title || '').replace(/<[^>]+>/g, '').slice(0, 35);
-    const flag = (i === 13) ? ' ← 14번' : '';
-    const fields = Object.keys(v).map(k => `<b>${k}</b>=${v[k]}`).join(', ') || '<i style="color:#999">의심 필드 없음</i>';
-    return `<div style="padding:4px 0;border-bottom:1px solid #eee;"><b style="color:#2196F3">${i+1}${flag}</b> ${title}<br><span style="color:#444">${fields}</span></div>`;
+  box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #2196F3;border-radius:12px;padding:12px 16px;font-size:11px;font-family:monospace;max-width:720px;max-height:75vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);';
+
+  // 두 제품의 키를 비교 — 14번에만 있거나 값이 다른 필드는 빨간색 강조
+  const tKeys = target ? new Set(Object.keys(target)) : new Set();
+  const aKeys = compareA ? new Set(Object.keys(compareA)) : new Set();
+  const allKeys = new Set([...tKeys, ...aKeys]);
+  const fmt = (v) => {
+    if (v == null) return '<i style="color:#bbb">(없음)</i>';
+    if (Array.isArray(v)) return `[배열 ${v.length}개]` + (v.length ? ` ${JSON.stringify(v[0]).slice(0,40)}...` : '');
+    if (typeof v === 'object') return '{객체} ' + JSON.stringify(v).slice(0, 50);
+    if (v === '') return '<i style="color:#bbb">(빈문자)</i>';
+    return String(v).slice(0, 60);
+  };
+  const rows = [...allKeys].sort().map(k => {
+    const tv = target ? target[k] : undefined;
+    const av = compareA ? compareA[k] : undefined;
+    const tvStr = fmt(tv);
+    const avStr = fmt(av);
+    const diff = JSON.stringify(tv) !== JSON.stringify(av);
+    const bg = diff ? 'background:#FFF3CD;' : '';
+    return `<tr style="${bg}"><td style="padding:2px 6px;border-bottom:1px solid #eee;"><b>${k}</b></td><td style="padding:2px 6px;border-bottom:1px solid #eee;color:#1976D2;">${tvStr}</td><td style="padding:2px 6px;border-bottom:1px solid #eee;color:#666;">${avStr}</td></tr>`;
   }).join('');
-  box.innerHTML = `<div style="font-weight:bold;font-size:12px;margin-bottom:8px;color:#2196F3;">🔍 그룹 판정 진단 — 14번 행을 보고 어떤 필드가 있는지 확인하세요<button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-group-debug').remove()">닫기</button></div>${rows}`;
+
+  box.innerHTML = `
+    <div style="font-weight:bold;font-size:12px;margin-bottom:8px;color:#2196F3;">
+      🔍 14번 제품 vs 1번 제품 — 노란색이 차이나는 필드 (그룹 식별에 쓰일 가능성)
+      <button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-group-debug').remove()">닫기</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px;">
+      <thead><tr style="background:#f5f5f5;"><th style="text-align:left;padding:4px 6px;">필드명</th><th style="text-align:left;padding:4px 6px;">14번 값</th><th style="text-align:left;padding:4px 6px;">1번 값</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
   document.body.appendChild(box);
 }
 
