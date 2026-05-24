@@ -329,8 +329,8 @@
                 <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm">N</span>
               </span>
               <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
-                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') runAnalysisWithNaverKw()">
-                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysisWithNaverKw()">
+                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') _triggerExtensionFromN()">
+                <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="_triggerExtensionFromN()">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
               </div>
@@ -2138,6 +2138,34 @@ async function runAnalysisWithNaverKw() {
   if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
   return runAnalysis();
 }
+
+// N 입력란 Enter / 돋보기 클릭 시 — 확장 프로그램에게 트리거 요청
+// (Ctrl+Q와 동일하게 동작: 새 네이버 탭 → 검색 → 네이버페이/전체 캡처 → GPAGO에 표시)
+// 확장이 설치되어 있지 않으면 기존 runAnalysisWithNaverKw로 폴백
+let _extensionAckReceived = false;
+function _triggerExtensionFromN() {
+  const naverKw = (document.getElementById('kw-naver').value || '').trim();
+  if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
+  _extensionAckReceived = false;
+  // 확장이 있으면 응답해줌
+  window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: naverKw }, window.location.origin);
+  toast('🔄 확장 프로그램에 분석 요청 — 잠시만 기다려주세요...');
+  // 1초 후 확장 응답이 없으면 폴백 (API 호출 방식)
+  setTimeout(() => {
+    if (!_extensionAckReceived) {
+      toast('확장 프로그램 미설치 — API 방식으로 분석');
+      runAnalysisWithNaverKw();
+    }
+  }, 1000);
+}
+
+// 확장 응답 (ACK) 수신
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') {
+    _extensionAckReceived = true;
+  }
+});
 
 // 다중 키워드 분석 결과 저장 (탭 전환용)
 let _multiAnalysisResults = []; // [{ query, items, total, baseKw, filterKw }]
