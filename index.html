@@ -9348,13 +9348,33 @@ function prodsrcRenderDetail() {
 
   if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
   // 정렬 우선순위:
-  // 1) 신규 키워드 + 검색량 1000 이상 → 최상단
-  // 2) 그 외는 총검색수 내림차순 (null은 맨 아래)
+  // 1) 신규 키워드 (이전 날짜에 데이터 없음) → 최상단
+  // 2) 직전 날짜 대비 변동 절대값 1000 이상 → 그 다음
+  // 3) 그 외는 총검색수 내림차순 (null 은 맨 아래)
+  const _getLastTwoHist = (r) => {
+    const h = _prodsrcGetHistory(r);
+    const last = h.length >= 1 ? h[h.length - 1]?.totalSearch : null;
+    const prev = h.length >= 2 ? h[h.length - 2]?.totalSearch : null;
+    return { last, prev };
+  };
   rows.sort((a, b) => {
-    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 500);
-    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 500);
-    if (aHotNew && !bHotNew) return -1;
-    if (!aHotNew && bHotNew) return 1;
+    const ha = _getLastTwoHist(a);
+    const hb = _getLastTwoHist(b);
+    // 신규 판정: isNew 플래그 OR 직전 데이터가 없음(prev=null)이면서 현재 값 있음
+    const aNew = !!a.isNew || (ha.prev == null && ha.last != null);
+    const bNew = !!b.isNew || (hb.prev == null && hb.last != null);
+    if (aNew && !bNew) return -1;
+    if (!aNew && bNew) return 1;
+    // 변동 절대값 1000 이상
+    const aDiff = (ha.last != null && ha.prev != null) ? Math.abs(Number(ha.last) - Number(ha.prev)) : 0;
+    const bDiff = (hb.last != null && hb.prev != null) ? Math.abs(Number(hb.last) - Number(hb.prev)) : 0;
+    const aBig = aDiff >= 1000;
+    const bBig = bDiff >= 1000;
+    if (aBig && !bBig) return -1;
+    if (!aBig && bBig) return 1;
+    // 둘 다 큰 변동이면 변동량 큰 순
+    if (aBig && bBig && aDiff !== bDiff) return bDiff - aDiff;
+    // 그 외: 총검색수 내림차순
     const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
     const bv = b.totalSearch == null ? -Infinity : Number(b.totalSearch);
     return bv - av;
