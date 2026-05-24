@@ -2709,7 +2709,13 @@ function renderAnalysisResults() {
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const isPriceCompare = String(it.productType) === '1';
     const isNaverPay = ['2','3'].includes(String(it.productType));
-    const isGroup = !!it.isGroup;
+    const matched = _findJsonMatch(it);
+    // 그룹 판정 — adapter 캐시(it.isGroup) 또는 raw JSON(matched)에서 직접 검사
+    const _rawForGroup = matched || {};
+    const _stdOptCount = Number(_rawForGroup.stdProdOptCount || _rawForGroup.stdProhOptCount || 0) || 0;
+    const _stdOptHit   = Number(_rawForGroup.stdProdOptHit   || _rawForGroup.stdProhOptHit   || 0) || 0;
+    const _stdOptNames = String(_rawForGroup.stdProdOptNames || _rawForGroup.stdProhOptNames || '').trim();
+    const isGroup = !!it.isGroup || _stdOptCount > 0 || _stdOptHit > 0 || (_stdOptNames !== '' && _stdOptNames !== '0');
     const groupBadge = isGroup
       ? '<span class="inline-block text-[10px] font-black bg-brand-blue-light text-brand-blue px-2.5 py-0.5 rounded-full">그룹</span>'
       : isPriceCompare
@@ -2717,7 +2723,6 @@ function renderAnalysisResults() {
         : isNaverPay
           ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
           : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
-    const matched = _findJsonMatch(it);
     const attrText = _renderAttrInline(matched);
     const tagText  = _renderTagInline(matched);
     const attrCell = attrText
