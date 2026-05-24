@@ -2779,10 +2779,10 @@ function renderAnalysisResults() {
     const tagCell = tagText
       ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
-    // 순서고정 매칭: 상품명 링크에만 둥근 초록 배경 (v2 - cache bust)
+    // 순서고정 매칭: 초록 배경 / 그 외: 연한 주황 배경 (둘 다 둥근 셀 배지)
     const _titleLinkCls = isOrderFixed
       ? 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-green-light px-3 py-1.5 rounded-xl'
-      : 'font-semibold hover:text-brand-blue leading-relaxed';
+      : 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-orange-light px-3 py-1.5 rounded-xl';
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
