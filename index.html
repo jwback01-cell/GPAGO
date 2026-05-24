@@ -2499,7 +2499,7 @@ function computeStats(items, terms, baseKw, filterKw) {
         : '';
       return `<b class="text-brand-pink cursor-pointer hover:underline" onclick="event.stopPropagation();scrollToRank(${mi.rank})" title="${mi.rank}등 상품으로 이동">${mi.rank}등</b>${locTag}`;
     }).join(', ');
-    return `<b>${escapeHtml(tc.term)}</b> 미포함 - ${ranksStr} <span class="text-brand-gray text-[10px] ml-1">(${tc.missingInfo.length}개)</span>`;
+    return `${ranksStr} <span class="text-brand-gray text-[10px] ml-1">(${tc.missingInfo.length}개)</span>`;
   }
   if (termCounts[0]) _fillCell('stat-cell-3', _fmtMiss(termCounts[0]));
   else _fillCell('stat-cell-3', '-');
