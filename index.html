@@ -9372,6 +9372,16 @@ async function importGpagoMigrationData(evt) {
   }
   evt.target.value = '';
 }
+
+// 버전 표시 (캐시 확인용) — 좌측 하단에 작은 라벨
+(function(){
+  try {
+    const ver = document.createElement('div');
+    ver.style.cssText = 'position:fixed;left:6px;bottom:4px;z-index:999;font-size:9px;color:#aaa;font-family:monospace;pointer-events:none;';
+    ver.textContent = 'v3 · 순서고정-셀단위';
+    document.body.appendChild(ver);
+  } catch(_) {}
+})();
 </script>
 </body>
 </html>
