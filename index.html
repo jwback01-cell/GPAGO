@@ -2731,6 +2731,8 @@ function renderAnalysisResults() {
   const tbody = document.getElementById('analysis-tbody');
   if (!_lastAnalysisItems.length) return;
   const terms = _extractTerms(_lastBaseKw, _lastFilterKw);
+  // 순서 고정 판정용 — FITER+(또는 기준 키워드) 공백 제거 문자열
+  const _orderFixKw = (_lastFilterKw || _lastBaseKw || '').toLowerCase().replace(/\s+/g, '');
   // 필터 적용
   let items = _lastAnalysisItems.slice();
   if (_resultFilter === 'price') {
@@ -2746,6 +2748,9 @@ function renderAnalysisResults() {
     const title = _stripHtml(it.title);
     // 상품명·속성·태그 모두 동일한 inline 색상 (1번째 파랑, 2번째 빨강)
     const highlighted = _highlightTermsInline(title, terms);
+    // 순서 고정 매칭 — 키워드가 공백 무시하고 그대로 연속해서 포함되면 true
+    const _titleNoSpace = title.toLowerCase().replace(/\s+/g, '');
+    const isOrderFixed = !!_orderFixKw && _titleNoSpace.includes(_orderFixKw);
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const matched = _findJsonMatch(it);
     // 가격비교 판정 (우선) — productType='1' 또는 lowMallList 2개+ 또는 mallCount 2+
@@ -2770,7 +2775,8 @@ function renderAnalysisResults() {
     const tagCell = tagText
       ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
       : '<span class="text-brand-gray text-[11px]">-</span>';
-    return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
+    const _rowExtra = isOrderFixed ? ' bg-brand-green-light/60 border-l-4 border-l-brand-green' : '';
+    return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors${_rowExtra}">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
       <td class="px-3 py-3.5 text-sm align-middle">
