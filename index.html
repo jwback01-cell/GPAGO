@@ -2729,6 +2729,40 @@ function _findJsonMatch(item) {
   return null;
 }
 
+// 19번 행 판정 진단 — 좌측 하단에 실시간 판정 결과 표시
+function _diag19RowResult(it19) {
+  const old = document.getElementById('gpago-row19-result');
+  if (old) old.remove();
+  if (!it19) return;
+  const matched = _findJsonMatch(it19);
+  const _mallCount = Number(matched?.mallCount || 0) || 0;
+  const _lowMallLen = Array.isArray(matched?.lowMallList) ? matched.lowMallList.length : 0;
+  const isPriceCompare = String(it19.productType) === '1' || _lowMallLen >= 2 || _mallCount >= 2;
+  const _stdOptCount = Number(matched?.stdProhOptCount || matched?.stdProdOptCount || 0) || 0;
+  const _stdOptHit   = Number(matched?.stdProhOptHit   || matched?.stdProdOptHit   || 0) || 0;
+  const isGroup = !isPriceCompare && (_stdOptCount > 0 || _stdOptHit > 0);
+  const isNaverPay = ['2','3'].includes(String(it19.productType));
+  const badge = isGroup ? '그룹' : isPriceCompare ? '가격' : isNaverPay ? '일반' : '기타';
+  const matchedTitle = (matched?.productTitle || matched?.productName || '').replace(/<[^>]+>/g,'').slice(0,30);
+  const itTitle = (it19.title || '').replace(/<[^>]+>/g,'').slice(0,30);
+  const div = document.createElement('div');
+  div.id = 'gpago-row19-result';
+  div.style.cssText = 'position:fixed;left:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #2196F3;border-radius:12px;padding:10px 14px;font-size:11px;font-family:monospace;max-width:520px;box-shadow:0 8px 24px rgba(0,0,0,.2);line-height:1.6;';
+  div.innerHTML = `
+    <div style="font-weight:bold;color:#2196F3;margin-bottom:6px;font-size:12px;">📊 19번 행 실시간 판정
+      <button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-row19-result').remove()">닫기</button>
+    </div>
+    <div>화면 19번 title: <span style="color:#0AA060">${itTitle}</span></div>
+    <div>화면 19번 productId: <span style="color:#0AA060">${it19.productId}</span></div>
+    <div>matched: <b style="color:${matched?'#0AA060':'#FF6B6B'}">${matched ? '✓ 성공' : '✗ 실패 (raw에 없음)'}</b></div>
+    <div>matched title: <span style="color:#666">${matchedTitle || '-'}</span></div>
+    <div>stdProhOptCount: <b>${matched?.stdProhOptCount ?? '(undefined)'}</b> · stdProhOptHit: <b>${matched?.stdProhOptHit ?? '(undefined)'}</b></div>
+    <div>productType: <b>${it19.productType}</b> · mallCount: ${_mallCount} · lowMallList: ${_lowMallLen}</div>
+    <div>→ isPriceCompare: <b style="color:${isPriceCompare?'#E91E63':'#888'}">${isPriceCompare}</b> · isGroup: <b style="color:${isGroup?'#2196F3':'#888'}">${isGroup}</b> · isNaverPay: <b>${isNaverPay}</b></div>
+    <div style="margin-top:6px;font-size:13px;">최종 뱃지: <b style="color:#FF6B6B">${badge}</b></div>`;
+  document.body.appendChild(div);
+}
+
 // JSON 상품의 속성 — ROPAGO 스타일 인라인 텍스트 (characterValue를 · 로 연결)
 function _renderAttrInline(p, terms) {
   if (!p) return '';
@@ -2767,6 +2801,8 @@ function renderAnalysisResults() {
     tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
+  // 19번 행 실시간 판정 진단 (좌측 하단)
+  try { _diag19RowResult(items[18]); } catch(_) {}
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
     const highlighted = _highlightTerms(title, terms);
