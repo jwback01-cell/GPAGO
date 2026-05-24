@@ -8668,15 +8668,81 @@ function prodsrcAutoFetchItemscout() {
   _prodsrcAutoRefreshAllFolders();
 }
 
+// 화면 중앙 진행률 오버레이 (자동 분석 진척도 표시)
+function _prodsrcShowProgress(title) {
+  let el = document.getElementById('prodsrc-progress-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'prodsrc-progress-overlay';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;font-family:Pretendard,-apple-system,BlinkMacSystemFont,sans-serif;';
+    el.innerHTML = `
+      <div style="background:white;border-radius:24px;padding:32px 40px;box-shadow:0 24px 64px rgba(0,0,0,.25);min-width:480px;max-width:600px;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#00C853,#2196F3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" class="anim"/></svg>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div id="prodsrc-progress-title" style="font-size:15px;font-weight:800;color:#111;line-height:1.3;">자동 분석 진행 중</div>
+            <div id="prodsrc-progress-detail" style="font-size:12px;color:#666;margin-top:3px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">준비 중...</div>
+          </div>
+          <div id="prodsrc-progress-pct" style="font-size:22px;font-weight:900;color:#00C853;">0%</div>
+        </div>
+        <div style="background:#E5E5EA;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px;">
+          <div id="prodsrc-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#00C853,#3478F6);border-radius:8px;transition:width .4s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;">
+          <div id="prodsrc-progress-stats">성공 0 · 빈것 0 · 실패 0</div>
+          <div id="prodsrc-progress-count">0 / 0</div>
+        </div>
+        <button id="prodsrc-progress-cancel" style="margin-top:14px;width:100%;background:#F2F2F7;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:bold;color:#8E8E93;cursor:pointer;">취소 (현재 진행 중인 1개는 끝까지 처리됨)</button>
+      </div>
+      <style>@keyframes prodsrcSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}#prodsrc-progress-overlay .anim{transform-origin:center;animation:prodsrcSpin 1s linear infinite;}</style>
+    `;
+    document.body.appendChild(el);
+    document.getElementById('prodsrc-progress-cancel').onclick = () => {
+      window._prodsrcRangeCancel = true;
+      document.getElementById('prodsrc-progress-cancel').textContent = '취소 요청됨 — 현재 카테고리 처리 후 중단';
+      document.getElementById('prodsrc-progress-cancel').disabled = true;
+    };
+  }
+  if (title) document.getElementById('prodsrc-progress-title').textContent = title;
+  el.style.display = 'flex';
+  window._prodsrcRangeCancel = false;
+}
+function _prodsrcUpdateProgress(current, total, detail, stats) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const bar = document.getElementById('prodsrc-progress-bar');
+  const pctEl = document.getElementById('prodsrc-progress-pct');
+  const detailEl = document.getElementById('prodsrc-progress-detail');
+  const statsEl = document.getElementById('prodsrc-progress-stats');
+  const cntEl = document.getElementById('prodsrc-progress-count');
+  if (bar) bar.style.width = pct + '%';
+  if (pctEl) pctEl.textContent = pct + '%';
+  if (detailEl && detail) detailEl.textContent = detail;
+  if (statsEl && stats) statsEl.textContent = stats;
+  if (cntEl) cntEl.textContent = `${current} / ${total}`;
+}
+function _prodsrcHideProgress() {
+  const el = document.getElementById('prodsrc-progress-overlay');
+  if (el) el.style.display = 'none';
+}
+
 // 범위로 카테고리 ID 일괄 자동 분석 (예: 2100~2150)
 async function _prodsrcAutoFetchRange(startId, endId) {
   const count = endId - startId + 1;
   const totalSec = count * 30;
   if (!confirm(`itemscout 카테고리 ID ${startId} ~ ${endId} (총 ${count}개)를 순차 자동 분석합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n빈 카테고리는 자동으로 건너뜁니다.\n계속할까요?`)) return;
+  _prodsrcShowProgress(`itemscout 범위 자동 분석 (${startId} ~ ${endId})`);
   let ok = 0, empty = 0, fail = 0;
+  let done = 0;
+  _prodsrcUpdateProgress(0, count, `카테고리 ${startId} 시작...`, '성공 0 · 빈것 0 · 실패 0');
   for (let id = startId; id <= endId; id++) {
-    const done = id - startId + 1;
-    _prodsrcMsg(`범위 자동 분석 중... (${done}/${count}) [카테고리 ${id}] — 성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`, 'info');
+    if (window._prodsrcRangeCancel) {
+      _prodsrcMsg(`⏸️ 자동 분석 취소됨 — ${done}/${count} 까지 처리 완료`, 'warn');
+      break;
+    }
+    done = id - startId + 1;
+    _prodsrcUpdateProgress(done - 1, count, `처리 중: 카테고리 ${id}`, `성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`);
     try {
       const snap = await _prodsrcAutoFetchAndWaitRaw(id);
       if (snap && snap.rows && snap.rows.length) {
@@ -8689,7 +8755,9 @@ async function _prodsrcAutoFetchRange(startId, endId) {
       console.warn('[범위 자동 분석 실패]', id, e);
       fail++;
     }
+    _prodsrcUpdateProgress(done, count, `완료: 카테고리 ${id}`, `성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`);
   }
+  _prodsrcHideProgress();
   _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 카테고리 ${empty} · 실패 ${fail} / 총 ${count}`, ok ? 'ok' : 'warn');
 }
 
@@ -8757,9 +8825,15 @@ async function _prodsrcAutoRefreshAllFolders() {
   }
   let done = 0, ok = 0, fail = 0;
   const total = folderIds.size;
+  _prodsrcShowProgress('등록된 모든 폴더 자동 갱신');
+  _prodsrcUpdateProgress(0, total, '시작 중...', '성공 0 · 실패 0');
   for (const [folderName, catId] of folderIds) {
+    if (window._prodsrcRangeCancel) {
+      _prodsrcMsg(`⏸️ 자동 갱신 취소됨 — ${done}/${total} 까지 처리 완료`, 'warn');
+      break;
+    }
     done++;
-    _prodsrcMsg(`자동 갱신 중... (${done}/${total}) [${folderName}]`, 'info');
+    _prodsrcUpdateProgress(done - 1, total, `처리 중: ${folderName.length > 50 ? folderName.slice(0, 50) + '…' : folderName}`, `성공 ${ok} · 실패 ${fail}`);
     try {
       await _prodsrcAutoFetchAndWait(catId);
       ok++;
@@ -8767,7 +8841,9 @@ async function _prodsrcAutoRefreshAllFolders() {
       console.warn('[전체 자동 갱신 실패]', folderName, e);
       fail++;
     }
+    _prodsrcUpdateProgress(done, total, `완료: ${folderName.length > 50 ? folderName.slice(0, 50) + '…' : folderName}`, `성공 ${ok} · 실패 ${fail}`);
   }
+  _prodsrcHideProgress();
   _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total}`, ok ? 'ok' : 'warn');
 }
 
