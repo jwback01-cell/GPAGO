@@ -8591,7 +8591,9 @@ window.addEventListener('message', (e) => {
 });
 
 function _prodsrcImportItemscoutSnapshot(snap) {
-  const folderName = 'itemscout 카테고리 ' + (snap.categoryId || '?');
+  // 폴더 이름: 카테고리 경로(트리/breadcrumb/leaf 이름) 우선, 없으면 fallback
+  const folderName = (snap.categoryPath && String(snap.categoryPath).trim())
+    || ('itemscout 카테고리 ' + (snap.categoryId || '?'));
   const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return isNaN(n) ? null : n; };
   const newRows = (snap.rows || []).map(r => ({
     url: r.keywordId ? ('https://itemscout.io/keyword/' + r.keywordId) : '',
