@@ -2451,6 +2451,34 @@ function activateMultiKwTab(idx) {
   renderMultiKwTabs();
 }
 
+// JSON 상품을 분석 테이블 item 형태로 변환 (네이버 검색 API 응답 형태와 호환되도록)
+function _adaptJsonProductToAnalysisItem(p) {
+  if (!p) return {};
+  const cats = [
+    p.category1Name || p.category1 || '',
+    p.category2Name || p.category2 || '',
+    p.category3Name || p.category3 || '',
+    p.category4Name || p.category4 || ''
+  ];
+  const link = p.crUrl || p.adcrUrl || p.dlUrl || p.link || (p.productId ? ('https://search.shopping.naver.com/catalog/' + p.productId) : '');
+  return {
+    title: p.productTitle || p.productName || p.title || '',
+    link,
+    image: p.imageUrl || p.image || '',
+    lprice: p.lowPrice || p.price || p.lprice || '',
+    hprice: p.highPrice || p.hprice || '',
+    mallName: p.mallName || p.mallNameWithoutLogistics || '-',
+    productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
+    productType: String(p.productType || ''),
+    brand: p.brand || '',
+    maker: p.maker || '',
+    category1: cats[0],
+    category2: cats[1],
+    category3: cats[2],
+    category4: cats[3]
+  };
+}
+
 // JSON 붙여넣기로 받은 상품 인덱스 (속성·태그 매칭용)
 window._jsonProductsByPid = window._jsonProductsByPid || {};
 window._jsonProductsByTitle = window._jsonProductsByTitle || {};
@@ -2915,7 +2943,22 @@ function parseShopJson() {
   const products = Array.isArray(data.products) ? data.products : (Array.isArray(data.items) ? data.items : []);
   // 분석 결과 테이블과 매칭하기 위한 인덱스 갱신
   _indexJsonProducts(products);
-  if (typeof renderAnalysisResults === 'function' && Array.isArray(_lastAnalysisItems) && _lastAnalysisItems.length) {
+  // JSON 상품을 분석 테이블에 바로 표시 (네이버 API 재호출 불필요)
+  if (products.length && typeof renderAnalysisResults === 'function') {
+    try {
+      const adapted = products.map(p => _adaptJsonProductToAnalysisItem(p));
+      _lastAnalysisItems = adapted;
+      _lastBaseKw = String(query || '').trim();
+      _lastFilterKw = '';
+      // 카테고리 비율 + 통계 + 렌더
+      try { renderCategoryRatio && renderCategoryRatio(adapted); } catch(_) {}
+      const terms = _extractTerms(_lastBaseKw, _lastFilterKw);
+      try { document.getElementById('terms-display').textContent = terms.join(',') || '-'; } catch(_) {}
+      try { document.getElementById('total-count').textContent = adapted.length.toLocaleString('ko-KR'); } catch(_) {}
+      try { computeStats(adapted, terms, _lastBaseKw, _lastFilterKw); } catch(_) {}
+      renderAnalysisResults();
+    } catch(e) { console.error('[parseShopJson → analysis] 오류:', e); }
+  } else if (typeof renderAnalysisResults === 'function' && Array.isArray(_lastAnalysisItems) && _lastAnalysisItems.length) {
     try { renderAnalysisResults(); } catch(_) {}
   }
   if (!products.length) {
@@ -3025,18 +3068,13 @@ async function _processExtensionPayload(payload) {
     const details = document.getElementById('tool-json-details');
     if (details) details.open = true;
 
-    // 4) parseShopJson 실행 (N 입력란에 query + FITER+ 자동 채워짐, TAG STATS 표시)
+    // 4) parseShopJson 실행 — JSON의 80개 상품으로 분석 테이블·TAG STATS·N 입력란·FITER+ 모두 즉시 채워짐
+    //    (네이버 API 재호출 없음 — 새로고침 불필요)
     if (typeof parseShopJson === 'function') {
       try { parseShopJson(); } catch (e) { console.error('[GPAGO ext] parseShopJson 오류:', e); }
     }
 
-    // 5) 짧은 지연 후 가중치 분석 실행 — N 키워드로 네이버 검색
-    await new Promise(r => setTimeout(r, 350));
-    if (typeof runAnalysisWithNaverKw === 'function') {
-      try { runAnalysisWithNaverKw(); } catch (e) { console.error('[GPAGO ext] runAnalysisWithNaverKw 오류:', e); }
-    }
-
-    try { toast && toast('✅ 확장 데이터 자동 분석 시작'); } catch(_) {}
+    try { toast && toast('✅ 확장 데이터로 즉시 분석 완료'); } catch(_) {}
 
     // 해시 정리
     if (location.hash && location.hash.includes('gpago-auto-analyze')) {
