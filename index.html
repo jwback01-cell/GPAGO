@@ -2459,14 +2459,25 @@ function computeStats(items, terms, baseKw, filterKw) {
   const termCounts = terms.map(t => {
     let cnt = 0;
     const missingRanks = []; // 텀을 포함하지 않는 모든 상품의 순위 (1부터)
+    const missingInfo = []; // [{rank, foundIn: ['스토어'|'속성'|'태그']}]
     const tNoSpace = t.toLowerCase().replace(/\s+/g, '');
     items.forEach((it, idx) => {
       const titleNoSpace = _stripHtml(it.title).toLowerCase().replace(/\s+/g, '');
       const has = titleNoSpace.includes(tNoSpace);
-      if (has) cnt++;
-      else missingRanks.push(idx + 1);
+      if (has) { cnt++; return; }
+      missingRanks.push(idx + 1);
+      // 상품명에 없으면 — 스토어명/속성/태그에서도 찾아봄 (사용자가 어디서 매칭됐는지 알 수 있게)
+      const matched = (typeof _findJsonMatch === 'function') ? _findJsonMatch(it) : null;
+      const mallNoSpace = String(it.mallName || matched?.mallName || '').toLowerCase().replace(/\s+/g, '');
+      const charNoSpace = String(matched?.characterValue || '').toLowerCase().replace(/\s+/g, '');
+      const tagsNoSpace = String(matched?.manuTag || '').toLowerCase().replace(/\s+/g, '');
+      const foundIn = [];
+      if (mallNoSpace.includes(tNoSpace)) foundIn.push('스토어');
+      if (charNoSpace.includes(tNoSpace)) foundIn.push('속성');
+      if (tagsNoSpace.includes(tNoSpace)) foundIn.push('태그');
+      missingInfo.push({ rank: idx + 1, foundIn });
     });
-    return { term: t, count: cnt, missingRanks };
+    return { term: t, count: cnt, missingRanks, missingInfo };
   });
 
   // 상품명 가중치는 카운트만 표시
@@ -2477,14 +2488,18 @@ function computeStats(items, terms, baseKw, filterKw) {
   else _fillCell('stat-cell-5', '-');
 
   // 파트 가중치 — 각 텀이 미포함된 모든 상품 순위 표시 (클릭하면 해당 행으로 이동)
+  // 미포함 순위 옆에 [스토어]/[속성]/[태그] 라벨로 다른 필드에서 매칭됐는지 함께 표시
   function _fmtMiss(tc) {
-    if (tc.missingRanks.length === 0) {
+    if (!tc.missingInfo || tc.missingInfo.length === 0) {
       return `<b>${escapeHtml(tc.term)}</b> <span class="text-brand-green font-bold">전체 포함</span>`;
     }
-    const ranksStr = tc.missingRanks.map(r =>
-      `<b class="text-brand-pink cursor-pointer hover:underline" onclick="event.stopPropagation();scrollToRank(${r})" title="${r}등 상품으로 이동">${r}</b>`
-    ).join(', ');
-    return `<b>${escapeHtml(tc.term)}</b> 미포함 - ${ranksStr}등 <span class="text-brand-gray text-[10px] ml-1">(${tc.missingRanks.length}개)</span>`;
+    const ranksStr = tc.missingInfo.map(mi => {
+      const locTag = mi.foundIn.length
+        ? `<span class="text-brand-orange text-[9px] font-bold ml-0.5">[${mi.foundIn.join(',')}]</span>`
+        : '';
+      return `<b class="text-brand-pink cursor-pointer hover:underline" onclick="event.stopPropagation();scrollToRank(${mi.rank})" title="${mi.rank}등 상품으로 이동">${mi.rank}</b>${locTag}`;
+    }).join(', ');
+    return `<b>${escapeHtml(tc.term)}</b> 미포함 - ${ranksStr}등 <span class="text-brand-gray text-[10px] ml-1">(${tc.missingInfo.length}개)</span>`;
   }
   if (termCounts[0]) _fillCell('stat-cell-3', _fmtMiss(termCounts[0]));
   else _fillCell('stat-cell-3', '-');
