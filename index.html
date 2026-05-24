@@ -379,7 +379,7 @@
                 <th class="px-5 py-4 text-left w-14">NO</th>
                 <th class="px-3 py-4 text-left w-16"></th>
                 <th class="px-3 py-4 text-left w-[26%]">상품명</th>
-                <th class="px-5 py-4 text-left w-28">스토어명</th>
+                <th class="px-5 py-4 text-left whitespace-nowrap">스토어명</th>
                 <th class="px-3 py-4 text-left">속성</th>
                 <th class="px-3 py-4 text-left w-[22%]">태그</th>
               </tr>
@@ -2525,7 +2525,7 @@ function renderAnalysisResults() {
       <td class="px-3 py-3.5 text-sm align-middle">
         <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
       </td>
-      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle whitespace-nowrap">${escapeHtml(it.mallName || '-')}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${attrCell}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${tagCell}</td>
     </tr>`;
