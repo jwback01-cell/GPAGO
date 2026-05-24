@@ -632,6 +632,16 @@
             </div>
           </div>
         </div>
+        <!-- 쇼핑몰별 상세 (제품명·속성·태그) -->
+        <div class="mt-8 pt-6 border-t border-brand-border">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-[11px] font-black text-brand-gray tracking-wider">쇼핑몰별 상세</div>
+            <div class="text-[10px] text-brand-gray">총 <b id="tool-json-mall-count" class="text-brand-black">0</b>개 상품</div>
+          </div>
+          <div id="tool-json-mall-list" class="text-xs text-brand-gray">
+            <div class="text-center py-8">분석 후 쇼핑몰별 제품·속성·태그가 표시됩니다</div>
+          </div>
+        </div>
       </section>
     </section>
 
@@ -2796,6 +2806,8 @@ function parseShopJson() {
   const totalEl  = document.getElementById('tool-json-tag-total');
   const kwBox    = document.getElementById('tool-json-keyword');
   const resultListBox = document.getElementById('tool-json-result-list');
+  const mallListBox = document.getElementById('tool-json-mall-list');
+  const mallCountEl = document.getElementById('tool-json-mall-count');
   if (!raw) { toast('JSON을 붙여넣어 주세요'); return; }
   let data;
   try { data = JSON.parse(raw); }
@@ -2869,6 +2881,68 @@ function parseShopJson() {
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
+  // 쇼핑몰별 상세 테이블 — 제품명·속성·태그·텀즈
+  if (mallListBox && mallCountEl) {
+    if (!products.length) {
+      mallCountEl.textContent = '0';
+      mallListBox.innerHTML = '<div class="text-center py-8 text-brand-gray">상품 데이터가 없습니다</div>';
+    } else {
+      mallCountEl.textContent = products.length.toLocaleString('ko-KR');
+      const rows = products.map((p, i) => {
+        const mall = p.mallName || p.mallNameWithoutLogistics || p.lowMallList?.[0]?.mallName || '-';
+        const title = p.productTitle || p.productName || p.title || '(이름 없음)';
+        const cleanTitle = String(title).replace(/<[^>]+>/g, '');
+        // 속성 — attributeValue | characterValue 페어
+        let attrHtml = '<span class="text-brand-gray text-[10px]">-</span>';
+        const attrs = String(p.attributeValue || '').split('|').map(s => s.trim()).filter(Boolean);
+        const chars = String(p.characterValue || '').split('|').map(s => s.trim()).filter(Boolean);
+        if (attrs.length || chars.length) {
+          const len = Math.max(attrs.length, chars.length);
+          const pairs = [];
+          for (let k = 0; k < len; k++) {
+            const a = attrs[k] || '';
+            const c = chars[k] || '';
+            if (!a && !c) continue;
+            pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] m-0.5"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
+          }
+          if (pairs.length) attrHtml = pairs.join('');
+        }
+        // 태그 — manuTag에서 운영태그 제외
+        const tagStr = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !MANUTAG_EXCLUDE.has(t));
+        const tagHtml = tagStr.length
+          ? tagStr.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold m-0.5">${escapeHtml(t)}</span>`).join('')
+          : '<span class="text-brand-gray text-[10px]">-</span>';
+        const link = p.crUrl || p.adcrUrl || p.dlUrl || '';
+        const titleCell = link
+          ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="text-brand-black hover:text-brand-blue font-medium">${escapeHtml(cleanTitle)}</a>`
+          : `<span class="text-brand-black font-medium">${escapeHtml(cleanTitle)}</span>`;
+        return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 align-top">
+          <td class="px-2 py-2 text-brand-gray text-center w-10">${i + 1}</td>
+          <td class="px-2 py-2 w-32"><span class="inline-block bg-brand-blue-light text-brand-blue rounded px-2 py-0.5 text-[10px] font-bold">${escapeHtml(mall)}</span></td>
+          <td class="px-2 py-2 text-xs">${titleCell}</td>
+          <td class="px-2 py-2">${attrHtml}</td>
+          <td class="px-2 py-2 w-48">${tagHtml}</td>
+        </tr>`;
+      }).join('');
+      mallListBox.innerHTML = `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-brand-bg text-[10px] font-black text-brand-gray tracking-wider">
+                <th class="px-2 py-2 w-10 text-center">#</th>
+                <th class="px-2 py-2 w-32">쇼핑몰</th>
+                <th class="px-2 py-2">제품명</th>
+                <th class="px-2 py-2">속성 (attribute · character)</th>
+                <th class="px-2 py-2 w-48">태그 (manuTag)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="mt-3 text-[10px] text-brand-gray">텀즈(Terms)는 쿼리 단위로 공통 — 위 KEY WORD 좌측 패널의 Terms 영역을 참조하세요.</div>
+      `;
+    }
+  }
   // 분석 후 JSON 입력 영역 자동 접기 (UX 개선)
   const details = document.getElementById('tool-json-details');
   if (details) details.open = false;
