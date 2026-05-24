@@ -1401,7 +1401,7 @@ PBT키캡	1180
               onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}">
             <button onclick="prodsrcAutoFetchItemscout()" id="prodsrc-itemscout-auto-btn"
               class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5"
-              title="새 팝업으로 itemscout 카테고리 페이지를 열고 자동 스크롤로 키워드를 모두 수집합니다 (네이버 쇼핑 자동 분석과 동일 방식).">
+              title="입력란에 카테고리 ID/URL 있으면 → 그 카테고리만 자동 분석. 비어있으면 → 등록된 모든 폴더 자동 갱신.">
               ⚡ 자동 분석
             </button>
             <button onclick="prodsrcImportFromItemscout()" id="prodsrc-itemscout-btn"
@@ -8580,30 +8580,105 @@ function prodsrcImportFromItemscout() {
   }, 5000);
 }
 
-// 자동 분석 — 새 팝업으로 itemscout 카테고리 페이지 열고 자동 스크롤 후 수집
+// 자동 분석 — 입력 있으면 그 카테고리만, 없으면 등록된 모든 폴더 자동 갱신
 function prodsrcAutoFetchItemscout() {
   const inputEl = document.getElementById('prodsrc-itemscout-input');
   const val = (inputEl?.value || '').trim();
-  if (!val) {
-    _prodsrcMsg('⚠️ itemscout URL 또는 카테고리 ID 를 입력하세요. (예: 2333 또는 https://itemscout.io/category/2333)', 'warn');
-    inputEl?.focus();
+  if (val) {
+    // 단일 카테고리 자동 분석
+    _prodsrcMsg(`자동 분석 시작 — 새 팝업 창에서 itemscout 페이지 열고 스크롤 후 수집합니다 (약 20-30초 소요)`, 'info');
+    _prodsrcItemscoutRequestedAt = Date.now();
+    try {
+      window.postMessage({
+        source: 'gpago-page',
+        type: 'GPAGO_AUTO_FETCH_ITEMSCOUT',
+        categoryIdOrUrl: val
+      }, window.location.origin);
+    } catch (_) {}
+    setTimeout(() => {
+      if (_prodsrcItemscoutRequestedAt && Date.now() - _prodsrcItemscoutRequestedAt < 45500) {
+        _prodsrcMsg('⚠️ 자동 분석 응답 없음. 확장이 설치되어 있는지 확인하세요.', 'warn');
+      }
+    }, 45000);
     return;
   }
-  _prodsrcMsg(`자동 분석 시작 — 새 팝업 창에서 itemscout 페이지 열고 스크롤 후 수집합니다 (약 20-30초 소요)`, 'info');
-  _prodsrcItemscoutRequestedAt = Date.now();
-  try {
-    window.postMessage({
-      source: 'gpago-page',
-      type: 'GPAGO_AUTO_FETCH_ITEMSCOUT',
-      categoryIdOrUrl: val
-    }, window.location.origin);
-  } catch (_) {}
-  // 자동 분석은 시간 더 걸림 (스크롤 30회 × 0.6초 + 대기) → 45초 timeout
-  setTimeout(() => {
-    if (_prodsrcItemscoutRequestedAt && Date.now() - _prodsrcItemscoutRequestedAt < 45500) {
-      _prodsrcMsg('⚠️ 자동 분석 응답 없음. 확장이 설치되어 있는지 확인하세요.', 'warn');
+  // 입력 없으면 → 등록된 모든 폴더 자동 갱신
+  _prodsrcAutoRefreshAllFolders();
+}
+
+// 등록된(itemscoutCategoryId 메타 있는) 모든 폴더 순차 자동 갱신
+async function _prodsrcAutoRefreshAllFolders() {
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  // 폴더별 첫 row 의 itemscoutCategoryId 수집 (중복 제거)
+  const folderIds = new Map(); // folderName → itemscoutCategoryId
+  rows.forEach(r => {
+    const fn = r.folderName || r.category;
+    if (fn && r.itemscoutCategoryId && !folderIds.has(fn)) {
+      folderIds.set(fn, r.itemscoutCategoryId);
     }
-  }, 45000);
+  });
+  if (folderIds.size === 0) {
+    _prodsrcMsg('⚠️ 자동 갱신할 폴더가 없습니다. 카테고리 ID/URL 입력 후 자동 분석을 한 번 실행해 폴더에 itemscout 매핑을 등록하세요.', 'warn');
+    return;
+  }
+  const totalSec = folderIds.size * 30;
+  if (!confirm(`총 ${folderIds.size}개 폴더를 itemscout 에서 자동 갱신합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n시작할까요?`)) {
+    return;
+  }
+  let done = 0, ok = 0, fail = 0;
+  const total = folderIds.size;
+  for (const [folderName, catId] of folderIds) {
+    done++;
+    _prodsrcMsg(`자동 갱신 중... (${done}/${total}) [${folderName}]`, 'info');
+    try {
+      await _prodsrcAutoFetchAndWait(catId);
+      ok++;
+    } catch (e) {
+      console.warn('[전체 자동 갱신 실패]', folderName, e);
+      fail++;
+    }
+  }
+  _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total}`, ok ? 'ok' : 'warn');
+}
+
+// 자동 분석 1건 요청 + 응답 대기 (Promise) — 전체 갱신 시 순차 처리용
+let _prodsrcSilentMode = false;
+function _prodsrcAutoFetchAndWait(catId) {
+  return new Promise((resolve, reject) => {
+    _prodsrcSilentMode = true; // 일반 응답 핸들러의 메시지 표시 억제
+    const handler = (e) => {
+      if (e.source !== window) return;
+      if (!e.data || e.data.source !== 'gpago-extension') return;
+      if (e.data.type !== 'GPAGO_ITEMSCOUT_DATA') return;
+      window.removeEventListener('message', handler);
+      clearTimeout(timer);
+      _prodsrcSilentMode = false;
+      if (e.data.ok && e.data.snapshot) {
+        try { _prodsrcImportItemscoutSnapshot(e.data.snapshot); } catch(err) { console.warn(err); }
+        resolve();
+      } else {
+        reject(new Error(e.data.error || 'failed'));
+      }
+    };
+    window.addEventListener('message', handler);
+    try {
+      window.postMessage({
+        source: 'gpago-page',
+        type: 'GPAGO_AUTO_FETCH_ITEMSCOUT',
+        categoryIdOrUrl: String(catId)
+      }, window.location.origin);
+    } catch (e) {
+      window.removeEventListener('message', handler);
+      _prodsrcSilentMode = false;
+      reject(e);
+      return;
+    }
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      _prodsrcSilentMode = false;
+      reject(new Error('timeout (60s)'));
+    }, 60000);
+  });
 }
 
 // 확장에서 보낸 itemscout 스냅샷 수신
@@ -8611,6 +8686,7 @@ window.addEventListener('message', (e) => {
   if (e.source !== window) return;
   if (!e.data || e.data.source !== 'gpago-extension') return;
   if (e.data.type !== 'GPAGO_ITEMSCOUT_DATA') return;
+  if (_prodsrcSilentMode) return; // 전체 자동 갱신 중에는 _prodsrcAutoFetchAndWait 가 처리
   _prodsrcItemscoutRequestedAt = 0;
   if (!e.data.ok) {
     _prodsrcMsg('❌ ' + (e.data.error || '데이터 가져오기 실패'), 'error');
@@ -8628,6 +8704,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   // 폴더 이름: 카테고리 경로(트리/breadcrumb/leaf 이름) 우선, 없으면 fallback
   const folderName = (snap.categoryPath && String(snap.categoryPath).trim())
     || ('itemscout 카테고리 ' + (snap.categoryId || '?'));
+  const itemscoutCategoryId = snap.categoryId ? String(snap.categoryId) : null;
   const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return isNaN(n) ? null : n; };
   const newRows = (snap.rows || []).map(r => ({
     url: r.keywordId ? ('https://itemscout.io/keyword/' + r.keywordId) : '',
@@ -8643,7 +8720,8 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     productCount: num(r.productCount),
     competition: num(r.competitionIntensity),
     avgClicks: null, pcCTR: null, mobileCTR: null, clickComp: null, clickAd: null,
-    isNew: false, totalSearchPrev: null, totalSearchDiff: 0
+    isNew: false, totalSearchPrev: null, totalSearchDiff: 0,
+    itemscoutCategoryId: itemscoutCategoryId  // 자동 갱신용 메타
   })).filter(r => r.keyword);
 
   if (!newRows.length) {
@@ -8687,6 +8765,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
         old.uploadedAt = nowIso;
         old.rank = r.rank != null ? r.rank : old.rank;
         old.url = r.url || old.url;
+        if (r.itemscoutCategoryId) old.itemscoutCategoryId = r.itemscoutCategoryId; // 메타 갱신/저장
         if (prevVal != null && r.totalSearch != null) {
           const diff = r.totalSearch - prevVal;
           if (diff > 0) upC++;
