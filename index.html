@@ -1762,6 +1762,9 @@ const GPAGO_SYNC_KEYS = [
 ];
 let _gpagoCloudReady = false;  // PULL 완료 전엔 PUSH 금지
 const _gpagoPushTimers = {};
+// PULL 완료 전에 사용자가 로컬에서 변경한 키들 — PULL 이 이 키들을 덮어쓰지 못하도록 보호
+// (PC2에서 업로드한 데이터가 PULL 에 의해 cloud 옛 데이터로 덮어써지는 버그 방지)
+const _gpagoLocalChangesBeforePull = new Set();
 
 // 사용자가 "동기화됨" 배지를 클릭했을 때 — 강제로 클라우드에서 다시 받아오기
 // (다른 PC에서 방금 추가한 데이터가 안 보일 때 사용)
@@ -1805,12 +1808,20 @@ async function gpagoCloudPullAll() {
       console.warn('[cloud-pull] error', error); return 0;
     }
     let pulled = 0;
-    let changed = 0;  // 로컬과 다른(=다른 PC에서 갱신된) 키 수
+    let changed = 0;     // 로컬과 다른(=다른 PC에서 갱신된) 키 수
+    let protectedCnt = 0; // PULL 전 사용자가 수정한 키 (덮어쓰기 안 함)
     const pulledKeys = new Set();
     for (const row of (data || [])) {
       if (!GPAGO_SYNC_KEYS.includes(row.key)) continue;
       if (row.value == null) continue;
       pulledKeys.add(row.key);
+      // ★중요★ 사용자가 이미 로컬에서 수정한 키는 cloud 옛 값으로 덮어쓰지 않음 → 대신 우리 데이터를 PUSH
+      // (PC2에서 PULL 끝나기 전 업로드한 데이터가 사라지던 버그 방지)
+      if (_gpagoLocalChangesBeforePull.has(row.key)) {
+        protectedCnt++;
+        console.log('[cloud-pull] 로컬에서 수정한 키 보호 (cloud 덮어쓰기 안 함):', row.key);
+        continue;
+      }
       try {
         const localBefore = localStorage.getItem(row.key);
         Storage.prototype._origSetItem.call(localStorage, row.key, row.value);
@@ -1819,7 +1830,7 @@ async function gpagoCloudPullAll() {
       } catch (_) {}
     }
     _gpagoCloudReady = true;
-    console.log('[cloud-sync] pulled', pulled, 'keys, changed', changed);
+    console.log('[cloud-sync] pulled', pulled, 'keys, changed', changed, 'protected', protectedCnt);
     // 클라우드에 없지만 로컬에 있는 키 → 첫 PUSH
     for (const key of GPAGO_SYNC_KEYS) {
       if (pulledKeys.has(key)) continue;
@@ -1832,13 +1843,21 @@ async function gpagoCloudPullAll() {
       } catch (_) {}
       _gpagoCloudPushKey(key);
     }
-    // 다른 PC에서 갱신된 데이터가 있으면 화면을 새로고침 (메모리 내 상태가 stale 이므로)
-    // 첫 PULL 한 번만 reload (무한 reload 방지) + 명시적으로 skip 요청한 경우엔 reload 안 함
-    if (changed > 0 && !window._gpagoPullRefreshed && !window._gpagoSkipAutoRefresh) {
+    // 보호된 키(PULL 전 로컬 수정)는 이제 PUSH 가능해졌으니 강제로 PUSH 트리거
+    for (const k of _gpagoLocalChangesBeforePull) {
+      _gpagoCloudPushKey(k);
+    }
+    _gpagoLocalChangesBeforePull.clear();
+    // 자동 새로고침: cloud 데이터가 로컬과 달랐고, 사용자가 로컬에서 수정한 게 없을 때만
+    // (수정한 게 있으면 reload 가 사용자 데이터 덮어쓸 위험 → 금지)
+    if (changed > 0 && protectedCnt === 0 && !window._gpagoPullRefreshed && !window._gpagoSkipAutoRefresh) {
       window._gpagoPullRefreshed = true;
       console.log('[cloud-sync] 다른 PC에서 변경된 데이터', changed, '개 발견 → 화면 새로고침');
       if (typeof toast === 'function') toast('☁ 다른 PC 데이터 ' + changed + '개 동기화 — 새로고침합니다');
       setTimeout(() => location.reload(), 600);
+    } else if (protectedCnt > 0) {
+      // 사용자가 PULL 중에 작업한 경우 — reload 대신 안내 toast
+      if (typeof toast === 'function') toast('☁ 로컬 변경 ' + protectedCnt + '개 보호 — 클라우드로 업로드 중');
     }
     return pulled;
   } catch (e) { console.warn('[cloud-pull] failed', e); return 0; }
@@ -1868,12 +1887,19 @@ function _gpagoCloudPushKey(key) {
   Storage.prototype._origSetItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function (k, v) {
     Storage.prototype._origSetItem.apply(this, arguments);
-    if (this === localStorage) _gpagoCloudPushKey(k);
+    if (this === localStorage && GPAGO_SYNC_KEYS.includes(k)) {
+      // PULL 이 아직 안 끝났는데 사용자가 변경 → PULL 이 덮어쓰지 못하도록 기록
+      if (!_gpagoCloudReady) _gpagoLocalChangesBeforePull.add(k);
+      _gpagoCloudPushKey(k);
+    }
   };
   Storage.prototype._origRemoveItem = Storage.prototype.removeItem;
   Storage.prototype.removeItem = function (k) {
     Storage.prototype._origRemoveItem.apply(this, arguments);
-    if (this === localStorage) _gpagoCloudPushKey(k);
+    if (this === localStorage && GPAGO_SYNC_KEYS.includes(k)) {
+      if (!_gpagoCloudReady) _gpagoLocalChangesBeforePull.add(k);
+      _gpagoCloudPushKey(k);
+    }
   };
 })();
 
