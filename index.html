@@ -285,8 +285,8 @@
           <!-- ◀ 좌측 (1.5fr): 가중치 모드 chip + 결과 바 -->
           <div class="flex flex-col gap-2">
             <div class="grid grid-cols-[90px_120px_1fr] gap-2 items-center">
-              <button class="weight-chip" data-mode="order">순서 고정</button>
-              <button class="weight-chip" data-mode="name">상품명 가중치</button>
+              <button class="weight-chip weight-chip-active" data-mode="order">순서 고정</button>
+              <button class="weight-chip weight-chip-active" data-mode="name">상품명 가중치</button>
               <button class="weight-chip weight-chip-active" data-mode="part">파트 가중치</button>
               <div class="empty-bar row-span-2 flex items-center justify-center" id="stat-cell-1">-</div>
               <div class="empty-bar" id="stat-cell-2">-</div>
@@ -2089,13 +2089,11 @@ function saveApiSettings() {
 }
 
 // ═════════════ 모드 chip 토글 ═════════════
+// 세 chip(순서고정/상품명/파트)은 모두 활성 검정 디자인 유지 — 활성 토글 없이 모드 값만 변경
 let _analysisMode = 'part';
 document.querySelectorAll('[data-mode]').forEach(c => {
   c.addEventListener('click', () => {
     _analysisMode = c.dataset.mode;
-    document.querySelectorAll('[data-mode]').forEach(x => {
-      x.classList.toggle('weight-chip-active', x.dataset.mode === _analysisMode);
-    });
     // 모드 변경 시 분석 결과 즉시 재렌더 (하이라이트 스타일 갱신)
     try { if (typeof renderAnalysisResults === 'function') renderAnalysisResults(); } catch(_) {}
   });
