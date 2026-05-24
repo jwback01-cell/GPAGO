@@ -3112,7 +3112,13 @@ async function _processExtensionPayload(payload, tabsMap) {
     }
 
     const tabCount = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads).length : 1;
-    try { toast && toast('✅ 확장 데이터로 즉시 분석 완료 (탭 ' + tabCount + '개)'); } catch(_) {}
+    const tabNames = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads).join(', ') : '';
+    // 초기 화면에 표시되는 탭 (전체 우선)을 적절히 표시
+    const displayedTab = window._extensionTabPayloads?.['전체'] ? '전체' :
+                         window._extensionTabPayloads?.['네이버페이'] ? '네이버페이' : '';
+    try {
+      toast && toast(`✅ 분석 완료 — 현재: ${displayedTab} 데이터 (${tabCount}개 탭 캡처: ${tabNames})`);
+    } catch(_) {}
 
     if (location.hash && location.hash.includes('gpago-auto-analyze')) {
       history.replaceState(null, '', location.pathname);
