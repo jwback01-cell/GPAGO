@@ -163,6 +163,10 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #E5E5EA; border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: #C7C7CC; }
+  /* 테이블 셀 내 칩 행 — 얇은 스크롤바 */
+  .chip-row { scrollbar-width: thin; scrollbar-color: #E5E5EA transparent; }
+  .chip-row::-webkit-scrollbar { height: 4px; }
+  .chip-row::-webkit-scrollbar-thumb { background: #E5E5EA; border-radius: 2px; }
 </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -2460,7 +2464,7 @@ function _findJsonMatch(item) {
   return null;
 }
 
-// JSON 상품의 속성(attributeValue · characterValue) 칩 HTML
+// JSON 상품의 속성(attributeValue · characterValue) — 한 줄 가로 스크롤
 function _renderAttrChips(p) {
   if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
   const attrs = String(p.attributeValue || '').split('|').map(s => s.trim()).filter(Boolean);
@@ -2468,16 +2472,20 @@ function _renderAttrChips(p) {
   if (!attrs.length && !chars.length) return '<span class="text-brand-gray text-[10px]">-</span>';
   const len = Math.max(attrs.length, chars.length);
   const pairs = [];
+  const titleParts = [];
   for (let k = 0; k < len; k++) {
     const a = attrs[k] || '';
     const c = chars[k] || '';
     if (!a && !c) continue;
-    pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] m-0.5"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
+    pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] mr-1 align-middle"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
+    titleParts.push((a ? a + ': ' : '') + c);
   }
-  return pairs.length ? pairs.join('') : '<span class="text-brand-gray text-[10px]">-</span>';
+  if (!pairs.length) return '<span class="text-brand-gray text-[10px]">-</span>';
+  const tip = titleParts.join(' / ').replace(/"/g, '&quot;');
+  return `<div class="whitespace-nowrap overflow-x-auto pb-1 chip-row" title="${tip}">${pairs.join('')}</div>`;
 }
 
-// JSON 상품의 manuTag 칩 HTML (운영태그 제외)
+// JSON 상품의 manuTag — 한 줄 가로 스크롤 (운영태그 제외)
 function _renderTagChips(p) {
   if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
   const EXCLUDE = new Set([
@@ -2487,7 +2495,9 @@ function _renderTagChips(p) {
   ]);
   const tags = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !EXCLUDE.has(t));
   if (!tags.length) return '<span class="text-brand-gray text-[10px]">-</span>';
-  return tags.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold m-0.5">${escapeHtml(t)}</span>`).join('');
+  const tip = tags.join(', ').replace(/"/g, '&quot;');
+  const chips = tags.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold mr-1 align-middle">${escapeHtml(t)}</span>`).join('');
+  return `<div class="whitespace-nowrap overflow-x-auto pb-1 chip-row" title="${tip}">${chips}</div>`;
 }
 
 function renderAnalysisResults() {
@@ -2520,15 +2530,15 @@ function renderAnalysisResults() {
     const attrHtml = _renderAttrChips(matched);
     const tagHtml  = _renderTagChips(matched);
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
-      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-top">${i + 1}</td>
-      <td class="px-3 py-3.5 align-top">${groupBadge}</td>
-      <td class="px-3 py-3.5 text-sm align-top">
+      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
+      <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
+      <td class="px-3 py-3.5 text-sm align-middle">
         <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
       </td>
-      <td class="px-3 py-3.5 align-top">${attrHtml}</td>
-      <td class="px-3 py-3.5 align-top">${tagHtml}</td>
-      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-top leading-snug">${escapeHtml(cat || '-')}</td>
-      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-top">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-3 py-3.5 align-middle" style="max-width:240px">${attrHtml}</td>
+      <td class="px-3 py-3.5 align-middle" style="max-width:190px">${tagHtml}</td>
+      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${escapeHtml(cat || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
     </tr>`;
   }).join('');
 }
