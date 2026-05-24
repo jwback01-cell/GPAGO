@@ -1396,6 +1396,11 @@ PBT키캡	1180
             <div class="text-xs text-brand-gray mt-0.5">키워드·대표 카테고리·총검색수 등 컬럼이 포함된 엑셀 (.xlsx / .xls / .csv)</div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="prodsrcImportFromItemscout()" id="prodsrc-itemscout-btn"
+              class="px-3 py-1.5 rounded-full bg-brand-blue text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5"
+              title="itemscout.io 탭이 열려있어야 합니다. 키워드 페이지에서 스크롤로 데이터 로드 후 클릭하세요.">
+              📥 아이템스카우트에서 가져오기
+            </button>
             <button onclick="prodsrcClearAll()" id="prodsrc-clear-btn" class="hidden px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-bold text-brand-pink hover:bg-brand-bg">전체 초기화</button>
           </div>
         </div>
@@ -8549,6 +8554,144 @@ function prodsrcFileSelected(e) {
   const files = e.target && e.target.files ? Array.from(e.target.files) : [];
   if (files.length) _prodsrcProcessFiles(files);
   if (e.target) e.target.value = '';
+}
+
+// 아이템스카우트 자동 가져오기 — 확장에 요청 → 응답 수신 → 폴더 생성
+let _prodsrcItemscoutRequestedAt = 0;
+function prodsrcImportFromItemscout() {
+  _prodsrcMsg('아이템스카우트 탭에서 데이터를 요청 중... (확장 프로그램 응답 대기)', 'info');
+  _prodsrcItemscoutRequestedAt = Date.now();
+  try {
+    window.postMessage({ source: 'gpago-page', type: 'GPAGO_REQUEST_ITEMSCOUT' }, window.location.origin);
+  } catch (_) {}
+  // 5초 timeout
+  setTimeout(() => {
+    if (_prodsrcItemscoutRequestedAt && Date.now() - _prodsrcItemscoutRequestedAt < 5500) {
+      _prodsrcMsg('⚠️ 확장 프로그램 응답 없음. 확장이 설치되어 있는지, itemscout.io 탭이 열려있는지 확인하세요.', 'warn');
+    }
+  }, 5000);
+}
+
+// 확장에서 보낸 itemscout 스냅샷 수신
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  if (!e.data || e.data.source !== 'gpago-extension') return;
+  if (e.data.type !== 'GPAGO_ITEMSCOUT_DATA') return;
+  _prodsrcItemscoutRequestedAt = 0;
+  if (!e.data.ok) {
+    _prodsrcMsg('❌ ' + (e.data.error || '데이터 가져오기 실패'), 'error');
+    return;
+  }
+  const snap = e.data.snapshot;
+  if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) {
+    _prodsrcMsg('❌ 아이템스카우트 페이지에서 키워드 데이터가 캡처되지 않았습니다. itemscout 탭에서 페이지를 스크롤로 내려서 키워드를 로드한 후 다시 시도하세요.', 'error');
+    return;
+  }
+  _prodsrcImportItemscoutSnapshot(snap);
+});
+
+function _prodsrcImportItemscoutSnapshot(snap) {
+  const folderName = 'itemscout 카테고리 ' + (snap.categoryId || '?');
+  const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return isNaN(n) ? null : n; };
+  const newRows = (snap.rows || []).map(r => ({
+    url: r.keywordId ? ('https://itemscout.io/keyword/' + r.keywordId) : '',
+    rank: num(r.rank),
+    keyword: String(r.keyword || '').trim(),
+    dup: '',
+    category: folderName,
+    kwType: '',
+    shopScore: null, infoScore: null,
+    pcAd: null, mobileAd: null,
+    pcSearch: null, mobileSearch: null,
+    totalSearch: num(r.searchCount),
+    productCount: num(r.productCount),
+    competition: num(r.competitionIntensity),
+    avgClicks: null, pcCTR: null, mobileCTR: null, clickComp: null, clickAd: null,
+    isNew: false, totalSearchPrev: null, totalSearchDiff: 0
+  })).filter(r => r.keyword);
+
+  if (!newRows.length) {
+    _prodsrcMsg('❌ 변환된 키워드 행이 없습니다.', 'error');
+    return;
+  }
+
+  const existing = (_prodsrcState && _prodsrcState.rows) || [];
+  const todayStr = (typeof _prodsrcTodayDateStr === 'function') ? _prodsrcTodayDateStr() : new Date().toISOString().slice(0,10);
+  const nowIso = new Date().toISOString();
+
+  // 폴더 안에서 호출됐으면 → 현재 폴더에 갱신
+  if (_prodsrcCurrentCategory) {
+    const currentFolder = _prodsrcCurrentCategory;
+    const existingFolderRows = existing.filter(r => (r.folderName || r.category) === currentFolder);
+    const existingByKw = new Map();
+    existingFolderRows.forEach(r => existingByKw.set(r.keyword, r));
+    let newC = 0, upC = 0, downC = 0;
+    const mergedFolderRows = [];
+    existingFolderRows.forEach(old => {
+      old.history = _prodsrcGetHistory(old);
+      mergedFolderRows.push(old);
+    });
+    newRows.forEach(r => {
+      r.folderName = currentFolder;
+      r.uploadedAt = nowIso;
+      const old = existingByKw.get(r.keyword);
+      if (!old) {
+        r.isNew = true;
+        r.history = [{ date: todayStr, totalSearch: r.totalSearch }];
+        mergedFolderRows.push(r);
+        newC++;
+      } else {
+        const hist = Array.isArray(old.history) ? old.history.slice() : [];
+        const filtered = hist.filter(h => h.date !== todayStr);
+        filtered.push({ date: todayStr, totalSearch: r.totalSearch });
+        filtered.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        old.history = filtered;
+        const prevVal = old.totalSearch;
+        old.totalSearch = r.totalSearch;
+        old.uploadedAt = nowIso;
+        old.rank = r.rank != null ? r.rank : old.rank;
+        old.url = r.url || old.url;
+        if (prevVal != null && r.totalSearch != null) {
+          const diff = r.totalSearch - prevVal;
+          if (diff > 0) upC++;
+          else if (diff < 0) downC++;
+        }
+      }
+    });
+    const otherRows = existing.filter(r => (r.folderName || r.category) !== currentFolder);
+    _prodsrcState = {
+      rows: [...otherRows, ...mergedFolderRows],
+      lastUploadedAt: nowIso,
+      prevUploadedAt: _prodsrcState.lastUploadedAt || '',
+      favorites: Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
+    };
+    _prodsrcSave();
+    _prodsrcMsg(`✅ "${currentFolder}" 폴더 갱신 (아이템스카우트) — 신규 ${newC} · 증가 ${upC} · 감소 ${downC}`, 'ok');
+    _prodsrcRender();
+    return;
+  }
+
+  // 폴더 밖이면 새 폴더 생성 (중복 차단)
+  const existingFolderNames = new Set(existing.map(r => r.folderName || r.category).filter(Boolean));
+  if (existingFolderNames.has(folderName)) {
+    _prodsrcMsg(`❌ "${folderName}" 폴더가 이미 존재합니다. 폴더 안에서 다시 시도하면 갱신됩니다.`, 'error');
+    return;
+  }
+  newRows.forEach(r => {
+    r.folderName = folderName;
+    r.uploadedAt = nowIso;
+    r.isNew = true;
+    r.history = [{ date: todayStr, totalSearch: r.totalSearch }];
+  });
+  _prodsrcState = {
+    rows: [...existing, ...newRows],
+    lastUploadedAt: nowIso,
+    prevUploadedAt: (_prodsrcState && _prodsrcState.lastUploadedAt) || '',
+    favorites: Array.isArray(_prodsrcState && _prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
+  };
+  _prodsrcSave();
+  _prodsrcMsg(`✅ "${folderName}" 폴더 생성 (아이템스카우트) — ${newRows.length}개 키워드`, 'ok');
+  _prodsrcRender();
 }
 
 // 여러 파일을 순차적으로 처리 — 중복 폴더 체크가 매 단계 누적 상태 기준으로 동작하도록
