@@ -12,6 +12,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <script>
   tailwind.config = {
     theme: { extend: {
@@ -1770,9 +1771,18 @@ const _gpagoPendingPushKeys = new Set();
 // "마지막으로 cloud 와 일치한 값" 저장 키 — 로컬이 이 값과 다르면 미푸시 변경 존재
 const _GPAGO_SYNCED_PREFIX = '__gpago_synced__';
 const _GPAGO_FIRST_SYNC_FLAG = '__gpago_first_sync_done__';
+// 큰 값(예: gplan_prodsrc_v1, 5MB)의 lastSynced 를 통째로 저장하면 quota 초과 → fingerprint 만 저장
+function _gpagoFingerprint(s) {
+  if (s == null || s === '') return '';
+  const str = String(s);
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return str.length + ':' + (h >>> 0).toString(36);
+}
 function _gpagoGetLastSynced(key) { try { return localStorage.getItem(_GPAGO_SYNCED_PREFIX + key); } catch(_) { return null; } }
 function _gpagoSetLastSynced(key, value) {
-  try { Storage.prototype._origSetItem.call(localStorage, _GPAGO_SYNCED_PREFIX + key, value); } catch(_) {}
+  // value 는 다음 PULL 비교에 사용 → fingerprint 만 저장하면 quota 절약 + 비교 가능
+  try { Storage.prototype._origSetItem.call(localStorage, _GPAGO_SYNCED_PREFIX + key, _gpagoFingerprint(value)); } catch(_) {}
 }
 
 // 사용자가 "동기화됨" 배지를 클릭했을 때 — 강제로 클라우드에서 다시 받아오기
@@ -1818,8 +1828,8 @@ async function gpagoCloudPullAll() {
     }
     const firstSyncDone = localStorage.getItem(_GPAGO_FIRST_SYNC_FLAG) === '1';
     let pulled = 0;
-    let changed = 0;     // 로컬과 다른(=다른 PC에서 갱신된) 키 수
-    let protectedCnt = 0; // 미푸시 변경 보호로 덮어쓰지 않은 키 수
+    let changed = 0;
+    let protectedCnt = 0;
     const pulledKeys = new Set();
     for (const row of (data || [])) {
       if (!GPAGO_SYNC_KEYS.includes(row.key)) continue;
@@ -1833,27 +1843,33 @@ async function gpagoCloudPullAll() {
         continue;
       }
 
-      // 보호 2: 로컬에 미푸시 변경이 있는지 — lastSynced 와 비교
-      // (자동 분석 직후 새로고침해서 PUSH 가 미완료된 채 페이지가 다시 떠도 데이터 보존)
-      const localValue = localStorage.getItem(row.key);
-      const lastSynced = _gpagoGetLastSynced(row.key);
-      // 첫 동기화면 cloud 우선 (stale 로컬로 cloud 덮어쓰기 방지)
+      // 비교는 raw JSON 기준 (localStorage 는 압축됐을 수 있으므로 decompress)
+      const localRaw = localStorage.getItem(row.key);
+      const localJson = (localRaw && localRaw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(localRaw) : localRaw;
+      const cloudJson = row.value;
+      const localFp = _gpagoFingerprint(localJson);
+      const cloudFp = _gpagoFingerprint(cloudJson);
+      const lastSyncedFp = _gpagoGetLastSynced(row.key);
       const firstSync = !firstSyncDone;
-      if (!firstSync && localValue != null && localValue !== row.value && localValue !== lastSynced) {
-        // 로컬이 cloud 와도 다르고 마지막 동기화 값과도 다름 → unpushed 변경 → 보호 + PUSH
+
+      // 보호 2: 로컬과 cloud 가 다르고, 로컬이 마지막 동기화 fingerprint 와도 다름 → 미푸시 변경 보호
+      if (!firstSync && localJson != null && localFp !== cloudFp && localFp !== lastSyncedFp) {
         protectedCnt++;
         console.log('[cloud-pull] 미푸시 로컬 변경 감지 → 보호 + PUSH:', row.key);
         _gpagoCloudPushKey(row.key);
         continue;
       }
 
+      // cloud 값 적용 — prodsrc 키는 압축해서 저장 (quota 절약)
       try {
-        const localBefore = localValue;
-        Storage.prototype._origSetItem.call(localStorage, row.key, row.value);
-        _gpagoSetLastSynced(row.key, row.value);
-        if (localBefore !== row.value) changed++;
+        const storeValue = (row.key === PRODSRC_KEY) ? _gpagoCompress(cloudJson) : cloudJson;
+        Storage.prototype._origSetItem.call(localStorage, row.key, storeValue);
+        _gpagoSetLastSynced(row.key, cloudJson);  // fingerprint 기록
+        if (localFp !== cloudFp) changed++;
         pulled++;
-      } catch (_) {}
+      } catch (e) {
+        console.warn('[cloud-pull] localStorage write failed for', row.key, e);
+      }
     }
     _gpagoCloudReady = true;
     try { Storage.prototype._origSetItem.call(localStorage, _GPAGO_FIRST_SYNC_FLAG, '1'); } catch(_) {}
@@ -1891,24 +1907,28 @@ async function gpagoCloudPullAll() {
 function _gpagoCloudPushKey(key) {
   if (!_gpagoCloudReady || !_supabase) return;
   if (!GPAGO_SYNC_KEYS.includes(key)) return;
-  // 미푸시 상태로 추적 (beforeunload 경고용)
   _gpagoPendingPushKeys.add(key);
   clearTimeout(_gpagoPushTimers[key]);
-  // 디바운스 단축: 1500 → 500ms (새로고침 전 PUSH 완료 가능성 ↑)
   _gpagoPushTimers[key] = setTimeout(async () => {
     try {
       const { data: { session } } = await _supabase.auth.getSession();
       if (!session) { _gpagoPendingPushKeys.delete(key); return; }
       const raw = localStorage.getItem(key);
+      // 클라우드에는 압축 풀어서 raw JSON 으로 저장 (다른 PC 호환)
+      const cloudValue = (raw && raw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(raw) : raw;
+      if (cloudValue == null) {
+        console.warn('[cloud-push] 압축 해제 실패, 건너뜀:', key);
+        _gpagoPendingPushKeys.delete(key);
+        return;
+      }
       const { error } = await _supabase.from('gpago_kv').upsert(
-        { user_id: session.user.id, key, value: raw, updated_at: new Date().toISOString() },
+        { user_id: session.user.id, key, value: cloudValue, updated_at: new Date().toISOString() },
         { onConflict: 'user_id,key' }
       );
       if (error) {
         console.warn('[cloud-push] error', key, error);
       } else {
-        // PUSH 성공 → lastSynced 갱신 (다음 PULL 에서 충돌 감지 기준)
-        _gpagoSetLastSynced(key, raw);
+        _gpagoSetLastSynced(key, cloudValue);  // fingerprint 기록
         _gpagoPendingPushKeys.delete(key);
       }
     } catch (e) { console.warn('[cloud-push] failed', key, e); }
@@ -8612,11 +8632,47 @@ const PRODSRC_KEY = 'gplan_prodsrc_v1';
 let _prodsrcState = { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
 let _prodsrcCurrentCategory = null;
 
+// LZString 기반 압축/해제 (localStorage quota 절약용 — 4-5배 압축)
+// 클라우드에는 압축 안 한 raw JSON 으로 저장해서 다른 PC 호환성 유지
+const _LZ_PREFIX = '__LZ__';
+function _gpagoCompress(jsonStr) {
+  try {
+    if (typeof LZString === 'undefined' || !jsonStr) return jsonStr;
+    return _LZ_PREFIX + LZString.compressToUTF16(jsonStr);
+  } catch (_) { return jsonStr; }
+}
+function _gpagoDecompress(maybeCompressed) {
+  try {
+    if (typeof maybeCompressed !== 'string' || !maybeCompressed) return maybeCompressed;
+    if (!maybeCompressed.startsWith(_LZ_PREFIX)) return maybeCompressed;  // 압축 안 된 raw JSON
+    if (typeof LZString === 'undefined') return null;  // 라이브러리 미로드
+    return LZString.decompressFromUTF16(maybeCompressed.slice(_LZ_PREFIX.length));
+  } catch (_) { return null; }
+}
+
+// 기존 비압축 데이터 마이그레이션 — 첫 페이지 로드 시 자동으로 압축 형태로 변환
+// (4.85MB 비압축 → ~1MB 압축, 즉시 4MB+ 여유 확보)
+(function _migrateProdsrcToCompressed() {
+  try {
+    if (typeof LZString === 'undefined') return;
+    const raw = localStorage.getItem(PRODSRC_KEY);
+    if (!raw || raw.startsWith(_LZ_PREFIX)) return;  // 데이터 없거나 이미 압축됨
+    const compressed = _gpagoCompress(raw);
+    if (compressed === raw) return;  // 압축 실패
+    localStorage.setItem(PRODSRC_KEY, compressed);
+    console.log('[migration] gplan_prodsrc_v1 압축 완료:', (raw.length/1024).toFixed(0), 'KB →', (compressed.length/1024).toFixed(0), 'KB');
+  } catch (e) {
+    console.warn('[migration] prodsrc 압축 실패:', e);
+  }
+})();
+
 function _prodsrcLoad() {
   try {
     const raw = localStorage.getItem(PRODSRC_KEY);
     if (!raw) return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
-    const obj = JSON.parse(raw);
+    const json = _gpagoDecompress(raw);
+    if (!json) return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
+    const obj = JSON.parse(json);
     return {
       rows: obj.rows || [],
       lastUploadedAt: obj.lastUploadedAt || '',
@@ -8627,11 +8683,13 @@ function _prodsrcLoad() {
 }
 function _prodsrcSave() {
   try {
-    const payload = JSON.stringify(_prodsrcState);
+    const json = JSON.stringify(_prodsrcState);
+    const payload = _gpagoCompress(json);  // LZString 으로 압축해서 저장 (quota 절약)
     localStorage.setItem(PRODSRC_KEY, payload);
-    // 진단용 — 저장 크기 콘솔 출력 (KB 단위)
-    if (payload.length > 1024 * 1024) {  // 1MB 넘으면 경고
-      console.warn('[prodsrc] save size large:', (payload.length / 1024 / 1024).toFixed(2), 'MB');
+    if (payload.length > 1024 * 1024) {
+      console.warn('[prodsrc] 압축 후에도 큰 데이터:', (payload.length / 1024 / 1024).toFixed(2), 'MB');
+    } else if (json.length > 1024 * 1024) {
+      console.log('[prodsrc] 압축률:', (json.length/1024).toFixed(0), 'KB →', (payload.length/1024).toFixed(0), 'KB');
     }
     return true;
   } catch (e) {
