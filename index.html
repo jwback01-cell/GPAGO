@@ -8740,18 +8740,63 @@ function _prodsrcHideProgress() {
   if (el) el.style.display = 'none';
 }
 
+// 완료 알림용 비프음 (Web Audio — 외부 파일 없이 즉시 재생, 백그라운드 탭에서도 동작)
+// kind: 'ok' = 밝은 두 음 차임 (성공), 'warn' = 낮은 단음 (취소/실패)
+function _prodsrcBeep(kind) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const start = () => {
+      const play = (freq, startSec, durSec) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        // 부드러운 ADSR — 클릭/팝 소리 제거
+        const t0 = ctx.currentTime + startSec;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durSec);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + durSec + 0.05);
+      };
+      if (kind === 'warn') {
+        play(440, 0, 0.35);            // A4 한 번
+      } else {
+        play(880, 0,    0.18);         // A5
+        play(1320, 0.22, 0.30);        // E6 — 살짝 늦게
+      }
+      setTimeout(() => { try { ctx.close(); } catch(_) {} }, 1500);
+    };
+    // autoplay 정책으로 suspended 상태일 수 있음 → 재개 후 재생
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx.resume().then(start).catch(() => { try { start(); } catch(_) {} });
+    } else {
+      start();
+    }
+  } catch (_) {}
+}
+
+// 일괄(범위/전체) 자동 분석 중인지 여부 — 단일 분석 비프음과 구분
+window._prodsrcBatchActive = false;
+
 // 범위로 카테고리 ID 일괄 자동 분석 (예: 2100~2150)
 async function _prodsrcAutoFetchRange(startId, endId) {
   const count = endId - startId + 1;
   const totalSec = count * 30;
   if (!confirm(`itemscout 카테고리 ID ${startId} ~ ${endId} (총 ${count}개)를 순차 자동 분석합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n빈 카테고리는 자동으로 건너뜁니다.\n계속할까요?`)) return;
+  window._prodsrcBatchActive = true;
   _prodsrcShowProgress(`itemscout 범위 자동 분석 (${startId} ~ ${endId})`);
   let ok = 0, empty = 0, fail = 0;
   let done = 0;
   _prodsrcUpdateProgress(0, count, `카테고리 ${startId} 시작...`, '성공 0 · 빈것 0 · 실패 0');
+  let cancelled = false;
   for (let id = startId; id <= endId; id++) {
     if (window._prodsrcRangeCancel) {
       _prodsrcMsg(`⏸️ 자동 분석 취소됨 — ${done}/${count} 까지 처리 완료`, 'warn');
+      cancelled = true;
       break;
     }
     done = id - startId + 1;
@@ -8772,6 +8817,8 @@ async function _prodsrcAutoFetchRange(startId, endId) {
   }
   _prodsrcHideProgress();
   _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 카테고리 ${empty} · 실패 ${fail} / 총 ${count}`, ok ? 'ok' : 'warn');
+  window._prodsrcBatchActive = false;
+  _prodsrcBeep(cancelled ? 'warn' : 'ok');
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (스냅샷 반환, _prodsrcImportItemscoutSnapshot 호출은 안 함)
@@ -8836,13 +8883,16 @@ async function _prodsrcAutoRefreshAllFolders() {
   if (!confirm(`총 ${folderIds.size}개 폴더를 itemscout 에서 자동 갱신합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n시작할까요?`)) {
     return;
   }
+  window._prodsrcBatchActive = true;
   let done = 0, ok = 0, fail = 0;
+  let cancelled = false;
   const total = folderIds.size;
   _prodsrcShowProgress('등록된 모든 폴더 자동 갱신');
   _prodsrcUpdateProgress(0, total, '시작 중...', '성공 0 · 실패 0');
   for (const [folderName, catId] of folderIds) {
     if (window._prodsrcRangeCancel) {
       _prodsrcMsg(`⏸️ 자동 갱신 취소됨 — ${done}/${total} 까지 처리 완료`, 'warn');
+      cancelled = true;
       break;
     }
     done++;
@@ -8858,6 +8908,8 @@ async function _prodsrcAutoRefreshAllFolders() {
   }
   _prodsrcHideProgress();
   _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total}`, ok ? 'ok' : 'warn');
+  window._prodsrcBatchActive = false;
+  _prodsrcBeep(cancelled ? 'warn' : 'ok');
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (Promise) — 전체 갱신 시 순차 처리용
@@ -9005,6 +9057,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     _prodsrcSave();
     _prodsrcMsg(`✅ "${currentFolder}" 폴더 갱신 (아이템스카우트) — 신규 ${newC} · 증가 ${upC} · 감소 ${downC}`, 'ok');
     _prodsrcRender();
+    if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
     return;
   }
 
@@ -9024,6 +9077,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   _prodsrcSave();
   _prodsrcMsg(`✅ "${folderName}" 폴더 생성 (아이템스카우트) — ${newRows.length}개 키워드`, 'ok');
   _prodsrcRender();
+  if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
 }
 
 // 여러 파일을 순차적으로 처리 — 중복 폴더 체크가 매 단계 누적 상태 기준으로 동작하도록
