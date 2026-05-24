@@ -2171,7 +2171,35 @@ window.addEventListener('message', (e) => {
 let _multiAnalysisResults = []; // [{ query, items, total, baseKw, filterKw }]
 let _multiActiveIndex = 0;
 
+// 확장 프로그램으로 받은 데이터를 현재 FITER+ / 기준키워드 값으로 재분석 (API 호출 없음)
+function _reanalyzeFromCachedData() {
+  if (!_lastAnalysisItems || !_lastAnalysisItems.length) {
+    toast('확장 프로그램으로 먼저 데이터를 받아주세요 (Ctrl+Q 또는 N 입력 후 엔터)');
+    return;
+  }
+  const baseKw = (document.getElementById('kw-base').value || '').trim();
+  const filterKw = (document.getElementById('kw-filter').value || '').trim();
+  _lastBaseKw = baseKw || _lastBaseKw;
+  _lastFilterKw = filterKw;
+  const terms = _extractTerms(_lastBaseKw, filterKw);
+  try { document.getElementById('terms-display').textContent = terms.join(',') || '-'; } catch(_) {}
+  try { computeStats(_lastAnalysisItems, terms, _lastBaseKw, filterKw); } catch(e) { console.error('[reanalyze computeStats]', e); }
+  try { renderAnalysisResults(); } catch(e) { console.error('[reanalyze render]', e); }
+  toast(`✅ 재분석 완료 — 필터: ${filterKw || '(없음)'} (${_lastAnalysisItems.length}개 상품)`);
+}
+
 async function runAnalysis() {
+  // 반자동 프로그램: 네이버 API 호출 중지 — 확장 프로그램 데이터로만 재분석
+  if (_lastAnalysisItems && _lastAnalysisItems.length) {
+    return _reanalyzeFromCachedData();
+  }
+  // 데이터가 아직 없으면 확장 사용 안내
+  toast('확장 프로그램으로 먼저 데이터를 받아주세요 (N 입력 후 Enter 또는 Ctrl+Q)');
+  return;
+}
+
+// 이하 코드는 보존(다른 곳에서 직접 호출될 경우 대비), 단 일반 흐름에서는 실행되지 않음
+async function _legacyRunAnalysisViaApi() {
   const baseRaw = (document.getElementById('kw-base').value || '').trim();
   const filterKw = (document.getElementById('kw-filter').value || '').trim();
   const naverKw = (document.getElementById('kw-naver').value || '').trim();
