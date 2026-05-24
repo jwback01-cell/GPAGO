@@ -1399,7 +1399,7 @@ PBT키캡	1180
             <input id="prodsrc-itemscout-input" type="search" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
               name="prodsrc-itemscout-cat" autocomplete="off" data-form-type="other" data-lpignore="true"
               aria-autocomplete="none" role="searchbox" inputmode="text" readonly
-              class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-56 focus:outline-none focus:border-brand-blue"
+              class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-[380px] focus:outline-none focus:border-brand-blue"
               onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}"
               onfocus="this.removeAttribute('readonly'); if(this.value && (this.value.includes('@')||/^[A-Za-z가-힣]+$/.test(this.value.trim()))){this.value='';}"
               oninput="if(this.value.includes('@'))this.value=this.value.replace(/[^0-9a-zA-Z\/:.\-?=&_]/g,'');">
