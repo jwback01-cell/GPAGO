@@ -2617,6 +2617,19 @@ function _adaptJsonProductToAnalysisItem(p) {
     else if (window._jsonProductSetHint === 'checkout' || window._jsonProductSetHint === 'total') pt = '2';
   }
 
+  // 그룹(옵션묶음) 상품 감지 — 네이버 쇼핑에서 "다른 옵션 상품보기" 가 뜨는 상품
+  // 가능한 신호: productSetNo > 0, productType '11' 또는 '7', productOptions/optionLineup 존재 등
+  const psNo = p.productSetNo != null ? String(p.productSetNo).trim() : '';
+  const isGroup = !!(
+    String(p.productType) === '11' ||
+    String(p.productType) === '7' ||
+    (psNo && psNo !== '0' && psNo !== '') ||
+    (p.productSetType && String(p.productSetType).trim() !== '' && String(p.productSetType) !== '0') ||
+    p.groupProductYn === 'Y' ||
+    p.hasOptions === true ||
+    (Array.isArray(p.lowMallList) && p.lowMallList.length === 1 && (p.productSet || p.productSetNo || p.optionGroupId))
+  );
+
   return {
     title: p.productTitle || p.productName || p.title || '',
     link,
@@ -2626,6 +2639,7 @@ function _adaptJsonProductToAnalysisItem(p) {
     mallName: p.mallName || p.mallNameWithoutLogistics || '-',
     productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
     productType: pt,
+    isGroup,
     brand: p.brand || '',
     maker: p.maker || '',
     category1: cats[0],
@@ -2701,11 +2715,14 @@ function renderAnalysisResults() {
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const isPriceCompare = String(it.productType) === '1';
     const isNaverPay = ['2','3'].includes(String(it.productType));
-    const groupBadge = isPriceCompare
-      ? '<span class="inline-block text-[10px] font-black bg-brand-pink-light text-brand-pink px-2.5 py-0.5 rounded-full">가격</span>'
-      : isNaverPay
-        ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
-        : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
+    const isGroup = !!it.isGroup;
+    const groupBadge = isGroup
+      ? '<span class="inline-block text-[10px] font-black bg-brand-blue-light text-brand-blue px-2.5 py-0.5 rounded-full">그룹</span>'
+      : isPriceCompare
+        ? '<span class="inline-block text-[10px] font-black bg-brand-pink-light text-brand-pink px-2.5 py-0.5 rounded-full">가격</span>'
+        : isNaverPay
+          ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
+          : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
     const matched = _findJsonMatch(it);
     const attrText = _renderAttrInline(matched);
     const tagText  = _renderTagInline(matched);
