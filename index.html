@@ -8626,8 +8626,50 @@ function _prodsrcLoad() {
   } catch (_) { return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] }; }
 }
 function _prodsrcSave() {
-  try { localStorage.setItem(PRODSRC_KEY, JSON.stringify(_prodsrcState)); } catch(_) {}
+  try {
+    const payload = JSON.stringify(_prodsrcState);
+    localStorage.setItem(PRODSRC_KEY, payload);
+    // 진단용 — 저장 크기 콘솔 출력 (KB 단위)
+    if (payload.length > 1024 * 1024) {  // 1MB 넘으면 경고
+      console.warn('[prodsrc] save size large:', (payload.length / 1024 / 1024).toFixed(2), 'MB');
+    }
+    return true;
+  } catch (e) {
+    console.error('[prodsrc] save FAILED:', e);
+    const isQuota = e.name === 'QuotaExceededError' || /quota|exceed/i.test(e.message || '');
+    const msg = isQuota
+      ? '⚠ localStorage 용량 초과 — 새 폴더가 디스크에 저장되지 않았습니다. 새로고침하면 사라집니다. 일부 폴더를 삭제해주세요.'
+      : '⚠ 저장 실패: ' + (e.message || e) + ' — 새로고침하면 데이터가 사라집니다';
+    try {
+      const msgEl = document.getElementById('prodsrc-upload-msg');
+      if (msgEl) {
+        msgEl.textContent = msg;
+        msgEl.className = 'text-sm font-bold px-1 text-brand-pink';
+        msgEl.classList.remove('hidden');
+      }
+    } catch(_) {}
+    if (typeof toast === 'function') toast(msg);
+    return false;
+  }
 }
+
+// 진단용 — F12 콘솔에서 `gpagoStorageInfo()` 호출하면 localStorage 사용량 표시
+window.gpagoStorageInfo = function () {
+  const items = [];
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    const v = localStorage.getItem(k) || '';
+    const size = k.length + v.length;
+    total += size;
+    items.push({ key: k, sizeKB: (size / 1024).toFixed(1) });
+  }
+  items.sort((a, b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
+  console.log('=== localStorage 사용량 ===');
+  console.log('총 ' + (total / 1024 / 1024).toFixed(2) + ' MB (Chrome 한도: 약 5-10MB)');
+  console.table(items.slice(0, 20));
+  return { totalMB: (total / 1024 / 1024).toFixed(2), top: items.slice(0, 20) };
+};
 function _prodsrcKey(row) { return (row.category || '') + '|' + (row.keyword || ''); }
 function _prodsrcFmt(v) { return v == null || v === '' ? '-' : Number(v).toLocaleString('ko-KR'); }
 function _prodsrcEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
