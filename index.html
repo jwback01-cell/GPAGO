@@ -1778,18 +1778,21 @@ async function gpagoCloudPullAll() {
       console.warn('[cloud-pull] error', error); return 0;
     }
     let pulled = 0;
+    let changed = 0;  // 로컬과 다른(=다른 PC에서 갱신된) 키 수
     const pulledKeys = new Set();
     for (const row of (data || [])) {
       if (!GPAGO_SYNC_KEYS.includes(row.key)) continue;
       if (row.value == null) continue;
       pulledKeys.add(row.key);
       try {
+        const localBefore = localStorage.getItem(row.key);
         Storage.prototype._origSetItem.call(localStorage, row.key, row.value);
+        if (localBefore !== row.value) changed++;
         pulled++;
       } catch (_) {}
     }
     _gpagoCloudReady = true;
-    console.log('[cloud-sync] pulled', pulled, 'keys');
+    console.log('[cloud-sync] pulled', pulled, 'keys, changed', changed);
     // 클라우드에 없지만 로컬에 있는 키 → 첫 PUSH
     for (const key of GPAGO_SYNC_KEYS) {
       if (pulledKeys.has(key)) continue;
@@ -1801,6 +1804,14 @@ async function gpagoCloudPullAll() {
         if (p && typeof p === 'object' && Object.keys(p).length === 0) continue;
       } catch (_) {}
       _gpagoCloudPushKey(key);
+    }
+    // 다른 PC에서 갱신된 데이터가 있으면 화면을 새로고침 (메모리 내 상태가 stale 이므로)
+    // 첫 PULL 한 번만 reload (무한 reload 방지) + 명시적으로 skip 요청한 경우엔 reload 안 함
+    if (changed > 0 && !window._gpagoPullRefreshed && !window._gpagoSkipAutoRefresh) {
+      window._gpagoPullRefreshed = true;
+      console.log('[cloud-sync] 다른 PC에서 변경된 데이터', changed, '개 발견 → 화면 새로고침');
+      if (typeof toast === 'function') toast('☁ 다른 PC 데이터 ' + changed + '개 동기화 — 새로고침합니다');
+      setTimeout(() => location.reload(), 600);
     }
     return pulled;
   } catch (e) { console.warn('[cloud-pull] failed', e); return 0; }
@@ -1886,6 +1897,8 @@ async function submitAuth() {
     setTimeout(async () => {
       closeAuthModal();
       _renderAuthUI(result.data.session || result.data.user);
+      // 로그인 경로는 자체적으로 reload 하므로 PULL 내부의 자동 reload 는 건너뜀
+      window._gpagoSkipAutoRefresh = true;
       await gpagoCloudPullAll();
       // 다른 PC 데이터 반영 위해 새로고침
       location.reload();
