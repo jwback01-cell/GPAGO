@@ -2451,6 +2451,9 @@ function activateMultiKwTab(idx) {
   renderMultiKwTabs();
 }
 
+// JSON 데이터에서 추출한 productSet 정보 (탭 종류) — 분석 시 productType 추론에 사용
+window._jsonProductSetHint = window._jsonProductSetHint || '';
+
 // JSON 상품을 분석 테이블 item 형태로 변환 (네이버 검색 API 응답 형태와 호환되도록)
 function _adaptJsonProductToAnalysisItem(p) {
   if (!p) return {};
@@ -2461,6 +2464,21 @@ function _adaptJsonProductToAnalysisItem(p) {
     p.category4Name || p.category4 || ''
   ];
   const link = p.crUrl || p.adcrUrl || p.dlUrl || p.link || (p.productId ? ('https://search.shopping.naver.com/catalog/' + p.productId) : '');
+
+  // productType 추출 — 여러 필드 검사
+  let pt = String(p.productType || p.productSetType || '').trim();
+  // productType이 없으면 다른 단서로 추론
+  if (!pt) {
+    // 1) lowMallList가 있고 길이 2 이상 → 가격비교 (productType 1)
+    if (Array.isArray(p.lowMallList) && p.lowMallList.length >= 2) pt = '1';
+    // 2) mallProductId 또는 channel.storeMid가 있으면 → 네이버페이 (productType 2)
+    else if (p.mallProductId || p.channel?.storeMid || p.npayProductId) pt = '2';
+    // 3) JSON의 productSet 힌트가 'npay'면 네이버페이로 가정
+    else if (window._jsonProductSetHint === 'npay' || window._jsonProductSetHint === 'naverpay') pt = '2';
+    // 4) productSet 힌트가 'checkout' (전체)면 → 일반 (네이버페이) 가정
+    else if (window._jsonProductSetHint === 'checkout' || window._jsonProductSetHint === 'total') pt = '2';
+  }
+
   return {
     title: p.productTitle || p.productName || p.title || '',
     link,
@@ -2469,7 +2487,7 @@ function _adaptJsonProductToAnalysisItem(p) {
     hprice: p.highPrice || p.hprice || '',
     mallName: p.mallName || p.mallNameWithoutLogistics || '-',
     productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
-    productType: String(p.productType || ''),
+    productType: pt,
     brand: p.brand || '',
     maker: p.maker || '',
     category1: cats[0],
@@ -2941,6 +2959,11 @@ function parseShopJson() {
   }
   // manuTag 집계
   const products = Array.isArray(data.products) ? data.products : (Array.isArray(data.items) ? data.items : []);
+  // productSet 힌트 저장 (탭 종류 — 'npay'(네이버페이) / 'checkout'(전체) / 'compare'(가격비교) 등)
+  try {
+    const ps = data.searchParam?.productSet || data.productSetFilter?.name || '';
+    window._jsonProductSetHint = String(ps).toLowerCase();
+  } catch (_) { window._jsonProductSetHint = ''; }
   // 분석 결과 테이블과 매칭하기 위한 인덱스 갱신
   _indexJsonProducts(products);
   // JSON 상품을 분석 테이블에 바로 표시 (네이버 API 재호출 불필요)
