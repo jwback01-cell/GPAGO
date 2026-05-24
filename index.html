@@ -193,7 +193,7 @@
         <div class="flex items-center gap-2">
           <div class="w-9 h-9 rounded-full bg-brand-blue-light flex items-center justify-center text-brand-blue font-bold text-sm" id="auth-user-avatar">G</div>
           <span id="auth-user-email" class="font-semibold text-sm hidden md:block max-w-[180px] truncate"></span>
-          <span id="auth-sync-badge" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-green-light text-brand-green">동기화됨</span>
+          <span id="auth-sync-badge" onclick="gpagoCloudManualSync()" title="클릭하면 클라우드에서 다시 받아옵니다 (다른 PC에서 추가한 데이터 반영)" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-green-light text-brand-green cursor-pointer hover:bg-brand-green hover:text-white transition-colors">동기화됨</span>
         </div>
         <div class="h-5 w-px bg-brand-border hidden md:block"></div>
         <button onclick="signOutGpago()" class="text-brand-gray hover:text-brand-black flex items-center gap-1.5 text-sm font-semibold transition-colors">
@@ -1762,6 +1762,33 @@ const GPAGO_SYNC_KEYS = [
 ];
 let _gpagoCloudReady = false;  // PULL 완료 전엔 PUSH 금지
 const _gpagoPushTimers = {};
+
+// 사용자가 "동기화됨" 배지를 클릭했을 때 — 강제로 클라우드에서 다시 받아오기
+// (다른 PC에서 방금 추가한 데이터가 안 보일 때 사용)
+async function gpagoCloudManualSync() {
+  const badge = document.getElementById('auth-sync-badge');
+  if (!_supabase) {
+    if (typeof toast === 'function') toast('Supabase 클라이언트가 로드되지 않았습니다');
+    return;
+  }
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (!session) {
+    if (typeof toast === 'function') toast('로그인 상태가 아닙니다 — 다시 로그인해주세요');
+    return;
+  }
+  const origText = badge ? badge.textContent : '';
+  if (badge) badge.textContent = '동기화 중...';
+  // 첫 PULL 의 자동 reload 플래그를 초기화해서 변경 있으면 다시 reload 되도록
+  window._gpagoPullRefreshed = false;
+  try {
+    const n = await gpagoCloudPullAll();
+    if (typeof toast === 'function') toast(`☁ 동기화 완료 — ${n}개 항목 받아옴`);
+  } catch (e) {
+    if (typeof toast === 'function') toast('동기화 실패: ' + (e?.message || String(e)));
+  } finally {
+    if (badge) badge.textContent = origText || '동기화됨';
+  }
+}
 
 async function gpagoCloudPullAll() {
   if (!_supabase) return 0;
