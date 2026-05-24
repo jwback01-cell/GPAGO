@@ -378,15 +378,12 @@
               <tr class="text-brand-blue font-black text-[13px]">
                 <th class="px-5 py-4 text-left w-14">NO</th>
                 <th class="px-3 py-4 text-left w-16"></th>
-                <th class="px-3 py-4 text-left">상품명</th>
-                <th class="px-3 py-4 text-left w-60">속성</th>
-                <th class="px-3 py-4 text-left w-48">태그</th>
-                <th class="px-5 py-4 text-left w-48">카테고리</th>
+                <th class="px-3 py-4 text-left">상품명 · 속성 · 태그</th>
                 <th class="px-5 py-4 text-left w-32">스토어명</th>
               </tr>
             </thead>
             <tbody id="analysis-tbody">
-              <tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">
+              <tr><td colspan="4" class="px-5 py-20 text-center text-brand-gray text-sm">
                 기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
                 <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
               </td></tr>
@@ -2174,7 +2171,7 @@ async function runAnalysis() {
   for (let i = 0; i < baseList.length; i++) {
     const bk = baseList[i];
     const q = filterKw ? (bk + ' ' + filterKw).trim() : bk;
-    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
     try {
       const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(q) + '&display=80&sort=sim';
       const resp = await fetch(proxyUrl, { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
@@ -2198,7 +2195,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   document.getElementById('multi-kw-tabs').classList.add('hidden');
   const api = _getApi();
   const tbody = document.getElementById('analysis-tbody');
-  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
   try {
     // 분석 히스토리 저장
@@ -2225,7 +2222,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     const data = await resp.json();
     const items = data.items || [];
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
       return;
     }
 
@@ -2247,7 +2244,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
   } catch (e) {
     console.error('[분석] 실패:', e);
-    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
   }
 }
 
@@ -2425,7 +2422,7 @@ function activateMultiKwTab(idx) {
   const r = _multiAnalysisResults[idx];
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
     renderMultiKwTabs();
     return;
   }
@@ -2464,40 +2461,25 @@ function _findJsonMatch(item) {
   return null;
 }
 
-// JSON 상품의 속성(attributeValue · characterValue) — 한 줄 가로 스크롤
-function _renderAttrChips(p) {
-  if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
-  const attrs = String(p.attributeValue || '').split('|').map(s => s.trim()).filter(Boolean);
+// JSON 상품의 속성 — ROPAGO 스타일 인라인 텍스트 (characterValue를 · 로 연결)
+function _renderAttrInline(p) {
+  if (!p) return '';
   const chars = String(p.characterValue || '').split('|').map(s => s.trim()).filter(Boolean);
-  if (!attrs.length && !chars.length) return '<span class="text-brand-gray text-[10px]">-</span>';
-  const len = Math.max(attrs.length, chars.length);
-  const pairs = [];
-  const titleParts = [];
-  for (let k = 0; k < len; k++) {
-    const a = attrs[k] || '';
-    const c = chars[k] || '';
-    if (!a && !c) continue;
-    pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] mr-1 align-middle"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
-    titleParts.push((a ? a + ': ' : '') + c);
-  }
-  if (!pairs.length) return '<span class="text-brand-gray text-[10px]">-</span>';
-  const tip = titleParts.join(' / ').replace(/"/g, '&quot;');
-  return `<div class="whitespace-nowrap overflow-x-auto pb-1 chip-row" title="${tip}">${pairs.join('')}</div>`;
+  if (!chars.length) return '';
+  return chars.map(c => escapeHtml(c)).join(' · ');
 }
 
-// JSON 상품의 manuTag — 한 줄 가로 스크롤 (운영태그 제외)
-function _renderTagChips(p) {
-  if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
+// JSON 상품의 manuTag — ROPAGO 스타일 #태그 인라인 텍스트 (운영태그 제외)
+function _renderTagInline(p) {
+  if (!p) return '';
   const EXCLUDE = new Set([
     '오늘출발','오늘발송','당일출발','당일발송','내일발송','내일도착',
     '무료교환','무료반품','무료교환반품','무료반품교환','무료배송',
     '쿠팡배송','당일출고','당일배송','새벽배송','로켓배송'
   ]);
   const tags = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !EXCLUDE.has(t));
-  if (!tags.length) return '<span class="text-brand-gray text-[10px]">-</span>';
-  const tip = tags.join(', ').replace(/"/g, '&quot;');
-  const chips = tags.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold mr-1 align-middle">${escapeHtml(t)}</span>`).join('');
-  return `<div class="whitespace-nowrap overflow-x-auto pb-1 chip-row" title="${tip}">${chips}</div>`;
+  if (!tags.length) return '';
+  return tags.map(t => '#' + escapeHtml(t)).join(' ');
 }
 
 function renderAnalysisResults() {
@@ -2512,7 +2494,7 @@ function renderAnalysisResults() {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it, i) => {
@@ -2527,17 +2509,22 @@ function renderAnalysisResults() {
         ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
         : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
     const matched = _findJsonMatch(it);
-    const attrHtml = _renderAttrChips(matched);
-    const tagHtml  = _renderTagChips(matched);
+    const attrText = _renderAttrInline(matched);
+    const tagText  = _renderTagInline(matched);
+    const subLine = (attrText || tagText)
+      ? `<div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed">
+           ${attrText ? `<span class="text-brand-gray"><span class="text-brand-black font-bold">${attrText}</span></span>` : ''}
+           ${attrText && tagText ? `<span class="text-brand-border">|</span>` : ''}
+           ${tagText ? `<span class="text-brand-blue font-semibold">${tagText}</span>` : ''}
+         </div>`
+      : '';
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
       <td class="px-3 py-3.5 text-sm align-middle">
         <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
+        ${subLine}
       </td>
-      <td class="px-3 py-3.5 align-middle" style="max-width:240px">${attrHtml}</td>
-      <td class="px-3 py-3.5 align-middle" style="max-width:190px">${tagHtml}</td>
-      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${escapeHtml(cat || '-')}</td>
       <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
     </tr>`;
   }).join('');
