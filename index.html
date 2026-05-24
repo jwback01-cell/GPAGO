@@ -2742,7 +2742,10 @@ function renderAnalysisResults() {
   }
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
-    const highlighted = _highlightTermsInline(title, terms);
+    // 순서 고정 모드는 초록색 배지로 강조(ROPAGO 동일 스타일), 그 외 모드는 inline 색상
+    const highlighted = (_analysisMode === 'order')
+      ? _highlightTerms(title, terms)
+      : _highlightTermsInline(title, terms);
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
     const matched = _findJsonMatch(it);
     // 가격비교 판정 (우선) — productType='1' 또는 lowMallList 2개+ 또는 mallCount 2+
