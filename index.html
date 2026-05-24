@@ -2092,6 +2092,8 @@ document.querySelectorAll('[data-mode]').forEach(c => {
     document.querySelectorAll('[data-mode]').forEach(x => {
       x.classList.toggle('weight-chip-active', x.dataset.mode === _analysisMode);
     });
+    // 모드 변경 시 분석 결과 즉시 재렌더 (하이라이트 스타일 갱신)
+    try { if (typeof renderAnalysisResults === 'function') renderAnalysisResults(); } catch(_) {}
   });
 });
 
