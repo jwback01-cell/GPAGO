@@ -375,12 +375,14 @@
                 <th class="px-5 py-4 text-left w-14">NO</th>
                 <th class="px-3 py-4 text-left w-16"></th>
                 <th class="px-3 py-4 text-left">상품명</th>
+                <th class="px-3 py-4 text-left w-60">속성</th>
+                <th class="px-3 py-4 text-left w-48">태그</th>
                 <th class="px-5 py-4 text-left w-48">카테고리</th>
                 <th class="px-5 py-4 text-left w-32">스토어명</th>
               </tr>
             </thead>
             <tbody id="analysis-tbody">
-              <tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">
+              <tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">
                 기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
                 <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
               </td></tr>
@@ -439,15 +441,8 @@
             </div>
           </div>
         </div>
-        <!-- 쇼핑몰별 상세 (제품명·속성·태그) -->
-        <div class="mt-8 pt-6 border-t border-brand-border">
-          <div class="flex items-center justify-between mb-3">
-            <div class="text-[11px] font-black text-brand-gray tracking-wider">쇼핑몰별 상세</div>
-            <div class="text-[10px] text-brand-gray">총 <b id="tool-json-mall-count" class="text-brand-black">0</b>개 상품</div>
-          </div>
-          <div id="tool-json-mall-list" class="text-xs text-brand-gray">
-            <div class="text-center py-8">분석 후 쇼핑몰별 제품·속성·태그가 표시됩니다</div>
-          </div>
+        <div class="mt-4 text-[11px] text-brand-gray bg-brand-bg rounded-xl px-3 py-2 leading-relaxed">
+          💡 JSON을 붙여넣어 분석하면 위 <b>키워드 분석 결과 테이블</b>의 각 상품 행에 <b>속성</b>·<b>태그</b> 컬럼이 자동으로 채워집니다 (productId / 상품명 기준 매칭).
         </div>
       </section>
     </section>
@@ -2175,7 +2170,7 @@ async function runAnalysis() {
   for (let i = 0; i < baseList.length; i++) {
     const bk = baseList[i];
     const q = filterKw ? (bk + ' ' + filterKw).trim() : bk;
-    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
     try {
       const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(q) + '&display=80&sort=sim';
       const resp = await fetch(proxyUrl, { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
@@ -2199,7 +2194,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   document.getElementById('multi-kw-tabs').classList.add('hidden');
   const api = _getApi();
   const tbody = document.getElementById('analysis-tbody');
-  tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
   try {
     // 분석 히스토리 저장
@@ -2226,7 +2221,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     const data = await resp.json();
     const items = data.items || [];
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
       return;
     }
 
@@ -2248,7 +2243,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
   } catch (e) {
     console.error('[분석] 실패:', e);
-    tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
   }
 }
 
@@ -2426,7 +2421,7 @@ function activateMultiKwTab(idx) {
   const r = _multiAnalysisResults[idx];
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
     renderMultiKwTabs();
     return;
   }
@@ -2441,6 +2436,60 @@ function activateMultiKwTab(idx) {
   renderMultiKwTabs();
 }
 
+// JSON 붙여넣기로 받은 상품 인덱스 (속성·태그 매칭용)
+window._jsonProductsByPid = window._jsonProductsByPid || {};
+window._jsonProductsByTitle = window._jsonProductsByTitle || {};
+
+function _indexJsonProducts(products) {
+  window._jsonProductsByPid = {};
+  window._jsonProductsByTitle = {};
+  (products || []).forEach(p => {
+    const pid = p.id || p.productId || p.nvMid || p.mid || '';
+    if (pid) window._jsonProductsByPid[String(pid)] = p;
+    const rawTitle = p.productTitle || p.productName || p.title || '';
+    const cleanTitle = String(rawTitle).replace(/<[^>]+>/g, '').trim();
+    if (cleanTitle) window._jsonProductsByTitle[cleanTitle] = p;
+  });
+}
+
+function _findJsonMatch(item) {
+  const pid = String(item.productId || '');
+  if (pid && window._jsonProductsByPid[pid]) return window._jsonProductsByPid[pid];
+  const title = _stripHtml(item.title || '').trim();
+  if (title && window._jsonProductsByTitle[title]) return window._jsonProductsByTitle[title];
+  return null;
+}
+
+// JSON 상품의 속성(attributeValue · characterValue) 칩 HTML
+function _renderAttrChips(p) {
+  if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
+  const attrs = String(p.attributeValue || '').split('|').map(s => s.trim()).filter(Boolean);
+  const chars = String(p.characterValue || '').split('|').map(s => s.trim()).filter(Boolean);
+  if (!attrs.length && !chars.length) return '<span class="text-brand-gray text-[10px]">-</span>';
+  const len = Math.max(attrs.length, chars.length);
+  const pairs = [];
+  for (let k = 0; k < len; k++) {
+    const a = attrs[k] || '';
+    const c = chars[k] || '';
+    if (!a && !c) continue;
+    pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] m-0.5"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
+  }
+  return pairs.length ? pairs.join('') : '<span class="text-brand-gray text-[10px]">-</span>';
+}
+
+// JSON 상품의 manuTag 칩 HTML (운영태그 제외)
+function _renderTagChips(p) {
+  if (!p) return '<span class="text-brand-gray text-[10px]">-</span>';
+  const EXCLUDE = new Set([
+    '오늘출발','오늘발송','당일출발','당일발송','내일발송','내일도착',
+    '무료교환','무료반품','무료교환반품','무료반품교환','무료배송',
+    '쿠팡배송','당일출고','당일배송','새벽배송','로켓배송'
+  ]);
+  const tags = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !EXCLUDE.has(t));
+  if (!tags.length) return '<span class="text-brand-gray text-[10px]">-</span>';
+  return tags.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold m-0.5">${escapeHtml(t)}</span>`).join('');
+}
+
 function renderAnalysisResults() {
   const tbody = document.getElementById('analysis-tbody');
   if (!_lastAnalysisItems.length) return;
@@ -2448,14 +2497,12 @@ function renderAnalysisResults() {
   // 필터 적용
   let items = _lastAnalysisItems.slice();
   if (_resultFilter === 'price') {
-    // 가격비교 — 그룹 매칭 상품
     items = items.filter(it => String(it.productType) === '1');
   } else if (_resultFilter === 'naverpay') {
-    // 네이버페이 — 스마트스토어 단독/자체 상품
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it, i) => {
@@ -2469,14 +2516,19 @@ function renderAnalysisResults() {
       : isNaverPay
         ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
         : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
+    const matched = _findJsonMatch(it);
+    const attrHtml = _renderAttrChips(matched);
+    const tagHtml  = _renderTagChips(matched);
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
-      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
-      <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
-      <td class="px-3 py-3.5 text-sm align-middle">
+      <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-top">${i + 1}</td>
+      <td class="px-3 py-3.5 align-top">${groupBadge}</td>
+      <td class="px-3 py-3.5 text-sm align-top">
         <a href="${escapeHtml(it.link || '#')}" target="_blank" class="font-semibold hover:text-brand-blue leading-relaxed">${highlighted}</a>
       </td>
-      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-middle leading-snug">${escapeHtml(cat || '-')}</td>
-      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-middle">${escapeHtml(it.mallName || '-')}</td>
+      <td class="px-3 py-3.5 align-top">${attrHtml}</td>
+      <td class="px-3 py-3.5 align-top">${tagHtml}</td>
+      <td class="px-5 py-3.5 text-[11px] text-brand-gray align-top leading-snug">${escapeHtml(cat || '-')}</td>
+      <td class="px-5 py-3.5 text-sm text-brand-blue font-bold align-top">${escapeHtml(it.mallName || '-')}</td>
     </tr>`;
   }).join('');
 }
@@ -2808,8 +2860,6 @@ function parseShopJson() {
   const totalEl  = document.getElementById('tool-json-tag-total');
   const kwBox    = document.getElementById('tool-json-keyword');
   const resultListBox = document.getElementById('tool-json-result-list');
-  const mallListBox = document.getElementById('tool-json-mall-list');
-  const mallCountEl = document.getElementById('tool-json-mall-count');
   if (!raw) { toast('JSON을 붙여넣어 주세요'); return; }
   let data;
   try { data = JSON.parse(raw); }
@@ -2838,6 +2888,11 @@ function parseShopJson() {
   }
   // manuTag 집계
   const products = Array.isArray(data.products) ? data.products : (Array.isArray(data.items) ? data.items : []);
+  // 분석 결과 테이블과 매칭하기 위한 인덱스 갱신
+  _indexJsonProducts(products);
+  if (typeof renderAnalysisResults === 'function' && Array.isArray(_lastAnalysisItems) && _lastAnalysisItems.length) {
+    try { renderAnalysisResults(); } catch(_) {}
+  }
   if (!products.length) {
     tagsBox.innerHTML = '<span class="text-brand-pink">products 필드를 찾을 수 없습니다</span>';
     resultListBox.innerHTML = '<span class="text-brand-gray">-</span>';
@@ -2883,71 +2938,11 @@ function parseShopJson() {
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
-  // 쇼핑몰별 상세 테이블 — 제품명·속성·태그·텀즈
-  if (mallListBox && mallCountEl) {
-    if (!products.length) {
-      mallCountEl.textContent = '0';
-      mallListBox.innerHTML = '<div class="text-center py-8 text-brand-gray">상품 데이터가 없습니다</div>';
-    } else {
-      mallCountEl.textContent = products.length.toLocaleString('ko-KR');
-      const rows = products.map((p, i) => {
-        const mall = p.mallName || p.mallNameWithoutLogistics || p.lowMallList?.[0]?.mallName || '-';
-        const title = p.productTitle || p.productName || p.title || '(이름 없음)';
-        const cleanTitle = String(title).replace(/<[^>]+>/g, '');
-        // 속성 — attributeValue | characterValue 페어
-        let attrHtml = '<span class="text-brand-gray text-[10px]">-</span>';
-        const attrs = String(p.attributeValue || '').split('|').map(s => s.trim()).filter(Boolean);
-        const chars = String(p.characterValue || '').split('|').map(s => s.trim()).filter(Boolean);
-        if (attrs.length || chars.length) {
-          const len = Math.max(attrs.length, chars.length);
-          const pairs = [];
-          for (let k = 0; k < len; k++) {
-            const a = attrs[k] || '';
-            const c = chars[k] || '';
-            if (!a && !c) continue;
-            pairs.push(`<span class="inline-block bg-brand-bg rounded px-1.5 py-0.5 text-[10px] m-0.5"><span class="text-brand-gray">${escapeHtml(a)}</span>${a && c ? '<span class="text-brand-border mx-1">·</span>' : ''}<span class="text-brand-black font-semibold">${escapeHtml(c)}</span></span>`);
-          }
-          if (pairs.length) attrHtml = pairs.join('');
-        }
-        // 태그 — manuTag에서 운영태그 제외
-        const tagStr = String(p.manuTag || '').split(/[,;]+/).map(s => s.trim()).filter(t => t && !MANUTAG_EXCLUDE.has(t));
-        const tagHtml = tagStr.length
-          ? tagStr.map(t => `<span class="inline-block bg-brand-orange-light text-brand-orange rounded-full px-2 py-0.5 text-[10px] font-bold m-0.5">${escapeHtml(t)}</span>`).join('')
-          : '<span class="text-brand-gray text-[10px]">-</span>';
-        const link = p.crUrl || p.adcrUrl || p.dlUrl || '';
-        const titleCell = link
-          ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="text-brand-black hover:text-brand-blue font-medium">${escapeHtml(cleanTitle)}</a>`
-          : `<span class="text-brand-black font-medium">${escapeHtml(cleanTitle)}</span>`;
-        return `<tr class="border-b border-brand-border hover:bg-brand-bg/50 align-top">
-          <td class="px-2 py-2 text-brand-gray text-center w-10">${i + 1}</td>
-          <td class="px-2 py-2 w-32"><span class="inline-block bg-brand-blue-light text-brand-blue rounded px-2 py-0.5 text-[10px] font-bold">${escapeHtml(mall)}</span></td>
-          <td class="px-2 py-2 text-xs">${titleCell}</td>
-          <td class="px-2 py-2">${attrHtml}</td>
-          <td class="px-2 py-2 w-48">${tagHtml}</td>
-        </tr>`;
-      }).join('');
-      mallListBox.innerHTML = `
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-brand-bg text-[10px] font-black text-brand-gray tracking-wider">
-                <th class="px-2 py-2 w-10 text-center">#</th>
-                <th class="px-2 py-2 w-32">쇼핑몰</th>
-                <th class="px-2 py-2">제품명</th>
-                <th class="px-2 py-2">속성 (attribute · character)</th>
-                <th class="px-2 py-2 w-48">태그 (manuTag)</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-        <div class="mt-3 text-[10px] text-brand-gray">텀즈(Terms)는 쿼리 단위로 공통 — 위 KEY WORD 좌측 패널의 Terms 영역을 참조하세요.</div>
-      `;
-    }
-  }
   // 분석 후 JSON 입력 영역 자동 접기 (UX 개선)
   const details = document.getElementById('tool-json-details');
   if (details) details.open = false;
+  // 사용자에게 매칭 안내
+  toast(`JSON 분석 완료 — 위 결과 테이블의 속성·태그 컬럼에 매칭된 상품 정보가 채워졌습니다`);
 }
 
 // 유틸
