@@ -9347,38 +9347,55 @@ function prodsrcRenderDetail() {
   }
 
   if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
-  // 정렬 우선순위:
-  // 1) 신규 키워드 (이전 날짜에 데이터 없음) → 최상단
-  // 2) 직전 날짜 대비 변동 절대값 1000 이상 → 그 다음
-  // 3) 그 외는 총검색수 내림차순 (null 은 맨 아래)
-  const _getLastTwoHist = (r) => {
-    const h = _prodsrcGetHistory(r);
-    const last = h.length >= 1 ? h[h.length - 1]?.totalSearch : null;
-    const prev = h.length >= 2 ? h[h.length - 2]?.totalSearch : null;
-    return { last, prev };
+
+  // 폴더 내 모든 날짜를 먼저 수집 (정렬 기준이 되는 "최근 날짜" 도출용)
+  const _allDatesSet = new Set();
+  rows.forEach(r => _prodsrcGetHistory(r).forEach(h => { if (h.date) _allDatesSet.add(h.date); }));
+  const _allDates = [..._allDatesSet].sort((a, b) => String(a).localeCompare(String(b)));
+  const _latestDate = _allDates[_allDates.length - 1] || null;
+  const _prevDate   = _allDates.length >= 2 ? _allDates[_allDates.length - 2] : null;
+
+  // 정렬 우선순위 (모두 "최근 날짜(_latestDate)" 기준):
+  // 1) 최근 날짜에 데이터 없는 키워드 → 최하단
+  // 2) 최근 날짜에서 신규 (직전 날짜에 데이터 없음) → 최상단
+  // 3) 직전 날짜 대비 변동 절대값 1000 이상 → 그 다음
+  // 4) 최근 날짜 검색수 내림차순
+  const _getHistVal = (r, date) => {
+    if (!date) return null;
+    const h = _prodsrcGetHistory(r).find(x => x.date === date);
+    return (h && h.totalSearch != null) ? Number(h.totalSearch) : null;
   };
   rows.sort((a, b) => {
-    const ha = _getLastTwoHist(a);
-    const hb = _getLastTwoHist(b);
-    // 신규 판정: 직전 날짜에 데이터 없고(prev=null) 가장 최근 날짜에만 값 있음
-    // (isNew 플래그는 갱신 후에도 유지되어 부정확하므로 사용 X — history 만 신뢰)
-    const aNew = ha.prev == null && ha.last != null;
-    const bNew = hb.prev == null && hb.last != null;
+    const aLast = _getHistVal(a, _latestDate);
+    const bLast = _getHistVal(b, _latestDate);
+    // 최근 날짜에 데이터 유무 — 있는 것이 위
+    const aHas = aLast != null;
+    const bHas = bLast != null;
+    if (aHas && !bHas) return -1;
+    if (!aHas && bHas) return 1;
+    // 둘 다 최근 날짜에 데이터 없음 → 가장 최근 history 값으로
+    if (!aHas && !bHas) {
+      const ah = _prodsrcGetHistory(a);
+      const bh = _prodsrcGetHistory(b);
+      const av = ah.length ? Number(ah[ah.length - 1].totalSearch || 0) : 0;
+      const bv = bh.length ? Number(bh[bh.length - 1].totalSearch || 0) : 0;
+      return bv - av;
+    }
+    // 둘 다 최근 날짜에 데이터 있음 — 신규/변동/검색수 우선순위
+    const aPrev = _getHistVal(a, _prevDate);
+    const bPrev = _getHistVal(b, _prevDate);
+    const aNew = aPrev == null;
+    const bNew = bPrev == null;
     if (aNew && !bNew) return -1;
     if (!aNew && bNew) return 1;
-    // 변동 절대값 1000 이상
-    const aDiff = (ha.last != null && ha.prev != null) ? Math.abs(Number(ha.last) - Number(ha.prev)) : 0;
-    const bDiff = (hb.last != null && hb.prev != null) ? Math.abs(Number(hb.last) - Number(hb.prev)) : 0;
+    const aDiff = (aPrev != null) ? Math.abs(aLast - aPrev) : 0;
+    const bDiff = (bPrev != null) ? Math.abs(bLast - bPrev) : 0;
     const aBig = aDiff >= 1000;
     const bBig = bDiff >= 1000;
     if (aBig && !bBig) return -1;
     if (!aBig && bBig) return 1;
-    // 둘 다 큰 변동이면 변동량 큰 순
     if (aBig && bBig && aDiff !== bDiff) return bDiff - aDiff;
-    // 그 외: 총검색수 내림차순
-    const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
-    const bv = b.totalSearch == null ? -Infinity : Number(b.totalSearch);
-    return bv - av;
+    return bLast - aLast;
   });
   if (titleEl) titleEl.textContent = cat;
   if (metaEl) metaEl.textContent = `${rows.length}개 키워드`;
