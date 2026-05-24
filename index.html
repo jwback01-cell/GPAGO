@@ -2103,7 +2103,16 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
     document.querySelectorAll('[data-rfilter]').forEach(x => {
       x.classList.toggle('weight-chip-active', x.dataset.rfilter === _resultFilter);
     });
-    renderAnalysisResults();
+    // 확장에서 받은 탭별 데이터가 있으면 → 해당 탭 데이터로 전환
+    // (network에서 받은 진짜 네이버페이/전체 탭 데이터)
+    const tabMap = { 'all': '전체', 'price': '가격비교', 'naverpay': '네이버페이' };
+    const tabName = tabMap[_resultFilter];
+    if (tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
+      _switchToExtensionTab(tabName);
+    } else {
+      // 캡처된 탭 데이터 없으면 기존처럼 productType 필터링만
+      renderAnalysisResults();
+    }
   });
 });
 
@@ -3071,35 +3080,40 @@ function _waitForElement(id, timeoutMs) {
   });
 }
 
-async function _processExtensionPayload(payload) {
-  if (!payload || typeof payload !== 'object') return;
-  console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query);
-  try {
-    // 1) 키워드 분석 페이지로 강제 이동
-    if (typeof goPage === 'function') goPage('analysis');
+// 확장에서 받은 탭별 데이터 저장 — 필터 버튼 클릭 시 전환에 사용
+window._extensionTabPayloads = null; // { '전체': {...payload}, '네이버페이': {...payload} }
 
-    // 2) DOM 요소 준비될 때까지 대기 (최대 3초)
+async function _processExtensionPayload(payload, tabsMap) {
+  if (!payload || typeof payload !== 'object') return;
+  console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query, ' tabs:', tabsMap ? Object.keys(tabsMap).join(',') : 'none');
+  try {
+    // 탭별 데이터를 전역에 저장 (필터 버튼이 사용)
+    if (tabsMap && typeof tabsMap === 'object' && Object.keys(tabsMap).length > 0) {
+      window._extensionTabPayloads = tabsMap;
+    } else {
+      // 단일 데이터만 받았으면 '전체'로 저장
+      window._extensionTabPayloads = { '전체': payload };
+    }
+
+    if (typeof goPage === 'function') goPage('analysis');
     const ta = await _waitForElement('tool-json-input', 3000);
     if (!ta) {
       console.warn('[GPAGO ext] tool-json-input 못 찾음');
       try { toast && toast('⚠️ JSON 입력 영역 찾지 못함 — 페이지 새로고침 필요'); } catch(_) {}
       return;
     }
-
-    // 3) JSON 텍스트영역 채우기
     ta.value = JSON.stringify(payload, null, 2);
     const details = document.getElementById('tool-json-details');
     if (details) details.open = true;
 
-    // 4) parseShopJson 실행 — JSON의 80개 상품으로 분석 테이블·TAG STATS·N 입력란·FITER+ 모두 즉시 채워짐
-    //    (네이버 API 재호출 없음 — 새로고침 불필요)
+    // parseShopJson — payload 기준 (보통 가장 최근 캡처 = 네이버페이)
     if (typeof parseShopJson === 'function') {
       try { parseShopJson(); } catch (e) { console.error('[GPAGO ext] parseShopJson 오류:', e); }
     }
 
-    try { toast && toast('✅ 확장 데이터로 즉시 분석 완료'); } catch(_) {}
+    const tabCount = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads).length : 1;
+    try { toast && toast('✅ 확장 데이터로 즉시 분석 완료 (탭 ' + tabCount + '개)'); } catch(_) {}
 
-    // 해시 정리
     if (location.hash && location.hash.includes('gpago-auto-analyze')) {
       history.replaceState(null, '', location.pathname);
     }
@@ -3108,16 +3122,31 @@ async function _processExtensionPayload(payload) {
   }
 }
 
+// 확장 탭 데이터로 분석 결과 전환 (필터 버튼 클릭 시 호출)
+function _switchToExtensionTab(tabName) {
+  if (!window._extensionTabPayloads) return false;
+  const payload = window._extensionTabPayloads[tabName];
+  if (!payload) {
+    try { toast && toast(`⚠️ ${tabName} 탭 데이터가 캡처되지 않았습니다`); } catch(_) {}
+    return false;
+  }
+  const ta = document.getElementById('tool-json-input');
+  if (ta) ta.value = JSON.stringify(payload, null, 2);
+  if (typeof parseShopJson === 'function') {
+    try { parseShopJson(); } catch (e) { console.error('[switch tab]', e); }
+  }
+  try { toast && toast(`✅ ${tabName} 탭 데이터로 전환됨 (${payload.products?.length}개)`); } catch(_) {}
+  return true;
+}
+
 // ════════════════════════════════════════
 // 브라우저 확장 프로그램 연동 (GPAGO 자동 분석)
-// 확장에서 window.postMessage로 shoppingResult JSON을 전달하면
-// 자동으로: 키워드 분석 페이지 이동 → JSON 채움 → parseShopJson → 가중치 분석
 // ════════════════════════════════════════
 window.addEventListener('message', (e) => {
   if (e.source !== window) return;
   if (!e.data || e.data.source !== 'gpago-extension') return;
   if (e.data.type !== 'GPAGO_AUTO_ANALYZE') return;
-  _processExtensionPayload(e.data.data);
+  _processExtensionPayload(e.data.data, e.data.tabs);
 });
 
 // ════════════════════════════════════════
