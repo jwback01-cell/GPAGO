@@ -2991,32 +2991,53 @@ document.addEventListener('DOMContentLoaded', () => {
 // 확장에서 window.postMessage로 shoppingResult JSON을 전달하면
 // 자동으로: 키워드 분석 페이지 이동 → JSON 텍스트영역 채움 → parseShopJson 실행 → N 키워드 분석 실행
 // ════════════════════════════════════════
-window.addEventListener('message', (e) => {
-  if (e.source !== window) return;
-  if (!e.data || e.data.source !== 'gpago-extension') return;
-  if (e.data.type !== 'GPAGO_AUTO_ANALYZE') return;
-  const payload = e.data.data;
+// DOM 요소가 준비될 때까지 대기 (페이지 이동 후 SPA 렌더 지연 대응)
+function _waitForElement(id, timeoutMs) {
+  return new Promise(resolve => {
+    const start = Date.now();
+    const tick = () => {
+      const el = document.getElementById(id);
+      if (el) { resolve(el); return; }
+      if (Date.now() - start > timeoutMs) { resolve(null); return; }
+      setTimeout(tick, 80);
+    };
+    tick();
+  });
+}
+
+async function _processExtensionPayload(payload) {
   if (!payload || typeof payload !== 'object') return;
+  console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query);
   try {
-    // 1) 키워드 분석 페이지로 이동
+    // 1) 키워드 분석 페이지로 강제 이동
     if (typeof goPage === 'function') goPage('analysis');
-    // 2) JSON 입력 영역에 텍스트 채우기 (펼친 상태로)
-    setTimeout(() => {
-      const ta = document.getElementById('tool-json-input');
-      if (!ta) { toast && toast('JSON 입력 영역을 찾지 못했습니다'); return; }
-      ta.value = JSON.stringify(payload, null, 2);
-      const details = document.getElementById('tool-json-details');
-      if (details) details.open = true;
-      // 3) parseShopJson 실행 (N 입력란에 query 자동 채워짐 + TAG STATS 표시)
-      if (typeof parseShopJson === 'function') parseShopJson();
-      // 4) 약간 지연 후 가중치 분석 실행 (N 입력 사용)
-      setTimeout(() => {
-        if (typeof runAnalysisWithNaverKw === 'function') {
-          runAnalysisWithNaverKw();
-        }
-      }, 400);
-      try { toast && toast('✅ 확장 프로그램에서 받은 데이터로 자동 분석을 시작합니다'); } catch(_) {}
-    }, 150);
+
+    // 2) DOM 요소 준비될 때까지 대기 (최대 3초)
+    const ta = await _waitForElement('tool-json-input', 3000);
+    if (!ta) {
+      console.warn('[GPAGO ext] tool-json-input 못 찾음');
+      try { toast && toast('⚠️ JSON 입력 영역 찾지 못함 — 페이지 새로고침 필요'); } catch(_) {}
+      return;
+    }
+
+    // 3) JSON 텍스트영역 채우기
+    ta.value = JSON.stringify(payload, null, 2);
+    const details = document.getElementById('tool-json-details');
+    if (details) details.open = true;
+
+    // 4) parseShopJson 실행 (N 입력란에 query + FITER+ 자동 채워짐, TAG STATS 표시)
+    if (typeof parseShopJson === 'function') {
+      try { parseShopJson(); } catch (e) { console.error('[GPAGO ext] parseShopJson 오류:', e); }
+    }
+
+    // 5) 짧은 지연 후 가중치 분석 실행 — N 키워드로 네이버 검색
+    await new Promise(r => setTimeout(r, 350));
+    if (typeof runAnalysisWithNaverKw === 'function') {
+      try { runAnalysisWithNaverKw(); } catch (e) { console.error('[GPAGO ext] runAnalysisWithNaverKw 오류:', e); }
+    }
+
+    try { toast && toast('✅ 확장 데이터 자동 분석 시작'); } catch(_) {}
+
     // 해시 정리
     if (location.hash && location.hash.includes('gpago-auto-analyze')) {
       history.replaceState(null, '', location.pathname);
@@ -3024,6 +3045,18 @@ window.addEventListener('message', (e) => {
   } catch (err) {
     console.error('[GPAGO ext receive]', err);
   }
+}
+
+// ════════════════════════════════════════
+// 브라우저 확장 프로그램 연동 (GPAGO 자동 분석)
+// 확장에서 window.postMessage로 shoppingResult JSON을 전달하면
+// 자동으로: 키워드 분석 페이지 이동 → JSON 채움 → parseShopJson → 가중치 분석
+// ════════════════════════════════════════
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  if (!e.data || e.data.source !== 'gpago-extension') return;
+  if (e.data.type !== 'GPAGO_AUTO_ANALYZE') return;
+  _processExtensionPayload(e.data.data);
 });
 
 // ════════════════════════════════════════
