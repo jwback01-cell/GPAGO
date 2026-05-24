@@ -8603,12 +8603,39 @@ if (document.readyState !== 'loading') {
   });
 }
 
-// 자동 분석 — 입력 있으면 그 카테고리만, 없으면 등록된 모든 폴더 자동 갱신
+// 자동 분석 — 폴더 안: 현재 폴더만 갱신 / 폴더 밖 + 입력 있음: 그 카테고리만 / 폴더 밖 + 입력 없음: 전체 갱신
 function prodsrcAutoFetchItemscout() {
   // 자동완성으로 들어간 잘못된 값(이메일 등)이면 비우고 시작
   _prodsrcClearItemscoutInput();
   const inputEl = document.getElementById('prodsrc-itemscout-input');
   const val = (inputEl?.value || '').trim();
+
+  // 폴더 안 + 입력 없음 → 현재 폴더의 itemscoutCategoryId 로 자동 갱신
+  if (_prodsrcCurrentCategory && !val) {
+    const currentFolder = _prodsrcCurrentCategory;
+    const rows = (_prodsrcState && _prodsrcState.rows) || [];
+    const folderRow = rows.find(r => (r.folderName || r.category) === currentFolder && r.itemscoutCategoryId);
+    if (!folderRow) {
+      _prodsrcMsg(`⚠️ "${currentFolder}" 폴더에 itemscout 카테고리 ID 가 등록되어 있지 않습니다. 입력란에 카테고리 ID/URL 을 입력해서 한 번 분석하면 자동 등록됩니다.`, 'warn');
+      return;
+    }
+    _prodsrcMsg(`"${currentFolder}" 자동 갱신 시작 — 새 팝업 창에서 itemscout 페이지 열고 스크롤 후 수집 (약 20-30초)`, 'info');
+    _prodsrcItemscoutRequestedAt = Date.now();
+    try {
+      window.postMessage({
+        source: 'gpago-page',
+        type: 'GPAGO_AUTO_FETCH_ITEMSCOUT',
+        categoryIdOrUrl: String(folderRow.itemscoutCategoryId)
+      }, window.location.origin);
+    } catch (_) {}
+    setTimeout(() => {
+      if (_prodsrcItemscoutRequestedAt && Date.now() - _prodsrcItemscoutRequestedAt < 45500) {
+        _prodsrcMsg('⚠️ 자동 분석 응답 없음. 확장이 설치되어 있는지 확인하세요.', 'warn');
+      }
+    }, 45000);
+    return;
+  }
+
   if (val) {
     // 단일 카테고리 자동 분석
     _prodsrcMsg(`자동 분석 시작 — 새 팝업 창에서 itemscout 페이지 열고 스크롤 후 수집합니다 (약 20-30초 소요)`, 'info');
