@@ -1396,7 +1396,8 @@ PBT키캡	1180
             <div class="text-xs text-brand-gray mt-0.5">키워드·대표 카테고리·총검색수 등 컬럼이 포함된 엑셀 (.xlsx / .xls / .csv)</div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <input id="prodsrc-itemscout-input" type="text" placeholder="itemscout URL 또는 카테고리 ID"
+            <input id="prodsrc-itemscout-input" type="text" placeholder="itemscout URL 또는 카테고리 ID 입력 (비우면 등록된 전체 폴더 자동 갱신)"
+              name="prodsrc-itemscout-cat" autocomplete="off" data-form-type="other" data-lpignore="true"
               class="px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-semibold w-56 focus:outline-none focus:border-brand-blue"
               onkeydown="if(event.key==='Enter'){prodsrcAutoFetchItemscout();}">
             <button onclick="prodsrcAutoFetchItemscout()" id="prodsrc-itemscout-auto-btn"
