@@ -2659,41 +2659,6 @@ function _indexJsonProducts(products) {
   });
 }
 
-// 14번 행 진단 — 매칭 성공 여부 + 'opt'가 포함된 모든 필드 값을 우측 하단에 표시
-function _diagRow14(item14) {
-  const old = document.getElementById('gpago-row14-diag');
-  if (old) old.remove();
-  if (!item14) return;
-  const matched = (typeof _findJsonMatch === 'function') ? _findJsonMatch(item14) : null;
-  const box = document.createElement('div');
-  box.id = 'gpago-row14-diag';
-  box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;background:#fff;border:2px solid #FF6B6B;border-radius:12px;padding:12px 16px;font-size:11px;font-family:monospace;max-width:520px;max-height:60vh;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.2);';
-
-  let body;
-  if (!matched) {
-    body = `<div style="color:#FF6B6B;font-weight:bold;">⚠ 14번 행에 대한 raw JSON 매칭 실패<br><br>productId: ${item14.productId || '(없음)'}<br>title: ${(item14.title||'').slice(0,40)}<br><br>→ _jsonProductsByPid 또는 _jsonProductsByTitle에 등록되지 않음. 캡처 데이터가 다를 수 있음.</div>`;
-  } else {
-    const allKeys = Object.keys(matched).sort();
-    const optKeys = allKeys.filter(k => /opt/i.test(k));
-    const optRows = optKeys.map(k => {
-      const v = matched[k];
-      const vStr = (v == null) ? '<i style="color:#bbb">null</i>' :
-                   (v === '') ? '<i style="color:#bbb">(빈문자)</i>' :
-                   Array.isArray(v) ? `[배열 ${v.length}]` :
-                   typeof v === 'object' ? '{객체}' :
-                   String(v).slice(0, 50);
-      return `<tr><td style="padding:3px 6px;border-bottom:1px solid #eee;"><b style="color:#FF6B6B">${k}</b></td><td style="padding:3px 6px;border-bottom:1px solid #eee;">${vStr}</td></tr>`;
-    }).join('');
-    body = `
-      <div style="color:#0AA060;font-weight:bold;margin-bottom:8px;">✓ 14번 매칭 성공 — '${(matched.mallName||'')}' / ${(matched.productTitle||matched.productName||'').replace(/<[^>]+>/g,'').slice(0,30)}</div>
-      <div style="margin-bottom:6px;color:#444;">'opt'가 들어간 모든 필드 (${optKeys.length}개):</div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px;"><tbody>${optRows || '<tr><td>없음</td></tr>'}</tbody></table>
-      <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eee;color:#888;font-size:9px;">전체 필드 수: ${allKeys.length}</div>`;
-  }
-
-  box.innerHTML = `<div style="font-weight:bold;font-size:12px;margin-bottom:8px;color:#FF6B6B;">🔍 14번 행 그룹 판정 진단<button style="float:right;background:#eee;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;" onclick="this.closest('#gpago-row14-diag').remove()">닫기</button></div>${body}`;
-  document.body.appendChild(box);
-}
 
 function _findJsonMatch(item) {
   const pid = String(item.productId || '');
@@ -2739,31 +2704,32 @@ function renderAnalysisResults() {
     tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
-  // ── 그룹 판정 진단 — 첫 렌더링 시 14번 행 (인덱스 13) 정보를 화면에 표시 ──
-  try { _diagRow14(items[13]); } catch(_) {}
-
   tbody.innerHTML = items.map((it, i) => {
     const title = _stripHtml(it.title);
     const highlighted = _highlightTerms(title, terms);
     const cat = [it.category1, it.category2, it.category3, it.category4].filter(Boolean).join(' > ');
-    const isPriceCompare = String(it.productType) === '1';
-    const isNaverPay = ['2','3'].includes(String(it.productType));
     const matched = _findJsonMatch(it);
-    // 그룹 판정 — adapter 캐시(it.isGroup) 또는 raw JSON(matched)에서 옵션 관련 필드 검사
-    // 필드명에 'opt'가 들어간 모든 값을 합산해 옵션이 있는지 확인 (안전한 광범위 매칭)
-    let optSignal = !!it.isGroup;
-    if (!optSignal && matched && typeof matched === 'object') {
-      for (const k of Object.keys(matched)) {
-        if (!/opt/i.test(k)) continue;
-        const v = matched[k];
-        if (v == null || v === '' || v === 0 || v === '0') continue;
-        if (typeof v === 'number' && v > 0) { optSignal = true; break; }
-        if (typeof v === 'string' && v.trim() !== '' && v.trim() !== '0') {
-          // |구분자|값 형식이면 실제 옵션이 있는 것으로 판단
-          const cleaned = v.replace(/\|/g, '').trim();
-          if (cleaned !== '' && cleaned !== '0') { optSignal = true; break; }
+    // 가격비교 판정 (우선) — productType='1' 또는 lowMallList 2개+ 또는 mallCount 2+
+    const _mallCount = Number(matched?.mallCount || 0) || 0;
+    const _lowMallLen = Array.isArray(matched?.lowMallList) ? matched.lowMallList.length : 0;
+    const isPriceCompare = String(it.productType) === '1' || _lowMallLen >= 2 || _mallCount >= 2;
+    const isNaverPay = ['2','3'].includes(String(it.productType));
+    // 그룹 판정 — 가격비교가 아닐 때만 검사 (가격비교가 그룹보다 우선)
+    let optSignal = false;
+    if (!isPriceCompare) {
+      optSignal = !!it.isGroup;
+      if (!optSignal && matched && typeof matched === 'object') {
+        for (const k of Object.keys(matched)) {
+          if (!/opt/i.test(k)) continue;
+          const v = matched[k];
+          if (v == null || v === '' || v === 0 || v === '0') continue;
+          if (typeof v === 'number' && v > 0) { optSignal = true; break; }
+          if (typeof v === 'string' && v.trim() !== '' && v.trim() !== '0') {
+            const cleaned = v.replace(/\|/g, '').trim();
+            if (cleaned !== '' && cleaned !== '0') { optSignal = true; break; }
+          }
+          if (Array.isArray(v) && v.length > 0) { optSignal = true; break; }
         }
-        if (Array.isArray(v) && v.length > 0) { optSignal = true; break; }
       }
     }
     const isGroup = !!optSignal;
