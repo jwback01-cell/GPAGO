@@ -2512,9 +2512,12 @@ function renderCategoryRatio(items) {
   });
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   if (!sorted.length) { section.classList.add('hidden'); return; }
+  // 기준/필터 키워드를 카테고리 경로에 색깔로 강조 (속성/태그와 동일한 색)
+  const terms = (typeof _extractTerms === 'function') ? _extractTerms(_lastBaseKw, _lastFilterKw) : [];
   listEl.innerHTML = sorted.map(([path, cnt]) => {
     const pct = (cnt / total) * 100;
     const pctStr = pct.toFixed(2);
+    const pathHtml = (terms && terms.length) ? _highlightTermsInline(path, terms) : escapeHtml(path);
     return `
       <div class="flex items-center gap-3 text-sm">
         <div class="font-black text-brand-blue w-20 shrink-0 text-right">${pctStr}%</div>
@@ -2523,7 +2526,7 @@ function renderCategoryRatio(items) {
             <div class="h-full bg-brand-blue rounded-full transition-all" style="width:${pct}%"></div>
           </div>
         </div>
-        <div class="font-semibold text-brand-black truncate max-w-[50%]" title="${escapeHtml(path)}">${escapeHtml(path)}</div>
+        <div class="font-semibold text-brand-black truncate max-w-[50%]" title="${escapeHtml(path)}">${pathHtml}</div>
         <div class="text-xs text-brand-gray shrink-0">${cnt}개</div>
       </div>`;
   }).join('');
