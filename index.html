@@ -2510,7 +2510,7 @@ function computeStats(items, terms, baseKw, filterKw) {
   const top1 = items[0];
   const posBar = document.getElementById('position-bar');
   if (top1 && posBar) {
-    posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTerms(_stripHtml(top1.title), terms) + '</span>';
+    posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTermsInline(_stripHtml(top1.title), terms) + '</span>';
     posBar.classList.add('filled');
   }
 
