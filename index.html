@@ -10196,38 +10196,61 @@ function prodsrcDeleteDate(date) {
   }
 }
 
-// 각 폴더에서 다수파 카테고리와 다른 행을 일괄 정리 (이전 업로드 분 포함)
+// 각 폴더에서 폴더명(=업로드 시점 다수파)과 다른 카테고리 행을 일괄 정리
 function prodsrcCleanupMismatched() {
   const rows = (_prodsrcState && _prodsrcState.rows) || [];
   if (!rows.length) {
     _prodsrcMsg('정리할 데이터가 없습니다.', 'warn');
     return;
   }
-  // 폴더별로 그룹화 + 폴더 내 다수파 카테고리 계산
+  // 폴더별로 그룹화
   const byFolder = new Map();
   rows.forEach(r => {
     const fn = r.folderName || r.category || '';
     if (!byFolder.has(fn)) byFolder.set(fn, []);
     byFolder.get(fn).push(r);
   });
-  const summary = [];
-  let totalRemove = 0;
+
+  // 각 폴더의 "정답 카테고리(canonical)" 결정:
+  //   1) folderName 과 일치하는 r.category 가 1개 이상 있으면 → folderName 자체를 정답으로 사용
+  //   2) 없으면 → 폴더 내 다수파 카테고리 사용 (legacy)
+  // ★중요★ folderName 기준을 우선 — 다수파 계산이 잘못 잡히는 케이스 방지
+  // (예: 폴더에 mismatched 행이 너무 많아 가짜 다수파가 생기는 경우)
+  const folderCanonicals = new Map();
+  console.group('[cleanup] 폴더별 카테고리 분석');
   for (const [folderName, folderRows] of byFolder) {
     const catCounts = new Map();
     folderRows.forEach(r => catCounts.set(r.category || '', (catCounts.get(r.category || '') || 0) + 1));
     const sorted = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
-    const dominant = sorted[0][0];
-    const removeCount = folderRows.filter(r => (r.category || '') !== dominant).length;
+    const hasMatching = folderRows.some(r => (r.category || '') === folderName);
+    const canonical = hasMatching ? folderName : sorted[0][0];
+    folderCanonicals.set(folderName, canonical);
+    if (sorted.length > 1) {
+      console.log(
+        `📁 ${folderName.length > 60 ? folderName.slice(0, 60) + '…' : folderName} ` +
+        `(${folderRows.length}개) → 정답: ${canonical === folderName ? 'folderName' : '다수파'}, ` +
+        `카테고리 분포:`,
+        sorted.slice(0, 5).map(([k, v]) => `${v}× ${k.length > 40 ? k.slice(0, 40) + '…' : k}`)
+      );
+    }
+  }
+  console.groupEnd();
+
+  const summary = [];
+  let totalRemove = 0;
+  for (const [folderName, folderRows] of byFolder) {
+    const canonical = folderCanonicals.get(folderName);
+    const removeCount = folderRows.filter(r => (r.category || '') !== canonical).length;
     if (removeCount > 0) {
-      summary.push({ folderName, dominant, removeCount, totalInFolder: folderRows.length });
+      summary.push({ folderName, canonical, removeCount, totalInFolder: folderRows.length });
       totalRemove += removeCount;
     }
   }
   if (totalRemove === 0) {
     _prodsrcMsg('✅ 정리할 행이 없습니다 — 모든 폴더가 단일 카테고리입니다.', 'ok');
+    console.log('[cleanup] 제거 대상 0개');
     return;
   }
-  // 미리보기 메시지 만들기 (최대 8개 폴더만 표시)
   const preview = summary.slice(0, 8).map(s =>
     `• ${s.folderName.length > 50 ? s.folderName.slice(0, 50) + '…' : s.folderName} — ${s.removeCount}개 제외 (총 ${s.totalInFolder}개 중)`
   ).join('\n');
@@ -10236,12 +10259,9 @@ function prodsrcCleanupMismatched() {
   const doCleanup = () => {
     const keptRows = [];
     for (const [folderName, folderRows] of byFolder) {
-      const catCounts = new Map();
-      folderRows.forEach(r => catCounts.set(r.category || '', (catCounts.get(r.category || '') || 0) + 1));
-      const sorted = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
-      const dominant = sorted[0][0];
+      const canonical = folderCanonicals.get(folderName);
       folderRows.forEach(r => {
-        if ((r.category || '') === dominant) keptRows.push(r);
+        if ((r.category || '') === canonical) keptRows.push(r);
       });
     }
     _prodsrcState = {
@@ -10250,6 +10270,7 @@ function prodsrcCleanupMismatched() {
     };
     _prodsrcSave();
     _prodsrcMsg(`🧹 카테고리 정리 완료 — ${totalRemove}개 행 제거 (${summary.length}개 폴더)`, 'ok');
+    console.log('[cleanup] 완료 —', totalRemove, '개 행 제거,', summary.length, '개 폴더 영향');
     _prodsrcRender();
   };
   if (typeof showAppConfirm === 'function') {
