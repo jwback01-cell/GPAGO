@@ -8665,6 +8665,7 @@ function copySrcKeywords() {
 const PRODSRC_KEY = 'gplan_prodsrc_v1';
 let _prodsrcState = { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
 let _prodsrcCurrentCategory = null;
+let _prodsrcCurrentGroup = null;  // 현재 보고 있는 그룹 (자식 폴더 목록 표시 중일 때)
 
 // LZString 기반 압축/해제 (localStorage quota 절약용 — 4-5배 압축)
 // 클라우드에는 압축 안 한 raw JSON 으로 저장해서 다른 PC 호환성 유지
@@ -8700,17 +8701,14 @@ function _gpagoDecompress(maybeCompressed) {
   }
 })();
 
-// 일회성 폴더 묶기 — 한 번만 실행되고 localStorage 플래그로 재실행 방지
-// 사용자 요청: 디지털/가전 > 음향가전 > 오디오 산하 자식 2개를 부모 1개로 통합
-(function _migrateMergeFoldersOnce() {
+// 일회성 폴더 삭제 — 잘못 병합된 폴더 정리
+// 사용자 요청: 이전에 잘못 병합된 '디지털/가전 > 음향가전 > 오디오' 폴더 삭제
+// (자식 폴더 재분석으로 일체형오디오/오디오액세서리 새로 생성 예정)
+(function _migrateDeleteFoldersOnce() {
   const MIGRATIONS = [
     {
-      flag: '__gpago_merge_audio_v1__',
-      parent: '디지털/가전 > 음향가전 > 오디오',
-      children: [
-        '디지털/가전 > 음향가전 > 오디오 > 일체형오디오',
-        '디지털/가전 > 음향가전 > 오디오 > 오디오액세서리',
-      ],
+      flag: '__gpago_delete_merged_audio_v1__',
+      foldersToDelete: ['디지털/가전 > 음향가전 > 오디오'],
     },
   ];
   for (const mig of MIGRATIONS) {
@@ -8719,30 +8717,27 @@ function _gpagoDecompress(maybeCompressed) {
       const raw = localStorage.getItem(PRODSRC_KEY);
       if (!raw) { localStorage.setItem(mig.flag, '1'); continue; }
       const json = _gpagoDecompress(raw);
-      if (!json) { continue; }  // 압축 해제 실패 시 다음 로드에서 재시도
+      if (!json) { continue; }
       const data = JSON.parse(json);
       const rows = data.rows || [];
-      const childSet = new Set(mig.children);
-      let moved = 0;
-      rows.forEach(r => {
-        const fn = r.folderName || r.category || '';
-        if (childSet.has(fn)) {
-          r.folderName = mig.parent;
-          // 자동분석 행(category === folderName) 인 경우 category 도 갱신해서 빨간색 강조 안 뜨게
-          if (r.category === fn) r.category = mig.parent;
-          moved++;
+      const deleteSet = new Set(mig.foldersToDelete);
+      const beforeCount = rows.length;
+      const newRows = rows.filter(r => !deleteSet.has(r.folderName || r.category || ''));
+      const removed = beforeCount - newRows.length;
+      if (removed > 0) {
+        data.rows = newRows;
+        // favorites 에서도 제거
+        if (Array.isArray(data.favorites)) {
+          data.favorites = data.favorites.filter(f => !deleteSet.has(f));
         }
-      });
-      if (moved > 0) {
-        data.rows = rows;
         const newJson = JSON.stringify(data);
         const newRaw = _gpagoCompress(newJson);
         localStorage.setItem(PRODSRC_KEY, newRaw);
-        console.log(`[migration] 폴더 묶기 완료: ${moved}개 행 → "${mig.parent}" (자식 ${mig.children.length}개 폴더 통합)`);
+        console.log(`[migration] 잘못 병합된 폴더 삭제: ${removed}개 행 제거 (${mig.foldersToDelete.join(', ')})`);
       }
       localStorage.setItem(mig.flag, '1');
     } catch (e) {
-      console.warn('[migration] 폴더 묶기 실패:', mig.parent, e);
+      console.warn('[migration] 폴더 삭제 실패:', e);
     }
   }
 })();
@@ -9769,18 +9764,109 @@ function _prodsrcRenderFolders() {
   const searchEl = document.getElementById('prodsrc-folder-search');
   const searchRaw = (searchEl?.value || '').trim().toLowerCase();
   const searchTokens = searchRaw.split(/\s+/).filter(Boolean);
-  // 엑셀 업로드 순서대로 정렬 (먼저 추가된 폴더가 앞)
-  let entries = [...cats.entries()].sort((a, b) => (firstIdx.get(a[0]) ?? 0) - (firstIdx.get(b[0]) ?? 0));
+
+  // ─── 부모-자식 prefix 자동 감지 ───
+  // 폴더명을 ' > ' 로 분리, 직속 부모(한 단계 위 경로) 가 같은 폴더 2개 이상이면 그룹으로 묶음
+  // 단, 자식 폴더 이름과 동일한 부모 폴더가 별도로 존재하면 그룹 처리 안 함 (혼동 방지)
+  const parentToChildren = new Map();  // parent path → children folder names
+  for (const [name] of cats) {
+    const parts = String(name).split(' > ');
+    if (parts.length <= 1) continue;
+    const parent = parts.slice(0, -1).join(' > ');
+    if (!parentToChildren.has(parent)) parentToChildren.set(parent, []);
+    parentToChildren.get(parent).push(name);
+  }
+  // 그룹 결정: 자식 2개 이상 + 부모 자체가 폴더로 존재하지 않을 때만
+  const groupedChildren = new Set();  // 그룹에 속한 자식 폴더명
+  const groups = [];  // [{ parent, children, count, totalSearch, firstIdx }]
+  for (const [parent, children] of parentToChildren) {
+    if (children.length < 2) continue;
+    if (cats.has(parent)) continue;  // 부모가 leaf 로 존재하면 그룹 처리 안 함
+    children.forEach(c => groupedChildren.add(c));
+    let count = 0, totalSearch = 0, earliestIdx = Infinity;
+    children.forEach(c => {
+      const s = cats.get(c);
+      count += s.count;
+      totalSearch += s.totalSearch;
+      const idx = firstIdx.get(c) ?? Infinity;
+      if (idx < earliestIdx) earliestIdx = idx;
+    });
+    groups.push({ parent, children, count, totalSearch, firstIdx: earliestIdx });
+  }
+
+  // 그룹 진입 모드일 때: 그 그룹의 자식 폴더만 표시
+  if (_prodsrcCurrentGroup) {
+    const grp = groups.find(g => g.parent === _prodsrcCurrentGroup);
+    if (!grp) {
+      // 그룹이 사라졌으면 일반 모드로 복귀
+      _prodsrcCurrentGroup = null;
+    }
+  }
+
+  // 표시할 항목: 일반 모드면 그룹 + 그룹 안 속한 폴더, 그룹 모드면 그 그룹의 자식만
+  let displayItems;  // { kind: 'group'|'folder', name, count, totalSearch, firstIdx, children? }[]
+  if (_prodsrcCurrentGroup) {
+    const grp = groups.find(g => g.parent === _prodsrcCurrentGroup);
+    displayItems = grp.children.map(name => {
+      const s = cats.get(name);
+      return { kind: 'folder', name, count: s.count, totalSearch: s.totalSearch, firstIdx: firstIdx.get(name) ?? 0 };
+    });
+  } else {
+    const groupItems = groups.map(g => ({ kind: 'group', name: g.parent, count: g.count, totalSearch: g.totalSearch, firstIdx: g.firstIdx, childCount: g.children.length }));
+    const ungroupedFolders = [...cats.entries()]
+      .filter(([name]) => !groupedChildren.has(name))
+      .map(([name, c]) => ({ kind: 'folder', name, count: c.count, totalSearch: c.totalSearch, firstIdx: firstIdx.get(name) ?? 0 }));
+    displayItems = [...groupItems, ...ungroupedFolders].sort((a, b) => a.firstIdx - b.firstIdx);
+  }
+
+  // 검색 필터
   if (searchTokens.length) {
-    entries = entries.filter(([name]) => {
-      const lower = String(name).toLowerCase();
+    displayItems = displayItems.filter(it => {
+      const lower = String(it.name).toLowerCase();
       return searchTokens.every(t => lower.includes(t));
     });
   }
+
+  // 카운트 표시
+  const totalDisplayCount = _prodsrcCurrentGroup
+    ? groups.find(g => g.parent === _prodsrcCurrentGroup)?.children.length || 0
+    : (groups.length + (cats.size - groupedChildren.size));
   countEl.textContent = searchTokens.length
-    ? `(${entries.length} / ${cats.size}개)`
-    : `(${cats.size}개)`;
-  wrap.innerHTML = entries.map(([name, c], idx) => {
+    ? `(${displayItems.length} / ${totalDisplayCount}개)`
+    : `(${totalDisplayCount}개${_prodsrcCurrentGroup ? ' · 그룹 내 자식' : ''})`;
+
+  // 그룹 모드면 뒤로 가기 + 현재 그룹 경로 표시 (breadcrumb)
+  let breadcrumbHtml = '';
+  if (_prodsrcCurrentGroup) {
+    breadcrumbHtml = `<div class="col-span-full mb-2 flex items-center gap-2 text-sm">
+      <button onclick="prodsrcExitGroup()" class="px-3 py-1.5 rounded-full border border-brand-border text-xs font-bold hover:bg-brand-bg flex items-center gap-1.5">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        폴더 목록
+      </button>
+      <span class="font-bold">${_prodsrcEsc(_prodsrcCurrentGroup)}</span>
+      <span class="text-xs text-brand-gray">그룹 (자식 ${groups.find(g => g.parent === _prodsrcCurrentGroup)?.children.length || 0}개)</span>
+    </div>`;
+  }
+
+  wrap.innerHTML = breadcrumbHtml + displayItems.map((it, idx) => {
+    if (it.kind === 'group') {
+      const safeName = _prodsrcEsc(it.name).replace(/'/g, "\\'");
+      return `<div onclick="prodsrcOpenGroup('${safeName}')"
+        class="bg-brand-blue-light hover:bg-white border-2 border-brand-blue/30 hover:border-brand-blue rounded-2xl p-4 cursor-pointer transition-all"
+        title="그룹 — 클릭해서 자식 폴더 ${it.childCount}개 보기">
+        <div class="mb-2 flex items-center justify-between">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#3478F6" stroke="#1E5BC6" stroke-width="0.5" class="shrink-0">
+            <path d="M2 7 L9 7 L11 9 L20 9 C21 9 22 10 22 11 L22 18 C22 19 21 20 20 20 L4 20 C3 20 2 19 2 18 Z"/>
+            <path d="M2 5 L6 5 L8 7 L20 7 C21 7 22 8 22 9" stroke-width="1" fill="none" opacity="0.6"/>
+          </svg>
+          <span class="text-[10px] font-bold text-brand-blue bg-white px-2 py-0.5 rounded-full">${it.childCount}개 하위</span>
+        </div>
+        <div class="font-bold text-sm leading-tight mb-1 break-words text-brand-blue" title="${_prodsrcEsc(it.name)}">${_prodsrcEsc(it.name)}</div>
+        <div class="text-[11px] text-brand-gray">키워드 합계 ${it.count}개 · 총검색합 ${_prodsrcFmt(it.totalSearch)}</div>
+      </div>`;
+    }
+    const name = it.name;
+    const c = { count: it.count, totalSearch: it.totalSearch };
     const safeName = _prodsrcEsc(name).replace(/'/g, "\\'");
     return `<div draggable="true"
       ondragstart="prodsrcCatDragStart(event, '${safeName}')"
@@ -9998,6 +10084,19 @@ function prodsrcOpenCategory(name) {
 }
 function prodsrcBackToFolders() {
   _prodsrcCurrentCategory = null;
+  _prodsrcRender();
+}
+
+// 그룹(부모 폴더) 진입 — 자식 폴더 목록 표시
+function prodsrcOpenGroup(parentName) {
+  _prodsrcCurrentGroup = parentName;
+  _prodsrcCurrentCategory = null;
+  _prodsrcRender();
+  // 화면 상단으로 스크롤 (그룹 진입 시 사용자가 컨텍스트 잃지 않도록)
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) {}
+}
+function prodsrcExitGroup() {
+  _prodsrcCurrentGroup = null;
   _prodsrcRender();
 }
 function prodsrcRenderDetail() {
