@@ -1853,10 +1853,11 @@ async function gpagoCloudPullAll() {
         continue;
       }
 
-      // 비교는 raw JSON 기준 (localStorage 는 압축됐을 수 있으므로 decompress)
+      // 비교는 JSON 레벨에서 (localStorage 든 cloud 든 압축됐을 수 있으므로 둘 다 decompress)
       const localRaw = localStorage.getItem(row.key);
       const localJson = (localRaw && localRaw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(localRaw) : localRaw;
-      const cloudJson = row.value;
+      const cloudRaw = row.value;
+      const cloudJson = (cloudRaw && cloudRaw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(cloudRaw) : cloudRaw;
       const localFp = _gpagoFingerprint(localJson);
       const cloudFp = _gpagoFingerprint(cloudJson);
       const lastSyncedFp = _gpagoGetLastSynced(row.key);
@@ -1870,11 +1871,17 @@ async function gpagoCloudPullAll() {
         continue;
       }
 
-      // cloud 값 적용 — prodsrc 키는 압축해서 저장 (quota 절약)
+      // cloud 값 적용 — prodsrc 키는 압축 형태로 저장 (quota 절약)
+      // cloud 가 이미 압축본이면 그대로 저장, 비압축이면 압축해서 저장
       try {
-        const storeValue = (row.key === PRODSRC_KEY) ? _gpagoCompress(cloudJson) : cloudJson;
+        let storeValue;
+        if (row.key === PRODSRC_KEY) {
+          storeValue = (cloudRaw && cloudRaw.startsWith(_LZ_PREFIX)) ? cloudRaw : _gpagoCompress(cloudJson);
+        } else {
+          storeValue = cloudJson;  // 다른 키는 작아서 압축 안 함
+        }
         Storage.prototype._origSetItem.call(localStorage, row.key, storeValue);
-        _gpagoSetLastSynced(row.key, cloudJson);  // fingerprint 기록
+        _gpagoSetLastSynced(row.key, cloudJson);  // fingerprint 는 JSON 내용 기준
         if (localFp !== cloudFp) changed++;
         pulled++;
       } catch (e) {
@@ -1924,10 +1931,10 @@ function _gpagoCloudPushKey(key) {
       const { data: { session } } = await _supabase.auth.getSession();
       if (!session) { _gpagoPendingPushKeys.delete(key); return; }
       const raw = localStorage.getItem(key);
-      // 클라우드에는 압축 풀어서 raw JSON 으로 저장 (다른 PC 호환)
-      const cloudValue = (raw && raw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(raw) : raw;
+      // 클라우드에 압축된 형태 그대로 전송 (statement timeout 방지)
+      // _gpagoDecompress 가 PULL 측에서 압축/비압축 둘 다 처리 → 호환성 유지
+      const cloudValue = raw;
       if (cloudValue == null) {
-        console.warn('[cloud-push] 압축 해제 실패, 건너뜀:', key);
         _gpagoPendingPushKeys.delete(key);
         return;
       }
@@ -1939,7 +1946,9 @@ function _gpagoCloudPushKey(key) {
         console.error('[cloud-push] ❌ FAILED', key, '— error:', error);
       } else {
         console.log('[cloud-push] ✅ OK', key, '—', (cloudValue.length/1024).toFixed(1), 'KB');
-        _gpagoSetLastSynced(key, cloudValue);  // fingerprint 기록
+        // fingerprint 는 JSON 내용 기준으로 (압축 형태와 무관하게 일관 비교)
+        const jsonForFp = (cloudValue && cloudValue.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(cloudValue) : cloudValue;
+        _gpagoSetLastSynced(key, jsonForFp);
         _gpagoPendingPushKeys.delete(key);
       }
     } catch (e) { console.warn('[cloud-push] failed', key, e); }
@@ -8733,10 +8742,10 @@ window.gpagoForcePush = async function (key) {
   if (!session) { console.error('❌ 로그인 안 됨'); return; }
   const raw = localStorage.getItem(key);
   if (!raw) { console.error('❌ localStorage 에 데이터 없음:', key); return; }
-  const cloudValue = (raw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(raw) : raw;
-  if (cloudValue == null) { console.error('❌ 압축 해제 실패'); return; }
+  // 압축본 그대로 전송 (statement timeout 방지)
+  const cloudValue = raw;
   const sizeKB = (cloudValue.length / 1024).toFixed(1);
-  console.log('[force-push] 📤 보내는 중...', key, sizeKB, 'KB');
+  console.log('[force-push] 📤 보내는 중...', key, sizeKB, 'KB (압축 형태)');
   const start = Date.now();
   try {
     const { error } = await _supabase.from('gpago_kv').upsert(
@@ -8748,7 +8757,8 @@ window.gpagoForcePush = async function (key) {
       console.error('[force-push] ❌ 실패 (' + elapsed + 'ms):', error);
       return { ok: false, error: error.message || String(error), code: error.code, hint: error.hint, details: error.details };
     }
-    _gpagoSetLastSynced(key, cloudValue);
+    const jsonForFp = (cloudValue.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(cloudValue) : cloudValue;
+    _gpagoSetLastSynced(key, jsonForFp);
     console.log('[force-push] ✅ 성공 (' + elapsed + 'ms,', sizeKB, 'KB)');
     return { ok: true, sizeKB, elapsed: elapsed + 'ms' };
   } catch (e) {
