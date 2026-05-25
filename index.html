@@ -1913,7 +1913,14 @@ async function gpagoCloudPullAll() {
       }
 
       // 비교는 JSON 레벨에서 (localStorage 든 cloud 든 압축됐을 수 있으므로 둘 다 decompress)
-      const localRaw = localStorage.getItem(row.key);
+      // PRODSRC_KEY 는 IDB 에 저장됨 → 거기서 읽기
+      let localRaw;
+      if (row.key === PRODSRC_KEY && typeof idbGet === 'function') {
+        localRaw = await idbGet(row.key);
+        if (!localRaw) localRaw = localStorage.getItem(row.key);  // 마이그레이션 전 폴백
+      } else {
+        localRaw = localStorage.getItem(row.key);
+      }
       const localJson = (localRaw && localRaw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(localRaw) : localRaw;
       const cloudRaw = row.value;
       const cloudJson = (cloudRaw && cloudRaw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(cloudRaw) : cloudRaw;
@@ -1930,21 +1937,25 @@ async function gpagoCloudPullAll() {
         continue;
       }
 
-      // cloud 값 적용 — prodsrc 키는 압축 형태로 저장 (quota 절약)
-      // cloud 가 이미 압축본이면 그대로 저장, 비압축이면 압축해서 저장
+      // cloud 값 적용 — prodsrc 키는 IndexedDB(압축), 다른 키는 localStorage(raw)
       try {
-        let storeValue;
         if (row.key === PRODSRC_KEY) {
-          storeValue = (cloudRaw && cloudRaw.startsWith(_LZ_PREFIX)) ? cloudRaw : _gpagoCompress(cloudJson);
+          const storeValue = (cloudRaw && cloudRaw.startsWith(_LZ_PREFIX)) ? cloudRaw : _gpagoCompress(cloudJson);
+          // IDB 에 저장 (quota 한도 없음)
+          if (typeof idbSet === 'function') {
+            await idbSet(row.key, storeValue);
+          } else {
+            Storage.prototype._origSetItem.call(localStorage, row.key, storeValue);
+          }
         } else {
-          storeValue = cloudJson;  // 다른 키는 작아서 압축 안 함
+          // 다른 키는 작아서 압축 안 하고 localStorage 사용
+          Storage.prototype._origSetItem.call(localStorage, row.key, cloudJson);
         }
-        Storage.prototype._origSetItem.call(localStorage, row.key, storeValue);
         _gpagoSetLastSynced(row.key, cloudJson);  // fingerprint 는 JSON 내용 기준
         if (localFp !== cloudFp) changed++;
         pulled++;
       } catch (e) {
-        console.warn('[cloud-pull] localStorage write failed for', row.key, e);
+        console.warn('[cloud-pull] write failed for', row.key, e);
       }
     }
     _gpagoCloudReady = true;
@@ -1989,7 +2000,14 @@ function _gpagoCloudPushKey(key) {
     try {
       const { data: { session } } = await _supabase.auth.getSession();
       if (!session) { _gpagoPendingPushKeys.delete(key); return; }
-      const raw = localStorage.getItem(key);
+      // PRODSRC_KEY 는 IndexedDB 에 저장됨 → 거기서 읽어옴 (이전 호환: localStorage 폴백)
+      let raw;
+      if (key === 'gplan_prodsrc_v1' && typeof idbGet === 'function') {
+        raw = await idbGet(key);
+        if (!raw) raw = localStorage.getItem(key);
+      } else {
+        raw = localStorage.getItem(key);
+      }
       // 클라우드에 압축된 형태 그대로 전송 (statement timeout 방지)
       // _gpagoDecompress 가 PULL 측에서 압축/비압축 둘 다 처리 → 호환성 유지
       const cloudValue = raw;
@@ -8815,6 +8833,61 @@ function _gpagoCompressAsync(jsonStr) {
   });
 }
 
+// ─── IndexedDB Wrapper (큰 데이터 저장용 — localStorage 5MB 한도 회피) ───
+// gplan_prodsrc_v1 같은 큰 키를 IDB 로 옮겨 quota 제약 없이 저장.
+// IDB 는 디스크 여유의 약 50%까지(보통 수 GB) 사용 가능.
+const _IDB_NAME = 'gpago_kv';
+const _IDB_VERSION = 1;
+const _IDB_STORE = 'kv';
+let _idbPromise = null;
+function _idbOpen() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB not supported')); return; }
+    const req = indexedDB.open(_IDB_NAME, _IDB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(_IDB_STORE)) db.createObjectStore(_IDB_STORE);
+    };
+  });
+  return _idbPromise;
+}
+async function idbGet(key) {
+  try {
+    const db = await _idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(_IDB_STORE, 'readonly');
+      const req = tx.objectStore(_IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { console.warn('[idb] get failed:', e); return null; }
+}
+async function idbSet(key, value) {
+  try {
+    const db = await _idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(_IDB_STORE, 'readwrite');
+      const req = tx.objectStore(_IDB_STORE).put(value, key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { console.error('[idb] set failed:', e); throw e; }
+}
+async function idbDelete(key) {
+  try {
+    const db = await _idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(_IDB_STORE, 'readwrite');
+      const req = tx.objectStore(_IDB_STORE).delete(key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { console.warn('[idb] delete failed:', e); return false; }
+}
+
 // 기존 비압축 데이터 마이그레이션 — 첫 페이지 로드 시 자동으로 압축 형태로 변환
 // (4.85MB 비압축 → ~1MB 압축, 즉시 4MB+ 여유 확보)
 (function _migrateProdsrcToCompressed() {
@@ -8872,6 +8945,31 @@ function _gpagoCompressAsync(jsonStr) {
   }
 })();
 
+// 마이그레이션: localStorage → IndexedDB (한도 5MB 해소)
+// 첫 로드 후 1회만 실행. localStorage 의 prodsrc 데이터를 IDB 로 복사 후 localStorage 키 제거.
+const _IDB_MIGRATION_FLAG = '__gpago_idb_migrated_v1__';
+async function _migrateProdsrcToIDB() {
+  if (localStorage.getItem(_IDB_MIGRATION_FLAG) === '1') return;
+  try {
+    // IDB 에 이미 데이터가 있으면(다른 PC 에서 이전됐을 수 있음) localStorage 무시
+    const idbRaw = await idbGet(PRODSRC_KEY);
+    const lsRaw = localStorage.getItem(PRODSRC_KEY);
+    if (!idbRaw && lsRaw) {
+      await idbSet(PRODSRC_KEY, lsRaw);
+      console.log('[migration] prodsrc localStorage → IndexedDB:', (lsRaw.length / 1024).toFixed(0), 'KB');
+    }
+    if (lsRaw) {
+      localStorage.removeItem(PRODSRC_KEY);
+      console.log('[migration] localStorage prodsrc 제거 — IDB 로 이전 완료');
+    }
+    localStorage.setItem(_IDB_MIGRATION_FLAG, '1');
+  } catch (e) {
+    console.warn('[migration] IDB 마이그레이션 실패:', e);
+  }
+}
+
+// 동기 _prodsrcLoad — localStorage 만 본다. IDB 로 이전된 후엔 빈 값 반환.
+// 이전 호환성용 (DOMContentLoaded 핸들러는 _prodsrcLoadAsync 사용)
 function _prodsrcLoad() {
   try {
     const raw = localStorage.getItem(PRODSRC_KEY);
@@ -8887,6 +8985,28 @@ function _prodsrcLoad() {
     };
   } catch (_) { return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] }; }
 }
+
+// 비동기 _prodsrcLoad — IndexedDB 에서 먼저 시도, 없으면 localStorage fallback
+async function _prodsrcLoadAsync() {
+  try {
+    let raw = await idbGet(PRODSRC_KEY);
+    if (!raw) raw = localStorage.getItem(PRODSRC_KEY);  // 마이그레이션 전 데이터
+    if (!raw) return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
+    const json = _gpagoDecompress(raw);
+    if (!json) return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
+    const obj = JSON.parse(json);
+    return {
+      rows: obj.rows || [],
+      lastUploadedAt: obj.lastUploadedAt || '',
+      prevUploadedAt: obj.prevUploadedAt || '',
+      favorites: Array.isArray(obj.favorites) ? obj.favorites : [],
+    };
+  } catch (e) {
+    console.warn('[prodsrcLoadAsync] failed:', e);
+    return { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
+  }
+}
+
 function _prodsrcSave() {
   try {
     const json = JSON.stringify(_prodsrcState);
@@ -8940,14 +9060,17 @@ async function _prodsrcSaveAsync() {
       }
       try {
         const payload = compressed ? (_LZ_PREFIX + compressed) : json;
-        localStorage.setItem(PRODSRC_KEY, payload);
+        // IndexedDB 에 저장 (localStorage 5MB 한도 회피, 수 GB 가능)
+        await idbSet(PRODSRC_KEY, payload);
         if (compressed && json.length > 1024 * 1024) {
           console.log('[prodsrc-async] 압축률:', (json.length/1024).toFixed(0), 'KB →', (payload.length/1024).toFixed(0), 'KB');
         }
         if (typeof _gpagoUpdateStorageBar === 'function') _gpagoUpdateStorageBar();
+        // 클라우드 PUSH 수동 트리거 — IDB 쓰기는 localStorage 후킹을 안 거쳐서 명시 호출 필요
+        if (typeof _gpagoCloudPushKey === 'function') _gpagoCloudPushKey(PRODSRC_KEY);
       } catch (e) {
-        console.error('[prodsrc] async save FAILED → sync fallback:', e);
-        return _prodsrcSave();  // 에러 표시 로직 활용
+        console.error('[prodsrc] IDB async save FAILED → sync fallback:', e);
+        return _prodsrcSave();  // 에러 표시 로직 활용 (localStorage 폴백)
       }
       if (!_prodsrcSavePending) break;
     }
@@ -9032,7 +9155,7 @@ window.gpagoForcePush = async function (key) {
 };
 
 // 진단용 — F12 콘솔에서 `gpagoStorageInfo()` 호출하면 localStorage 사용량 표시
-window.gpagoStorageInfo = function () {
+window.gpagoStorageInfo = async function () {
   const items = [];
   let total = 0;
   for (let i = 0; i < localStorage.length; i++) {
@@ -9040,38 +9163,70 @@ window.gpagoStorageInfo = function () {
     const v = localStorage.getItem(k) || '';
     const size = k.length + v.length;
     total += size;
-    items.push({ key: k, sizeKB: (size / 1024).toFixed(1) });
+    items.push({ key: k, where: 'localStorage', sizeKB: (size / 1024).toFixed(1) });
   }
+  // IDB 의 prodsrc 크기 측정
+  try {
+    if (typeof idbGet === 'function') {
+      const idbVal = await idbGet(PRODSRC_KEY);
+      if (idbVal) {
+        const size = (PRODSRC_KEY.length + idbVal.length);
+        items.push({ key: PRODSRC_KEY, where: 'IndexedDB', sizeKB: (size / 1024).toFixed(1) });
+      }
+    }
+  } catch(_) {}
   items.sort((a, b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
-  console.log('=== localStorage 사용량 ===');
-  console.log('총 ' + (total / 1024 / 1024).toFixed(2) + ' MB (Chrome 한도: 약 5-10MB)');
+  let estUsage = null, estQuota = null;
+  if (navigator.storage && navigator.storage.estimate) {
+    try { const est = await navigator.storage.estimate(); estUsage = est.usage; estQuota = est.quota; } catch(_) {}
+  }
+  console.log('=== 저장소 사용량 ===');
+  console.log('localStorage 키 합계:', (total / 1024 / 1024).toFixed(2), 'MB');
+  if (estUsage != null) {
+    console.log('Origin 전체 사용량 (localStorage + IDB):', (estUsage / 1024 / 1024).toFixed(2), 'MB');
+    console.log('Origin 한도:', (estQuota / 1024 / 1024 / 1024).toFixed(2), 'GB');
+  }
   console.table(items.slice(0, 20));
-  return { totalMB: (total / 1024 / 1024).toFixed(2), top: items.slice(0, 20) };
+  return {
+    localStorageMB: (total / 1024 / 1024).toFixed(2),
+    originUsageMB: estUsage != null ? (estUsage / 1024 / 1024).toFixed(2) : null,
+    originQuotaGB: estQuota != null ? (estQuota / 1024 / 1024 / 1024).toFixed(2) : null,
+    top: items.slice(0, 20)
+  };
 };
 
 // 주요 폴더 섹션의 저장 공간 사용량 막대 갱신 — _prodsrcSave / _prodsrcRender / 페이지 로드 시 호출
-function _gpagoUpdateStorageBar() {
+async function _gpagoUpdateStorageBar() {
   try {
     const fillEl = document.getElementById('prodsrc-storage-fill');
     const textEl = document.getElementById('prodsrc-storage-text');
     if (!fillEl || !textEl) return;
-    let total = 0;
+    // localStorage 사용량
+    let lsTotal = 0;
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       const v = localStorage.getItem(k) || '';
-      total += k.length + v.length;
+      lsTotal += k.length + v.length;
     }
-    const LIMIT_BYTES = 5 * 1024 * 1024;  // Chrome 표준 한도 5MB
-    const pct = Math.min(100, (total / LIMIT_BYTES) * 100);
-    const usedMB = (total / 1024 / 1024).toFixed(2);
-    fillEl.style.width = pct.toFixed(1) + '%';
-    // 색상: 초록 → 노랑 → 빨강 단계
+    // IndexedDB + 전체 origin 사용량 (navigator.storage.estimate)
+    let usage = lsTotal, quota = 5 * 1024 * 1024;
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        if (est.usage) usage = est.usage;
+        if (est.quota) quota = est.quota;
+      } catch(_) {}
+    }
+    const pct = Math.min(100, (usage / quota) * 100);
+    const usedMB = (usage / 1024 / 1024).toFixed(usage > 1024*1024 ? 1 : 2);
+    const quotaUnit = quota >= 1024 * 1024 * 1024 ? (quota / 1024 / 1024 / 1024).toFixed(1) + ' GB' : (quota / 1024 / 1024).toFixed(0) + ' MB';
+    fillEl.style.width = pct.toFixed(2) + '%';
     let color = '#10B981';
     let textCls = 'text-brand-gray';
     if (pct >= 85) { color = '#EF4444'; textCls = 'text-brand-pink font-bold'; }
     else if (pct >= 60) { color = '#F59E0B'; textCls = 'text-brand-orange font-semibold'; }
     fillEl.style.background = color;
-    textEl.textContent = usedMB + ' MB / 5 MB (' + pct.toFixed(0) + '%)';
+    textEl.textContent = `${usedMB} MB / ${quotaUnit} (${pct.toFixed(2)}%)`;
     textEl.className = 'tabular-nums whitespace-nowrap ' + textCls;
   } catch (_) {}
 }
@@ -11301,10 +11456,24 @@ function prodsrcClearAll() {
   }
 }
 
-// 페이지 로드 시 localStorage 에서 복원
-document.addEventListener('DOMContentLoaded', () => {
+// 페이지 로드 시 데이터 복원 (IndexedDB 우선 → localStorage 폴백)
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1단계: 동기적으로 localStorage 에서 빠르게 읽기 (IDB 가 비어있거나 마이그레이션 전인 경우 즉시 표시)
   _prodsrcState = _prodsrcLoad();
   try { _prodsrcRender(); } catch(_) {}
+  // 2단계: localStorage → IDB 마이그레이션 (1회만)
+  if (typeof _migrateProdsrcToIDB === 'function') await _migrateProdsrcToIDB();
+  // 3단계: IDB 에서 최종 로드 (마이그레이션 후 또는 이미 IDB 에 있는 경우)
+  if (typeof _prodsrcLoadAsync === 'function') {
+    try {
+      const idbState = await _prodsrcLoadAsync();
+      // IDB 데이터가 더 많으면 교체 (마이그레이션 직후이거나 다른 PC 데이터가 IDB 로 들어왔을 때)
+      if (idbState.rows.length > (_prodsrcState.rows?.length || 0)) {
+        _prodsrcState = idbState;
+        try { _prodsrcRender(); } catch(_) {}
+      }
+    } catch (e) { console.warn('[prodsrcLoad] async failed:', e); }
+  }
 });
 
 // ════════════════════════════════════════
