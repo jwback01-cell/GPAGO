@@ -1583,7 +1583,11 @@ PBT키캡	1180
 </div>
 
 <!-- 카테고리 폴더 / 그룹 우클릭 컨텍스트 메뉴 -->
-<div id="prodsrc-folder-menu" class="hidden fixed z-[90] bg-white border border-brand-border rounded-xl shadow-2xl py-1 min-w-[180px] text-sm">
+<div id="prodsrc-folder-menu" class="hidden fixed z-[90] bg-white border border-brand-border rounded-xl shadow-2xl py-1 min-w-[200px] text-sm">
+  <button id="prodsrc-folder-menu-rename" class="w-full text-left px-4 py-2 hover:bg-brand-bg text-brand-black font-semibold flex items-center gap-2">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    이름 변경
+  </button>
   <button id="prodsrc-folder-menu-delete" class="w-full text-left px-4 py-2 hover:bg-brand-pink-light text-brand-pink font-semibold flex items-center gap-2">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
     폴더 삭제
@@ -10927,8 +10931,80 @@ function hideProdsrcFolderMenu() {
         if (fn) prodsrcDeleteFolder(fn, isGrp);
       };
     }
+    // 폴더 메뉴 이름 변경 버튼
+    const fRenameBtn = document.getElementById('prodsrc-folder-menu-rename');
+    if (fRenameBtn) {
+      fRenameBtn.onclick = (e) => {
+        e.stopPropagation();
+        const fn = _prodsrcMenuTargetFolder;
+        const isGrp = _prodsrcMenuTargetIsGroup;
+        hideProdsrcFolderMenu();
+        if (fn) prodsrcRenameFolder(fn, isGrp);
+      };
+    }
   }, 0);
 })();
+
+// 폴더 이름 변경 — 모든 행의 folderName/category 업데이트 + favorites 동기화
+function prodsrcRenameFolder(oldName, isGroup) {
+  if (!oldName) return;
+  const newName = prompt(
+    isGroup
+      ? `그룹 이름 변경 (자식 폴더의 경로 prefix 도 함께 갱신됨):\n\n예: "가구/인테리어 > 카페트/러그 > 면/극세사카페트"\n  → "가구/인테리어 > 카페트/러그 > 카페트 > 면/극세사카페트"`
+      : `새 폴더 이름:\n\n예: "가구/인테리어 > 카페트/러그 > 면/극세사카페트"\n  → "가구/인테리어 > 카페트/러그 > 카페트 > 면/극세사카페트"`,
+    oldName
+  );
+  if (!newName || newName.trim() === '' || newName === oldName) return;
+  const trimmed = newName.trim();
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  let movedCount = 0;
+  if (isGroup) {
+    // 그룹: 모든 자식 폴더의 prefix 도 함께 변경
+    rows.forEach(r => {
+      const fn = r.folderName || r.category || '';
+      if (fn === oldName) {
+        r.folderName = trimmed;
+        if (r.category === oldName) r.category = trimmed;
+        movedCount++;
+      } else if (fn.startsWith(oldName + ' > ')) {
+        const suffix = fn.slice(oldName.length);  // ' > X > Y'
+        const newFn = trimmed + suffix;
+        r.folderName = newFn;
+        if (r.category === fn) r.category = newFn;
+        movedCount++;
+      }
+    });
+  } else {
+    // 단일 폴더: 정확 일치만
+    rows.forEach(r => {
+      const fn = r.folderName || r.category || '';
+      if (fn === oldName) {
+        r.folderName = trimmed;
+        if (r.category === oldName) r.category = trimmed;
+        movedCount++;
+      }
+    });
+  }
+  if (movedCount === 0) {
+    _prodsrcMsg(`"${oldName}" 폴더를 찾지 못했습니다.`, 'warn');
+    return;
+  }
+  // favorites 도 동기화
+  const favs = Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites : [];
+  const newFavs = favs.map(f => {
+    if (f === oldName) return trimmed;
+    if (isGroup && f.startsWith(oldName + ' > ')) return trimmed + f.slice(oldName.length);
+    return f;
+  });
+  _prodsrcState = { ...(_prodsrcState || {}), rows, favorites: newFavs };
+  _prodsrcCurrentCategory = null;
+  _prodsrcCurrentGroup = null;
+  _prodsrcMsg(`✏️ 이름 변경 중... ${movedCount}개 행`, 'info');
+  _prodsrcRender();
+  _prodsrcSaveAsync().then(() => {
+    _prodsrcMsg(`✅ "${oldName}" → "${trimmed}" 이름 변경 (${movedCount}개 행)`, 'ok');
+  });
+}
 
 // 특정 폴더(또는 그룹) 통째 삭제 — 모든 행 + favorites 에서 제거
 function prodsrcDeleteFolder(folderName, isGroup) {
