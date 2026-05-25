@@ -3778,8 +3778,8 @@ async function _processSmartstoreQueue() {
       try { await _doFetchSmartstoreInfo(item.extraId, item.url, item.opts); }
       catch (e) { console.warn('[smartstore-queue] item failed:', e); }
       if (_smartstoreQueue.length) {
-        // 확장 사용 가능하면 짧게 (500ms), 폴백(Vercel API) 면 길게 (2초)
-        const delay = window._gpagoExtensionAvailable ? 500 : 2000;
+        // 네이버 IP 차단 회피 — 확장 사용 시 3초, 폴백(Vercel API) 면 6초
+        const delay = window._gpagoExtensionAvailable ? 3000 : 6000;
         await new Promise(r => setTimeout(r, delay));
       }
     }
@@ -5040,18 +5040,8 @@ function renderKwTrend() {
   const manage = _loadKwManage();
   const allProducts = _kwAllProductOptions(); // 등록된 모든 "조회할 상품"
 
-  // 백그라운드: 정보가 아직 없는 스마트스토어 상품들 큐에 추가
-  // (큐가 직렬 처리 — 한 번에 1개씩 2초 간격으로 fetch → 네이버 429 회피)
-  if (!window._kwInfoBackfillDone) window._kwInfoBackfillDone = new Set();
-  const extras = _loadKwExtras();
-  for (const p of extras) {
-    if (!p.url || !p.id) continue;
-    if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) continue;
-    if (p.reviewCount != null || p.rating != null || p.wishCount != null) continue;
-    if (window._kwInfoBackfillDone.has(p.id)) continue;
-    window._kwInfoBackfillDone.add(p.id);
-    if (typeof _fetchKwProductInfo === 'function') _fetchKwProductInfo(p.id, p.url);
-  }
+  // 자동 백필 제거됨 — 네이버 IP 차단 회피 위해 새로고침 버튼 클릭 시에만 fetch
+  // (이전에는 페이지 로드 시 모든 카드를 한 번에 fetch → 네이버가 봇으로 감지하고 429 차단)
 
   function _realKeyOf(pk) {
     const p = _kwResolveProduct(pk);
