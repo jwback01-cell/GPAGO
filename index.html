@@ -3767,25 +3767,40 @@ async function _fetchKwProductImage(extraId, name, url) {
 }
 
 // 스마트스토어 상품 상세 정보 가져오기 (별도 호출 가능)
-async function _fetchKwProductInfo(extraId, url) {
+async function _fetchKwProductInfo(extraId, url, opts) {
+  opts = opts || {};
   try {
+    console.log('[smartstore-info] 요청:', url);
     const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.warn('[smartstore-info] HTTP', r.status);
+      if (opts.showToast && typeof toast === 'function') toast(`⚠ 정보 가져오기 실패 (HTTP ${r.status})`);
+      return;
+    }
     const info = await r.json();
+    console.log('[smartstore-info] 응답:', info);
     const extras = _loadKwExtras();
     const target = extras.find(p => p.id === extraId);
     if (!target) return;
-    if (info.image && !target.imageUrl) target.imageUrl = info.image;
-    if (info.reviewCount != null) target.reviewCount = Number(info.reviewCount);
-    if (info.rating != null)      target.rating      = Number(info.rating);
-    if (info.wishCount != null)   target.wishCount   = Number(info.wishCount);
-    if (info.registDate)          target.registDate  = info.registDate;
-    if (Array.isArray(info.tags) && info.tags.length) target.tags = info.tags;
-    if (info.category)            target.category    = info.category;
+    let filled = 0;
+    if (info.image && !target.imageUrl) { target.imageUrl = info.image; filled++; }
+    if (info.reviewCount != null) { target.reviewCount = Number(info.reviewCount); filled++; }
+    if (info.rating != null)      { target.rating      = Number(info.rating); filled++; }
+    if (info.wishCount != null)   { target.wishCount   = Number(info.wishCount); filled++; }
+    if (info.registDate)          { target.registDate  = info.registDate; filled++; }
+    if (Array.isArray(info.tags) && info.tags.length) { target.tags = info.tags; filled++; }
+    if (info.category)            { target.category    = info.category; filled++; }
     target.infoFetchedAt = new Date().toISOString();
     _saveKwExtras(extras);
     if (typeof renderKwTrend === 'function') renderKwTrend();
-  } catch (e) { console.warn('[smartstore-info] failed:', e); }
+    if (opts.showToast && typeof toast === 'function') {
+      if (filled === 0) toast('⚠ 정보를 추출하지 못했습니다 (네이버 페이지 구조 변경 가능성)');
+      else toast(`✅ 정보 갱신: ${filled}개 필드 업데이트`);
+    }
+  } catch (e) {
+    console.warn('[smartstore-info] failed:', e);
+    if (opts.showToast && typeof toast === 'function') toast('⚠ 정보 가져오기 실패: ' + (e.message || e));
+  }
 }
 function removeKwExtraProduct(id) {
   const extras = _loadKwExtras().filter(p => p.id !== id);
@@ -5117,13 +5132,13 @@ function renderKwTrend() {
 // 상품 상세 정보 (리뷰/평점/찜/태그) 수동 새로고침 — 카드 우측 새로고침 버튼에서 호출
 function _refreshKwProductInfo(productKey) {
   const m = String(productKey).match(/^ex:(.+)$/);
-  if (!m) { _showToast?.('해당 슬롯은 새로고침 지원 안 됨'); return; }
+  if (!m) { if (typeof toast === 'function') toast('해당 슬롯은 새로고침 지원 안 됨'); return; }
   const id = m[1];
   const extras = _loadKwExtras();
   const target = extras.find(p => p.id === id);
-  if (!target || !target.url) { _showToast?.('URL 없음'); return; }
-  if (typeof _showToast === 'function') _showToast('상품 정보 갱신 중...');
-  if (typeof _fetchKwProductInfo === 'function') _fetchKwProductInfo(id, target.url);
+  if (!target || !target.url) { if (typeof toast === 'function') toast('URL 없음 — 슬롯에 등록된 상품 URL 이 없습니다'); return; }
+  if (typeof toast === 'function') toast(`📡 "${target.name}" 정보 가져오는 중...`);
+  _fetchKwProductInfo(id, target.url, { showToast: true });
 }
 
 // 슬롯(상품) 전체 삭제
