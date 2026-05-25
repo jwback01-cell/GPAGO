@@ -1476,7 +1476,7 @@ PBT키캡	1180
               <input type="email" name="email" autocomplete="email"
                 tabindex="-1" aria-hidden="true"
                 style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;">
-              <input id="prodsrc-folder-search" type="search" placeholder="폴더 검색 (예: 음향가전, 카메라)"
+              <input id="prodsrc-folder-search" type="search" placeholder="폴더 검색 (이름 또는 itemscout ID 예: 205)"
                 readonly
                 oninput="_prodsrcRenderFolders()"
                 onfocus="this.removeAttribute('readonly'); _prodsrcClearFolderSearchAutofill();"
@@ -9770,9 +9770,14 @@ function _prodsrcRenderFolders() {
   // 폴더(=각 업로드의 대표 카테고리) 별로 그룹화 + 업로드 순서(=rows 배열 첫 등장 인덱스) 기록
   const cats = new Map();
   const firstIdx = new Map();
+  const folderItemscoutIds = new Map();  // folderName → itemscoutCategoryId 모음 (검색용)
   (_prodsrcState.rows || []).forEach((r, idx) => {
     const k = r.folderName || r.category || '(미분류)';
     if (!firstIdx.has(k)) firstIdx.set(k, idx);
+    if (r.itemscoutCategoryId) {
+      if (!folderItemscoutIds.has(k)) folderItemscoutIds.set(k, new Set());
+      folderItemscoutIds.get(k).add(String(r.itemscoutCategoryId));
+    }
     if (favs.has(k)) return; // 주요 폴더에 있으면 카테고리 폴더에서 숨김
     if (!cats.has(k)) cats.set(k, { count: 0, totalSearch: 0 });
     const c = cats.get(k);
@@ -9842,11 +9847,26 @@ function _prodsrcRenderFolders() {
     displayItems = [...groupItems, ...ungroupedFolders].sort((a, b) => a.firstIdx - b.firstIdx);
   }
 
-  // 검색 필터
+  // 검색 필터 — 폴더명 OR itemscout 카테고리 ID 매칭
+  // 그룹의 경우 자식 폴더 중 하나라도 매칭되면 그룹 표시
   if (searchTokens.length) {
+    const itemscoutIdsByFolder = folderItemscoutIds;  // 클로저 캡처
+    const matchFolder = (name) => {
+      const lower = String(name).toLowerCase();
+      const ids = itemscoutIdsByFolder.get(name);
+      return searchTokens.every(t => {
+        if (lower.includes(t)) return true;
+        if (ids && ids.has(t)) return true;
+        return false;
+      });
+    };
     displayItems = displayItems.filter(it => {
-      const lower = String(it.name).toLowerCase();
-      return searchTokens.every(t => lower.includes(t));
+      if (it.kind === 'folder') return matchFolder(it.name);
+      // 그룹: 부모명 매칭 OR 자식 폴더 중 매칭 있음
+      if (matchFolder(it.name)) return true;
+      const grp = groups.find(g => g.parent === it.name);
+      if (grp && grp.children.some(c => matchFolder(c))) return true;
+      return false;
     });
   }
 
