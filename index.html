@@ -3778,8 +3778,9 @@ async function _processSmartstoreQueue() {
       try { await _doFetchSmartstoreInfo(item.extraId, item.url, item.opts); }
       catch (e) { console.warn('[smartstore-queue] item failed:', e); }
       if (_smartstoreQueue.length) {
-        // 다음 요청 전 2초 대기 (네이버 봇 차단 회피)
-        await new Promise(r => setTimeout(r, 2000));
+        // 확장 사용 가능하면 짧게 (500ms), 폴백(Vercel API) 면 길게 (2초)
+        const delay = window._gpagoExtensionAvailable ? 500 : 2000;
+        await new Promise(r => setTimeout(r, delay));
       }
     }
   } finally { _smartstoreActive = false; }
@@ -3794,26 +3795,171 @@ function _fetchKwProductInfo(extraId, url, opts) {
   _processSmartstoreQueue();
 }
 
+// 확장프로그램으로 fetch (사용자 IP 사용 → 네이버 429 회피)
+function _fetchSmartstoreViaExtension(url, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const reqId = 'ss_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    let done = false;
+    const handler = (e) => {
+      if (e.source !== window) return;
+      if (!e.data || e.data.source !== 'gpago-extension') return;
+      if (e.data.type !== 'GPAGO_SMARTSTORE_INFO_RESULT') return;
+      if (e.data.reqId !== reqId) return;
+      done = true;
+      window.removeEventListener('message', handler);
+      if (e.data.ok) resolve({ ok: true, html: e.data.html, htmlLen: e.data.htmlLen });
+      else resolve({ ok: false, error: e.data.error });
+    };
+    window.addEventListener('message', handler);
+    try {
+      window.postMessage({
+        source: 'gpago-page', type: 'GPAGO_FETCH_SMARTSTORE_INFO', url, reqId
+      }, window.location.origin);
+    } catch (e) {
+      window.removeEventListener('message', handler);
+      reject(e);
+      return;
+    }
+    setTimeout(() => {
+      if (!done) {
+        window.removeEventListener('message', handler);
+        resolve({ ok: false, error: 'extension timeout' });
+      }
+    }, timeoutMs || 15000);
+  });
+}
+
+// HTML 에서 정보 추출 (확장이 받아온 HTML 을 클라이언트에서 파싱)
+function _parseSmartstoreHtmlClient(html) {
+  const result = { title: null, image: null, description: null,
+    reviewCount: null, rating: null, wishCount: null,
+    registDate: null, tags: [], category: null, price: null };
+  const meta = (rx) => { const m = html.match(rx); return m ? _decodeHtmlEntities(m[1].trim()) : null; };
+  result.title = meta(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
+  result.image = meta(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+  result.description = meta(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
+  // JSON-LD 추출
+  const ldMatches = html.match(/<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]+?)<\/script>/gi) || [];
+  for (const m of ldMatches) {
+    try {
+      const inner = m.replace(/<script[^>]*>|<\/script>/gi, '');
+      const obj = JSON.parse(inner);
+      const items = Array.isArray(obj) ? obj : [obj];
+      for (const o of items) {
+        const t = o['@type'];
+        if (t === 'Product' || (Array.isArray(t) && t.includes('Product'))) {
+          result.title = result.title || o.name || null;
+          if (o.image) {
+            const img = Array.isArray(o.image) ? o.image[0] : o.image;
+            result.image = result.image || img;
+          }
+          if (o.aggregateRating) {
+            const ar = o.aggregateRating;
+            if (ar.ratingValue != null) result.rating = result.rating ?? Number(ar.ratingValue);
+            if (ar.reviewCount != null) result.reviewCount = result.reviewCount ?? Number(ar.reviewCount);
+            else if (ar.ratingCount != null) result.reviewCount = result.reviewCount ?? Number(ar.ratingCount);
+          }
+          if (o.offers) {
+            const offer = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+            if (offer && offer.price != null) result.price = result.price ?? Number(offer.price);
+          }
+          if (o.category && !result.category) result.category = Array.isArray(o.category) ? o.category.join(' > ') : o.category;
+        }
+        if (t === 'BreadcrumbList' || (Array.isArray(t) && t.includes('BreadcrumbList'))) {
+          if (Array.isArray(o.itemListElement)) {
+            const cats = o.itemListElement.map(el => el.name || el.item?.name || '').filter(Boolean);
+            if (cats.length && !result.category) result.category = cats.join(' > ');
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  // state JSON 깊이 탐색
+  const jsonPatterns = [
+    /window\.__PRELOADED_STATE__\s*=\s*({[\s\S]+?})\s*;\s*<\/script>/,
+    /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/,
+  ];
+  for (const p of jsonPatterns) {
+    const m = html.match(p);
+    if (m) {
+      try {
+        const state = JSON.parse(m[1]);
+        const findProd = (obj, d) => {
+          if (!obj || typeof obj !== 'object' || d > 6) return null;
+          if ((obj.name || obj.productName) &&
+              (obj.reviewCount != null || obj.totalReviewCount != null ||
+               obj.averageReviewScore != null || obj.reviewAverageScore != null ||
+               obj.wishListCount != null)) return obj;
+          for (const k in obj) {
+            if (obj[k] && typeof obj[k] === 'object') {
+              const f = findProd(obj[k], d + 1); if (f) return f;
+            }
+          }
+          return null;
+        };
+        const pd = findProd(state, 0);
+        if (pd) {
+          result.title = result.title || pd.name || pd.productName || null;
+          result.image = result.image || pd.representativeImage || pd.image || null;
+          result.reviewCount = result.reviewCount ?? pd.reviewCount ?? pd.totalReviewCount ?? null;
+          result.rating = result.rating ?? pd.averageReviewScore ?? pd.reviewAverageScore ?? null;
+          result.wishCount = result.wishCount ?? pd.wishListCount ?? pd.zzimCount ?? pd.likeCount ?? null;
+          result.registDate = result.registDate || pd.regDate || pd.registDate || null;
+          const tagList = pd.tags || pd.searchTags || pd.productTags || [];
+          if (Array.isArray(tagList) && tagList.length) {
+            result.tags = tagList.map(t => typeof t === 'string' ? t : (t?.text || t?.tagName || t?.name || '')).filter(Boolean);
+          }
+        }
+        break;
+      } catch (_) {}
+    }
+  }
+  return result;
+}
+function _decodeHtmlEntities(s) {
+  return String(s).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'");
+}
+
 // 실제 fetch + 데이터 적용 — 큐가 호출
+// 확장 사용 우선, 실패 시 Vercel API 폴백
 async function _doFetchSmartstoreInfo(extraId, url, opts) {
   opts = opts || {};
   try {
     console.log('[smartstore-info] 요청:', url);
-    const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
-    if (!r.ok) {
-      console.warn('[smartstore-info] HTTP', r.status);
-      if (opts.showToast && typeof toast === 'function') {
-        const msg = r.status === 429
-          ? '⚠ 네이버 요청 제한 (429) — 잠시 후 다시 시도하세요'
-          : `⚠ 정보 가져오기 실패 (HTTP ${r.status})`;
-        toast(msg);
+    let info = null;
+    // 1) 확장 시도 (사용자 IP, 네이버 차단 안 됨)
+    try {
+      const ext = await _fetchSmartstoreViaExtension(url, 15000);
+      if (ext.ok && ext.html) {
+        info = _parseSmartstoreHtmlClient(ext.html);
+        info._source = 'extension';
+        window._gpagoExtensionAvailable = true;
+        console.log('[smartstore-info] 확장으로 받음 (', ext.htmlLen, 'bytes), 추출:', info);
+      } else {
+        console.log('[smartstore-info] 확장 응답 없음/실패:', ext.error || 'unknown');
       }
-      // 429 일 때 큐 더 천천히 처리 — 추가 5초 지연
-      if (r.status === 429) await new Promise(rr => setTimeout(rr, 5000));
-      return;
+    } catch (e) {
+      console.log('[smartstore-info] 확장 시도 실패:', e.message || e);
     }
-    const info = await r.json();
-    console.log('[smartstore-info] 응답:', info);
+    // 2) 확장 실패 시 Vercel API 폴백
+    if (!info) {
+      const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
+      if (!r.ok) {
+        console.warn('[smartstore-info] HTTP', r.status);
+        if (opts.showToast && typeof toast === 'function') {
+          const msg = r.status === 429
+            ? '⚠ 네이버 요청 제한 (429) — 확장프로그램 설치하면 해결됩니다'
+            : `⚠ 정보 가져오기 실패 (HTTP ${r.status})`;
+          toast(msg);
+        }
+        if (r.status === 429) await new Promise(rr => setTimeout(rr, 5000));
+        return;
+      }
+      info = await r.json();
+      info._source = 'vercel-api';
+      console.log('[smartstore-info] Vercel API 응답:', info);
+    }
     const extras = _loadKwExtras();
     const target = extras.find(p => p.id === extraId);
     if (!target) return;
