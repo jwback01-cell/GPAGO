@@ -8720,6 +8720,70 @@ function _gpagoDecompress(maybeCompressed) {
   } catch (_) { return null; }
 }
 
+// ─── Web Worker 기반 비동기 압축 ───
+// 큰 데이터(수 MB) 압축이 메인 스레드를 1-3초 막던 문제 해결.
+// Worker 에서 LZString 실행하면 UI 가 계속 반응함.
+let _gpagoCompressorWorker = null;
+(function _initCompressorWorker() {
+  if (typeof Worker === 'undefined') return;
+  try {
+    const workerCode = `
+      try {
+        importScripts('https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js');
+      } catch (e) { /* CDN 실패 시 메인 스레드 fallback 으로 처리됨 */ }
+      self.onmessage = function(e) {
+        const id = e.data.id;
+        try {
+          if (typeof LZString === 'undefined') {
+            self.postMessage({ id: id, ok: false, error: 'LZString not loaded in worker' });
+            return;
+          }
+          const compressed = LZString.compressToUTF16(e.data.json);
+          self.postMessage({ id: id, ok: true, compressed: compressed });
+        } catch (err) {
+          self.postMessage({ id: id, ok: false, error: err.message || String(err) });
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    _gpagoCompressorWorker = new Worker(URL.createObjectURL(blob));
+    _gpagoCompressorWorker.onerror = (e) => {
+      console.warn('[gpago] compressor worker error:', e.message);
+    };
+  } catch (e) {
+    console.warn('[gpago] compressor worker init failed:', e);
+    _gpagoCompressorWorker = null;
+  }
+})();
+
+const _gpagoCompressPending = new Map();
+let _gpagoCompressIdSeq = 0;
+if (_gpagoCompressorWorker) {
+  _gpagoCompressorWorker.onmessage = (e) => {
+    const { id, ok, compressed, error } = e.data || {};
+    const r = _gpagoCompressPending.get(id);
+    if (!r) return;
+    _gpagoCompressPending.delete(id);
+    if (ok) r.resolve(compressed);
+    else r.reject(new Error(error || 'unknown compress error'));
+  };
+}
+function _gpagoCompressAsync(jsonStr) {
+  return new Promise((resolve, reject) => {
+    if (!_gpagoCompressorWorker) {
+      // fallback: 메인 스레드 압축 (Worker 사용 불가 시)
+      try {
+        if (typeof LZString === 'undefined') { resolve(null); return; }
+        resolve(LZString.compressToUTF16(jsonStr));
+      } catch (e) { reject(e); }
+      return;
+    }
+    const id = ++_gpagoCompressIdSeq;
+    _gpagoCompressPending.set(id, { resolve, reject });
+    _gpagoCompressorWorker.postMessage({ id, json: jsonStr });
+  });
+}
+
 // 기존 비압축 데이터 마이그레이션 — 첫 페이지 로드 시 자동으로 압축 형태로 변환
 // (4.85MB 비압축 → ~1MB 압축, 즉시 4MB+ 여유 확보)
 (function _migrateProdsrcToCompressed() {
@@ -8823,6 +8887,52 @@ function _prodsrcSave() {
     return false;
   }
 }
+
+// ─── 비동기 저장 (Web Worker 압축) — 대량 작업용 ───
+// 압축이 메인 스레드를 막지 않도록 워커로 분리. 진행 중 추가 호출은 큐잉(마지막 상태만 저장)
+let _prodsrcSaveInFlight = false;
+let _prodsrcSavePending = false;
+async function _prodsrcSaveAsync() {
+  if (_prodsrcSaveInFlight) { _prodsrcSavePending = true; return true; }
+  _prodsrcSaveInFlight = true;
+  try {
+    // pending 이 다시 켜지면 한 번 더 반복 (최신 state 로)
+    while (true) {
+      _prodsrcSavePending = false;
+      const json = JSON.stringify(_prodsrcState);
+      let compressed = null;
+      try {
+        compressed = await _gpagoCompressAsync(json);
+      } catch (e) {
+        console.warn('[prodsrc] async compress failed → sync fallback:', e);
+        return _prodsrcSave();
+      }
+      try {
+        const payload = compressed ? (_LZ_PREFIX + compressed) : json;
+        localStorage.setItem(PRODSRC_KEY, payload);
+        if (compressed && json.length > 1024 * 1024) {
+          console.log('[prodsrc-async] 압축률:', (json.length/1024).toFixed(0), 'KB →', (payload.length/1024).toFixed(0), 'KB');
+        }
+        if (typeof _gpagoUpdateStorageBar === 'function') _gpagoUpdateStorageBar();
+      } catch (e) {
+        console.error('[prodsrc] async save FAILED → sync fallback:', e);
+        return _prodsrcSave();  // 에러 표시 로직 활용
+      }
+      if (!_prodsrcSavePending) break;
+    }
+    return true;
+  } finally {
+    _prodsrcSaveInFlight = false;
+  }
+}
+// beforeunload — 비동기 저장 진행 중이면 경고
+window.addEventListener('beforeunload', (e) => {
+  if (_prodsrcSaveInFlight) {
+    e.preventDefault();
+    e.returnValue = '데이터 저장 중입니다. 잠시만 기다려주세요.';
+    return e.returnValue;
+  }
+});
 
 // 진단용 — F12 콘솔에서 `gpagoCheckFolder('키워드 일부')` 또는 `gpagoCheckFolder()` 호출
 // 특정 폴더의 모든 행 + 각 행의 r.category 를 콘솔에 표시 (카테고리 정리가 안 잡는 행 추적)
@@ -10393,20 +10503,23 @@ function prodsrcDeleteSelectedFolders() {
     const favs = Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites : [];
     const newFavs = favs.filter(f => !matchFolderName(f));
     _prodsrcState = { ...(_prodsrcState || {}), rows: remaining, favorites: newFavs };
-    _prodsrcSave();
-    _prodsrcMsg(`🗑 ${targets.length}개 폴더(자식 포함 ${affectedFolders.size}개) 삭제 — ${targetRowCount}개 키워드 제거`, 'ok');
+    // UI 즉시 업데이트 — 사용자에겐 끝난 것처럼 보이고 압축/저장은 백그라운드
     _prodsrcSelectedFolders.clear();
     _prodsrcSelectionMode = false;
     _prodsrcCurrentCategory = null;
     _prodsrcCurrentGroup = null;
-    // 토글 버튼 원복
     const toggleBtn = document.getElementById('prodsrc-select-toggle');
     if (toggleBtn) {
       toggleBtn.classList.remove('bg-brand-blue', 'text-white');
       toggleBtn.querySelector('span').textContent = '선택';
     }
     _prodsrcUpdateSelectionUI();
+    _prodsrcMsg(`🗑 ${targets.length}개 폴더(자식 포함 ${affectedFolders.size}개) 삭제 중... (${targetRowCount}개 키워드)`, 'info');
     _prodsrcRender();
+    // 압축 + 저장 비동기 — 메인 스레드 안 막힘
+    _prodsrcSaveAsync().then(ok => {
+      if (ok) _prodsrcMsg(`✅ ${targets.length}개 폴더 삭제 완료 — ${targetRowCount}개 키워드 제거`, 'ok');
+    });
   };
   if (typeof showAppConfirm === 'function') {
     showAppConfirm('선택 삭제', msg, apply, { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' });
@@ -10808,7 +10921,6 @@ function prodsrcDeleteFolder(folderName, isGroup) {
   }
   const apply = () => {
     const remaining = rows.filter(r => !matchPredicate(r.folderName || r.category || ''));
-    // favorites 에서도 영향받는 폴더 제거
     const favs = Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites : [];
     const newFavs = favs.filter(f => !matchPredicate(f));
     _prodsrcState = {
@@ -10816,11 +10928,13 @@ function prodsrcDeleteFolder(folderName, isGroup) {
       rows: remaining,
       favorites: newFavs,
     };
-    _prodsrcSave();
-    _prodsrcMsg(`🗑 "${folderName}"${isGroup ? ' 그룹' : ' 폴더'} 삭제됨 — ${targetCount}개 키워드 제거`, 'ok');
     _prodsrcCurrentCategory = null;
     _prodsrcCurrentGroup = null;
+    _prodsrcMsg(`🗑 "${folderName}"${isGroup ? ' 그룹' : ' 폴더'} 삭제 중... (${targetCount}개 키워드)`, 'info');
     _prodsrcRender();
+    _prodsrcSaveAsync().then(ok => {
+      if (ok) _prodsrcMsg(`✅ "${folderName}"${isGroup ? ' 그룹' : ' 폴더'} 삭제 완료 — ${targetCount}개 키워드 제거`, 'ok');
+    });
   };
   if (typeof showAppConfirm === 'function') {
     showAppConfirm(isGroup ? '그룹 삭제' : '폴더 삭제', confirmMsg, apply,
