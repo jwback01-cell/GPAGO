@@ -1471,6 +1471,21 @@ PBT키캡	1180
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 class="font-bold text-base">카테고리 폴더 <span id="prodsrc-cat-count" class="text-brand-gray font-normal text-sm ml-1">(0개)</span></h3>
           <div class="flex items-center gap-3 flex-wrap">
+            <!-- 선택 모드 토글 + 일괄 삭제 -->
+            <div id="prodsrc-select-controls" class="flex items-center gap-2">
+              <button id="prodsrc-select-toggle" onclick="prodsrcToggleSelectionMode()"
+                class="px-3 py-1.5 rounded-full border border-brand-border text-xs font-bold hover:bg-brand-bg flex items-center gap-1.5"
+                title="여러 폴더 선택해서 한 번에 삭제">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span>선택</span>
+              </button>
+              <span id="prodsrc-selected-count" class="hidden text-xs font-bold text-brand-blue">0개 선택됨</span>
+              <button id="prodsrc-bulk-delete-btn" onclick="prodsrcDeleteSelectedFolders()"
+                class="hidden px-3 py-1.5 rounded-full bg-brand-pink text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+                <span>선택 삭제</span>
+              </button>
+            </div>
             <div class="relative">
               <!-- 크롬 자동완성을 미끼로 받는 숨겨진 입력란 (실제 검색창 보호) -->
               <input type="email" name="email" autocomplete="email"
@@ -8684,6 +8699,8 @@ const PRODSRC_KEY = 'gplan_prodsrc_v1';
 let _prodsrcState = { rows: [], lastUploadedAt: '', prevUploadedAt: '', favorites: [] };
 let _prodsrcCurrentCategory = null;
 let _prodsrcCurrentGroup = null;  // 현재 보고 있는 그룹 (자식 폴더 목록 표시 중일 때)
+let _prodsrcSelectionMode = false;     // 선택 모드 (체크박스 표시)
+const _prodsrcSelectedFolders = new Set();  // 선택된 폴더 이름들
 
 // LZString 기반 압축/해제 (localStorage quota 절약용 — 4-5배 압축)
 // 클라우드에는 압축 안 한 raw JSON 으로 저장해서 다른 PC 호환성 유지
@@ -9970,12 +9987,22 @@ function _prodsrcRenderFolders() {
   }
 
   wrap.innerHTML = breadcrumbHtml + displayItems.map((it, idx) => {
+    const isSelected = _prodsrcSelectedFolders.has(it.name);
+    const checkboxHtml = _prodsrcSelectionMode
+      ? `<div class="absolute top-2 left-2 z-10 w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected ? 'bg-brand-blue border-brand-blue' : 'bg-white border-brand-border'}" style="pointer-events:none">
+          ${isSelected ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+         </div>` : '';
+    const selectedRing = (_prodsrcSelectionMode && isSelected) ? ' ring-2 ring-brand-blue ring-offset-2' : '';
     if (it.kind === 'group') {
       const safeName = _prodsrcEsc(it.name).replace(/'/g, "\\'");
-      return `<div onclick="prodsrcOpenGroup('${safeName}')"
+      const clickHandler = _prodsrcSelectionMode
+        ? `prodsrcToggleFolderSelection('${safeName}')`
+        : `prodsrcOpenGroup('${safeName}')`;
+      return `<div onclick="${clickHandler}"
         oncontextmenu="showProdsrcFolderMenu(event, '${safeName}', true)"
-        class="bg-brand-blue-light hover:bg-white border-2 border-brand-blue/30 hover:border-brand-blue rounded-2xl p-4 cursor-pointer transition-all"
+        class="relative bg-brand-blue-light hover:bg-white border-2 border-brand-blue/30 hover:border-brand-blue rounded-2xl p-4 cursor-pointer transition-all${selectedRing}"
         title="그룹 — 클릭해서 자식 폴더 ${it.childCount}개 보기 · 우클릭 삭제">
+        ${checkboxHtml}
         <div class="mb-2 flex items-center justify-between">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="#3478F6" stroke="#1E5BC6" stroke-width="0.5" class="shrink-0">
             <path d="M2 7 L9 7 L11 9 L20 9 C21 9 22 10 22 11 L22 18 C22 19 21 20 20 20 L4 20 C3 20 2 19 2 18 Z"/>
@@ -9990,13 +10017,17 @@ function _prodsrcRenderFolders() {
     const name = it.name;
     const c = { count: it.count, totalSearch: it.totalSearch };
     const safeName = _prodsrcEsc(name).replace(/'/g, "\\'");
-    return `<div draggable="true"
+    const clickHandler = _prodsrcSelectionMode
+      ? `prodsrcToggleFolderSelection('${safeName}')`
+      : `prodsrcOpenCategory('${safeName}')`;
+    return `<div draggable="${_prodsrcSelectionMode ? 'false' : 'true'}"
       ondragstart="prodsrcCatDragStart(event, '${safeName}')"
       ondragend="prodsrcCatDragEnd(event)"
-      onclick="prodsrcOpenCategory('${safeName}')"
+      onclick="${clickHandler}"
       oncontextmenu="showProdsrcFolderMenu(event, '${safeName}', false)"
-      class="bg-brand-bg hover:bg-white border border-brand-border hover:border-brand-black rounded-2xl p-4 cursor-pointer transition-all"
+      class="relative bg-brand-bg hover:bg-white border border-brand-border hover:border-brand-black rounded-2xl p-4 cursor-pointer transition-all${selectedRing}"
       title="드래그해서 주요 폴더로 이동 가능 · 우클릭 삭제">
+      ${checkboxHtml}
       <div class="mb-2 flex items-center justify-between">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1" class="shrink-0"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2" class="shrink-0 opacity-60" title="드래그 가능"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
@@ -10208,6 +10239,97 @@ function prodsrcOpenCategory(name) {
 function prodsrcBackToFolders() {
   _prodsrcCurrentCategory = null;
   _prodsrcRender();
+}
+
+// ── 다중 선택 모드 ──
+function prodsrcToggleSelectionMode() {
+  _prodsrcSelectionMode = !_prodsrcSelectionMode;
+  if (!_prodsrcSelectionMode) _prodsrcSelectedFolders.clear();
+  // 토글 버튼 시각 업데이트
+  const toggleBtn = document.getElementById('prodsrc-select-toggle');
+  if (toggleBtn) {
+    if (_prodsrcSelectionMode) {
+      toggleBtn.classList.add('bg-brand-blue', 'text-white');
+      toggleBtn.querySelector('span').textContent = '선택 취소';
+    } else {
+      toggleBtn.classList.remove('bg-brand-blue', 'text-white');
+      toggleBtn.querySelector('span').textContent = '선택';
+    }
+  }
+  _prodsrcUpdateSelectionUI();
+  _prodsrcRenderFolders();
+}
+function prodsrcToggleFolderSelection(folderName) {
+  const fn = String(folderName)
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  if (_prodsrcSelectedFolders.has(fn)) _prodsrcSelectedFolders.delete(fn);
+  else _prodsrcSelectedFolders.add(fn);
+  _prodsrcUpdateSelectionUI();
+  _prodsrcRenderFolders();
+}
+function _prodsrcUpdateSelectionUI() {
+  const countEl = document.getElementById('prodsrc-selected-count');
+  const delBtn = document.getElementById('prodsrc-bulk-delete-btn');
+  const n = _prodsrcSelectedFolders.size;
+  if (countEl) {
+    if (_prodsrcSelectionMode && n > 0) {
+      countEl.textContent = `${n}개 선택됨`;
+      countEl.classList.remove('hidden');
+    } else {
+      countEl.classList.add('hidden');
+    }
+  }
+  if (delBtn) {
+    if (_prodsrcSelectionMode && n > 0) delBtn.classList.remove('hidden');
+    else delBtn.classList.add('hidden');
+  }
+}
+// 선택된 폴더들 일괄 삭제
+function prodsrcDeleteSelectedFolders() {
+  if (!_prodsrcSelectedFolders.size) return;
+  const targets = Array.from(_prodsrcSelectedFolders);
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  // 각 대상에 대해 정확 일치 OR prefix(그룹) 매칭 — 그룹 카드 선택 시 자식도 함께
+  // 그룹 판별: rows 중 그 folderName 으로 시작하는 자식이 있으면 그룹으로 취급
+  const allFolderNames = new Set();
+  rows.forEach(r => { const fn = r.folderName || r.category || ''; if (fn) allFolderNames.add(fn); });
+  const matchFolderName = (fn) => {
+    return targets.some(t => fn === t || fn.startsWith(t + ' > '));
+  };
+  const targetRowCount = rows.filter(r => matchFolderName(r.folderName || r.category || '')).length;
+  if (targetRowCount === 0) {
+    _prodsrcMsg('선택된 폴더에 데이터가 없습니다', 'warn');
+    return;
+  }
+  const affectedFolders = new Set();
+  rows.forEach(r => { const fn = r.folderName || r.category || ''; if (matchFolderName(fn)) affectedFolders.add(fn); });
+  const msg = `선택한 ${targets.length}개 항목 (자식 폴더 포함 총 ${affectedFolders.size}개 폴더) 을 삭제합니다.\n\n총 ${targetRowCount}개 키워드 행이 제거됩니다. 되돌릴 수 없음.\n\n계속할까요?`;
+  const apply = () => {
+    const remaining = rows.filter(r => !matchFolderName(r.folderName || r.category || ''));
+    const favs = Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites : [];
+    const newFavs = favs.filter(f => !matchFolderName(f));
+    _prodsrcState = { ...(_prodsrcState || {}), rows: remaining, favorites: newFavs };
+    _prodsrcSave();
+    _prodsrcMsg(`🗑 ${targets.length}개 폴더(자식 포함 ${affectedFolders.size}개) 삭제 — ${targetRowCount}개 키워드 제거`, 'ok');
+    _prodsrcSelectedFolders.clear();
+    _prodsrcSelectionMode = false;
+    _prodsrcCurrentCategory = null;
+    _prodsrcCurrentGroup = null;
+    // 토글 버튼 원복
+    const toggleBtn = document.getElementById('prodsrc-select-toggle');
+    if (toggleBtn) {
+      toggleBtn.classList.remove('bg-brand-blue', 'text-white');
+      toggleBtn.querySelector('span').textContent = '선택';
+    }
+    _prodsrcUpdateSelectionUI();
+    _prodsrcRender();
+  };
+  if (typeof showAppConfirm === 'function') {
+    showAppConfirm('선택 삭제', msg, apply, { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' });
+  } else {
+    if (confirm(msg)) apply();
+  }
 }
 
 // 그룹(부모 폴더) 진입 — 자식 폴더 목록 표시
