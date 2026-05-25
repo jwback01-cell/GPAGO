@@ -1470,7 +1470,18 @@ PBT키캡	1180
         ondragover="prodsrcCatDragOver(event)" ondragleave="prodsrcCatDragLeave(event)" ondrop="prodsrcCatDrop(event)">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 class="font-bold text-base">카테고리 폴더 <span id="prodsrc-cat-count" class="text-brand-gray font-normal text-sm ml-1">(0개)</span></h3>
-          <div class="text-xs text-brand-gray" id="prodsrc-last-uploaded"></div>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="relative">
+              <input id="prodsrc-folder-search" type="search" placeholder="폴더 검색 (예: 음향가전, 카메라)"
+                oninput="_prodsrcRenderFolders()"
+                class="pl-8 pr-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[260px]"
+                autocomplete="off">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+            <div class="text-xs text-brand-gray" id="prodsrc-last-uploaded"></div>
+          </div>
         </div>
         <div id="prodsrc-categories" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
       </section>
@@ -9754,9 +9765,21 @@ function _prodsrcRenderFolders() {
     const d = _prodsrcState.lastUploadedAt ? new Date(_prodsrcState.lastUploadedAt).toLocaleString('ko-KR') : '';
     lastEl.textContent = d ? `최근 업로드: ${d}` : '';
   }
+  // 검색어 필터 (폴더명에 포함된 키워드 매칭, 대소문자 무시, 공백 토큰 AND)
+  const searchEl = document.getElementById('prodsrc-folder-search');
+  const searchRaw = (searchEl?.value || '').trim().toLowerCase();
+  const searchTokens = searchRaw.split(/\s+/).filter(Boolean);
   // 엑셀 업로드 순서대로 정렬 (먼저 추가된 폴더가 앞)
-  const entries = [...cats.entries()].sort((a, b) => (firstIdx.get(a[0]) ?? 0) - (firstIdx.get(b[0]) ?? 0));
-  countEl.textContent = `(${cats.size}개)`;
+  let entries = [...cats.entries()].sort((a, b) => (firstIdx.get(a[0]) ?? 0) - (firstIdx.get(b[0]) ?? 0));
+  if (searchTokens.length) {
+    entries = entries.filter(([name]) => {
+      const lower = String(name).toLowerCase();
+      return searchTokens.every(t => lower.includes(t));
+    });
+  }
+  countEl.textContent = searchTokens.length
+    ? `(${entries.length} / ${cats.size}개)`
+    : `(${cats.size}개)`;
   wrap.innerHTML = entries.map(([name, c], idx) => {
     const safeName = _prodsrcEsc(name).replace(/'/g, "\\'");
     return `<div draggable="true"
@@ -9772,7 +9795,9 @@ function _prodsrcRenderFolders() {
       <div class="font-bold text-sm leading-tight mb-1 break-words" title="${_prodsrcEsc(name)}">${_prodsrcEsc(name)}</div>
       <div class="text-[11px] text-brand-gray">키워드 ${c.count}개 · 총검색합 ${_prodsrcFmt(c.totalSearch)}</div>
     </div>`;
-  }).join('') || '<div class="col-span-full text-center text-sm text-brand-gray py-6">폴더가 없습니다</div>';
+  }).join('') || (searchTokens.length
+    ? `<div class="col-span-full text-center text-sm text-brand-gray py-6">"${_prodsrcEsc(searchRaw)}" 와 일치하는 폴더가 없습니다</div>`
+    : '<div class="col-span-full text-center text-sm text-brand-gray py-6">폴더가 없습니다</div>');
 }
 
 // 주요 폴더 렌더링 — 카테고리 폴더 위에 별도로 표시
