@@ -1936,8 +1936,9 @@ function _gpagoCloudPushKey(key) {
         { onConflict: 'user_id,key' }
       );
       if (error) {
-        console.warn('[cloud-push] error', key, error);
+        console.error('[cloud-push] ❌ FAILED', key, '— error:', error);
       } else {
+        console.log('[cloud-push] ✅ OK', key, '—', (cloudValue.length/1024).toFixed(1), 'KB');
         _gpagoSetLastSynced(key, cloudValue);  // fingerprint 기록
         _gpagoPendingPushKeys.delete(key);
       }
@@ -8722,6 +8723,39 @@ function _prodsrcSave() {
     return false;
   }
 }
+
+// 진단용 — F12 콘솔에서 `gpagoForcePush()` 호출하면 즉시 클라우드로 업로드 + 결과 표시
+// debounce 우회, 성공/실패 명확히 출력. PC2 데이터가 클라우드에 안 올라가는 원인 추적용
+window.gpagoForcePush = async function (key) {
+  key = key || 'gplan_prodsrc_v1';
+  if (!_supabase) { console.error('❌ supabase 미초기화'); return; }
+  const { data: { session } } = await _supabase.auth.getSession();
+  if (!session) { console.error('❌ 로그인 안 됨'); return; }
+  const raw = localStorage.getItem(key);
+  if (!raw) { console.error('❌ localStorage 에 데이터 없음:', key); return; }
+  const cloudValue = (raw.startsWith(_LZ_PREFIX)) ? _gpagoDecompress(raw) : raw;
+  if (cloudValue == null) { console.error('❌ 압축 해제 실패'); return; }
+  const sizeKB = (cloudValue.length / 1024).toFixed(1);
+  console.log('[force-push] 📤 보내는 중...', key, sizeKB, 'KB');
+  const start = Date.now();
+  try {
+    const { error } = await _supabase.from('gpago_kv').upsert(
+      { user_id: session.user.id, key, value: cloudValue, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,key' }
+    );
+    const elapsed = Date.now() - start;
+    if (error) {
+      console.error('[force-push] ❌ 실패 (' + elapsed + 'ms):', error);
+      return { ok: false, error: error.message || String(error), code: error.code, hint: error.hint, details: error.details };
+    }
+    _gpagoSetLastSynced(key, cloudValue);
+    console.log('[force-push] ✅ 성공 (' + elapsed + 'ms,', sizeKB, 'KB)');
+    return { ok: true, sizeKB, elapsed: elapsed + 'ms' };
+  } catch (e) {
+    console.error('[force-push] ❌ 예외:', e);
+    return { ok: false, exception: e.message || String(e) };
+  }
+};
 
 // 진단용 — F12 콘솔에서 `gpagoStorageInfo()` 호출하면 localStorage 사용량 표시
 window.gpagoStorageInfo = function () {
