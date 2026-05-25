@@ -10219,7 +10219,7 @@ function prodsrcRenderDetail() {
     let theadHtml = '<tr class="text-brand-gray">';
     theadHtml += '<th class="p-3 pl-4 font-semibold w-16">순위</th>';
     theadHtml += '<th class="p-3 font-semibold w-48">키워드</th>';
-    theadHtml += '<th class="p-3 font-semibold">카테고리</th>';
+    theadHtml += '<th class="p-3 font-semibold w-48">카테고리</th>';
     if (dateCols.length === 0) {
       theadHtml += '<th class="p-3 text-right font-bold w-40 text-brand-gray">데이터 없음</th>';
     } else {
@@ -10228,12 +10228,14 @@ function prodsrcRenderDetail() {
         theadHtml += `<th class="p-3 text-right font-bold w-28 cursor-context-menu select-none hover:bg-brand-bg/40 transition-colors" oncontextmenu="showProdsrcDateMenu(event,'${esc}')" title="우클릭하여 옵션 보기">${esc}</th>`;
       });
     }
-    theadHtml += '<th class="p-3 pr-4 text-right font-semibold">상세</th>';
+    // 빈 spacer 컬럼 — 날짜와 상세 사이를 벌려서 날짜가 카테고리에 붙도록 (남는 공간 흡수)
+    theadHtml += '<th class="p-0" style="width:100%"></th>';
+    theadHtml += '<th class="p-3 pr-4 text-right font-semibold w-20">상세</th>';
     theadHtml += '</tr>';
     thead.innerHTML = theadHtml;
   }
 
-  const colCount = 3 + Math.max(1, dateCols.length) + 1;
+  const colCount = 3 + Math.max(1, dateCols.length) + 2;  // +1 spacer +1 상세
   tbody.innerHTML = rows.length ? rows.map(r => {
     const urlCell = r.url ? `<a href="${_prodsrcEsc(r.url)}" target="_blank" class="text-brand-blue hover:underline">열기 ↗</a>` : '<span class="text-brand-gray">-</span>';
     // 행의 history 를 date→totalSearch 맵으로 변환
@@ -10270,16 +10272,20 @@ function prodsrcRenderDetail() {
     }
     const kwEsc = _prodsrcEsc(r.keyword);
     const rowCat = r.category || '';
-    const catEsc = _prodsrcEsc(rowCat);
+    // 마지막 ' > ' 뒤 segment 만 표시 (전체 경로는 title 툴팁으로 제공)
+    const catLast = rowCat.includes(' > ') ? rowCat.split(' > ').pop() : rowCat;
+    const catEsc = _prodsrcEsc(catLast);
+    const catFullEsc = _prodsrcEsc(rowCat);
     // 폴더명과 다른 카테고리면 빨간색으로 강조 (mismatch 가시화)
     const catMismatch = rowCat && rowCat !== cat;
     const catCls = catMismatch ? 'text-brand-pink font-semibold' : 'text-brand-gray';
     return `<tr class="border-b border-brand-border hover:bg-brand-bg/40 group">
       <td class="p-3 pl-4 w-16">${r.rank != null ? r.rank : '-'}</td>
       <td class="p-3 font-semibold w-48">${kwEsc}</td>
-      <td class="p-3 text-xs ${catCls}" title="${catEsc}">${catEsc || '<span class="text-brand-gray">-</span>'}</td>
+      <td class="p-3 text-xs w-48 ${catCls}" title="${catFullEsc}">${catEsc || '<span class="text-brand-gray">-</span>'}</td>
       ${dateCells}
-      <td class="p-3 pr-4 text-xs text-right whitespace-nowrap">
+      <td class="p-0" style="width:100%"></td>
+      <td class="p-3 pr-4 text-xs text-right whitespace-nowrap w-20">
         ${urlCell}
         <button onclick="prodsrcDeleteKeyword('${kwEsc.replace(/'/g, '&#39;')}')"
           class="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full text-brand-gray hover:bg-brand-pink-light hover:text-brand-pink opacity-0 group-hover:opacity-100 transition-opacity"
