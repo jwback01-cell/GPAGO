@@ -1530,6 +1530,14 @@ PBT키캡	1180
             </button>
           </div>
         </div>
+        <!-- 하위 폴더 섹션 — 현재 폴더에 자식 폴더가 있을 때만 표시 -->
+        <div id="prodsrc-detail-children" class="hidden px-5 py-4 border-b border-brand-border bg-brand-bg/40">
+          <div class="flex items-center gap-2 mb-3">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#3478F6" stroke="#3478F6" stroke-width="0"><path d="M2 7 L9 7 L11 9 L20 9 C21 9 22 10 22 11 L22 18 C22 19 21 20 20 20 L4 20 C3 20 2 19 2 18 Z"/></svg>
+            <span class="font-bold text-sm">하위 폴더 <span id="prodsrc-detail-children-count" class="text-brand-gray font-normal ml-1"></span></span>
+          </div>
+          <div id="prodsrc-detail-children-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+        </div>
         <!-- 카테고리별 변동 요약 — 재업로드 후만 표시 -->
         <div id="prodsrc-detail-diff" class="hidden px-5 py-4 border-b border-brand-border bg-brand-bg/40">
           <div class="flex items-center gap-2 mb-3">
@@ -9320,7 +9328,6 @@ async function _prodsrcAutoFetchRange(startId, endId) {
   const totalSec = count * 30;
   if (!confirm(`itemscout 카테고리 ID ${startId} ~ ${endId} (총 ${count}개)를 순차 자동 분석합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n빈 카테고리는 자동으로 건너뜁니다.\n계속할까요?`)) return;
   window._prodsrcBatchActive = true;
-  window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
   _prodsrcShowProgress(`itemscout 범위 자동 분석 (${startId} ~ ${endId})`);
   let ok = 0, empty = 0, fail = 0;
   let done = 0;
@@ -9337,7 +9344,6 @@ async function _prodsrcAutoFetchRange(startId, endId) {
     try {
       const snap = await _prodsrcAutoFetchAndWaitRaw(id);
       if (snap && snap.rows && snap.rows.length) {
-        // _prodsrcBatchActive=true 이므로 _prodsrcImportItemscoutSnapshot 은 render/save 안 함
         try { _prodsrcImportItemscoutSnapshot(snap); } catch(err) { console.warn(err); fail++; continue; }
         ok++;
       } else {
@@ -9349,19 +9355,10 @@ async function _prodsrcAutoFetchRange(startId, endId) {
     }
     _prodsrcUpdateProgress(done, count, `완료: 카테고리 ${id}`, `성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`);
   }
-  // 배치 완료 — 한 번만 render + save
   _prodsrcHideProgress();
-  const stats = window._prodsrcBatchStats || { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
-  const uniqueFolders = new Set(stats.folderStats.map(s => s.folderName)).size;
-  _prodsrcShowSavingOverlay(`💾 저장 중 — ${uniqueFolders}개 폴더, 키워드 ${stats.totalNew + stats.totalUp + stats.totalDown}개 처리 중...`);
-  _prodsrcRender();
-  _prodsrcSaveAsync().then(() => {
-    _prodsrcHideSavingOverlay();
-    _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 ${empty} · 실패 ${fail} / 총 ${count} · ${uniqueFolders}개 폴더 갱신`, ok ? 'ok' : 'warn');
-    window._prodsrcBatchActive = false;
-    window._prodsrcBatchStats = null;
-    _prodsrcBeep(cancelled ? 'warn' : 'ok');
-  });
+  _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 카테고리 ${empty} · 실패 ${fail} / 총 ${count}`, ok ? 'ok' : 'warn');
+  window._prodsrcBatchActive = false;
+  _prodsrcBeep(cancelled ? 'warn' : 'ok');
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (스냅샷 반환, _prodsrcImportItemscoutSnapshot 호출은 안 함)
@@ -9427,7 +9424,6 @@ async function _prodsrcAutoRefreshAllFolders() {
     return;
   }
   window._prodsrcBatchActive = true;
-  window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
   let done = 0, ok = 0, fail = 0;
   let cancelled = false;
   const total = folderIds.size;
@@ -9450,19 +9446,10 @@ async function _prodsrcAutoRefreshAllFolders() {
     }
     _prodsrcUpdateProgress(done, total, `완료: ${folderName.length > 50 ? folderName.slice(0, 50) + '…' : folderName}`, `성공 ${ok} · 실패 ${fail}`);
   }
-  // 배치 완료 — 한 번만 render + save
   _prodsrcHideProgress();
-  const stats = window._prodsrcBatchStats || { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
-  const uniqueFolders = new Set(stats.folderStats.map(s => s.folderName)).size;
-  _prodsrcShowSavingOverlay(`💾 저장 중 — ${uniqueFolders}개 폴더 갱신됨...`);
-  _prodsrcRender();
-  _prodsrcSaveAsync().then(() => {
-    _prodsrcHideSavingOverlay();
-    _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total} · ${uniqueFolders}개 폴더 영향`, ok ? 'ok' : 'warn');
-    window._prodsrcBatchActive = false;
-    window._prodsrcBatchStats = null;
-    _prodsrcBeep(cancelled ? 'warn' : 'ok');
-  });
+  _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total}`, ok ? 'ok' : 'warn');
+  window._prodsrcBatchActive = false;
+  _prodsrcBeep(cancelled ? 'warn' : 'ok');
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (Promise) — 전체 갱신 시 순차 처리용
@@ -9698,21 +9685,10 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     summary = `${analysisPath || 'itemscout'} 분석 → ${folderStats.length}개 폴더 분배 (신규 ${newFolders}개 폴더 · 갱신 ${updFolders}개 폴더), 키워드 신규 ${totalNew} · 증가 ${totalUp} · 감소 ${totalDown}`;
   }
 
-  // ━━━ batch 모드: render/save 건너뜀 (호출자가 마지막에 한 번만 처리) ━━━
-  // 1242 개 폴더 × 50 카테고리 = 25초 렌더링 시간 막힘 방지
-  if (window._prodsrcBatchActive) {
-    // batch 통계 누적 (range 함수가 종합 결과 표시할 때 사용)
-    if (!window._prodsrcBatchStats) window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
-    window._prodsrcBatchStats.folderStats.push(...folderStats);
-    window._prodsrcBatchStats.totalNew  += totalNew;
-    window._prodsrcBatchStats.totalUp   += totalUp;
-    window._prodsrcBatchStats.totalDown += totalDown;
-    return;
-  }
-
-  // ━━━ 단일 모드: 화면 즉시 갱신 + 진행 표시 ━━━
+  // ━━━ 화면 즉시 갱신 + 진행 표시 ━━━
   // 압축/저장은 Worker 가 백그라운드 처리 → 메인 스레드 안 막힘
-  const showOverlay = folderStats.length >= 5;
+  // 단, batch(range) 모드면 _prodsrcAutoFetchRange 가 자체 진행바 띄우므로 여기선 생략
+  const showOverlay = !window._prodsrcBatchActive && folderStats.length >= 5;
   if (showOverlay) {
     _prodsrcShowSavingOverlay(`💾 저장 중 — ${folderStats.length}개 폴더, 키워드 ${totalNew + totalUp + totalDown}개 처리 중...`);
   }
@@ -9722,7 +9698,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   _prodsrcSaveAsync().then(() => {
     if (showOverlay) _prodsrcHideSavingOverlay();
     _prodsrcMsg('✅ ' + summary, 'ok');
-    _prodsrcBeep('ok');
+    if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
   });
 }
 
@@ -10082,23 +10058,36 @@ function _prodsrcRenderFolders() {
     if (!parentToChildren.has(parent)) parentToChildren.set(parent, []);
     parentToChildren.get(parent).push(name);
   }
-  // 그룹 결정: 자식 2개 이상 + 부모 자체가 폴더로 존재하지 않을 때만
-  const groupedChildren = new Set();  // 그룹에 속한 자식 폴더명
-  const groups = [];  // [{ parent, children, count, totalSearch, firstIdx }]
+  // 그룹 결정:
+  //   - 부모가 폴더로 존재 + 자식 1개 이상 → hybrid: 자식 숨기고 부모는 "+N개 하위" 배지로 표시
+  //     클릭 시 폴더 안에서 자식 목록 + 자체 키워드 함께 표시 (prodsrcRenderDetail)
+  //   - 부모가 폴더로 없음 + 자식 2개 이상 → 가상 그룹 (파란 카드)
+  const groupedChildren = new Set();  // 그룹/하위에 속한 자식 폴더명
+  const groups = [];  // 가상 그룹: [{ parent, children, count, totalSearch, firstIdx }]
+  const hybridParents = new Map();  // 부모 폴더명 → 자식 폴더명[] (부모도 폴더로 존재)
   for (const [parent, children] of parentToChildren) {
-    if (children.length < 2) continue;
-    if (cats.has(parent)) continue;  // 부모가 leaf 로 존재하면 그룹 처리 안 함
-    children.forEach(c => groupedChildren.add(c));
-    let count = 0, totalSearch = 0, earliestIdx = Infinity;
-    children.forEach(c => {
-      const s = cats.get(c);
-      count += s.count;
-      totalSearch += s.totalSearch;
-      const idx = firstIdx.get(c) ?? Infinity;
-      if (idx < earliestIdx) earliestIdx = idx;
-    });
-    groups.push({ parent, children, count, totalSearch, firstIdx: earliestIdx });
+    if (cats.has(parent)) {
+      // hybrid: 자식 1개 이상이면 묶음
+      if (children.length < 1) continue;
+      children.forEach(c => groupedChildren.add(c));
+      hybridParents.set(parent, children);
+    } else {
+      // 가상 그룹: 자식 2개 이상일 때만 묶음
+      if (children.length < 2) continue;
+      children.forEach(c => groupedChildren.add(c));
+      let count = 0, totalSearch = 0, earliestIdx = Infinity;
+      children.forEach(c => {
+        const s = cats.get(c);
+        count += s.count;
+        totalSearch += s.totalSearch;
+        const idx = firstIdx.get(c) ?? Infinity;
+        if (idx < earliestIdx) earliestIdx = idx;
+      });
+      groups.push({ parent, children, count, totalSearch, firstIdx: earliestIdx });
+    }
   }
+  // 폴더 카드 표시용으로 hybrid 정보를 외부 (prodsrcRenderDetail) 에서도 쓸 수 있게 저장
+  window._prodsrcHybridParents = hybridParents;
 
   // 그룹 진입 모드일 때: 그 그룹의 자식 폴더만 표시
   if (_prodsrcCurrentGroup) {
@@ -10215,7 +10204,7 @@ function _prodsrcRenderFolders() {
       ${checkboxHtml}
       <div class="mb-2 flex items-center justify-between">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1" class="shrink-0"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2" class="shrink-0 opacity-60" title="드래그 가능"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+        ${hybridParents.has(name) ? `<span class="text-[10px] font-bold text-brand-blue bg-brand-blue-light px-2 py-0.5 rounded-full">+${hybridParents.get(name).length}개 하위</span>` : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2" class="shrink-0 opacity-60" title="드래그 가능"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>`}
       </div>
       <div class="font-bold text-sm leading-tight mb-1 break-words" title="${_prodsrcEsc(name)}">${_prodsrcEsc(name)}</div>
       <div class="text-[11px] text-brand-gray">키워드 ${c.count}개 · 총검색합 ${_prodsrcFmt(c.totalSearch)}</div>
@@ -10621,6 +10610,53 @@ function prodsrcRenderDetail() {
   if (!tbody) return;
   const search = (document.getElementById('prodsrc-detail-search')?.value || '').trim().toLowerCase();
   let rows = (_prodsrcState.rows || []).filter(r => (r.folderName || r.category) === cat);
+
+  // ─── 하위 폴더 섹션 렌더링 (현재 폴더가 hybrid 부모인 경우) ───
+  const childrenBox = document.getElementById('prodsrc-detail-children');
+  const childrenGrid = document.getElementById('prodsrc-detail-children-grid');
+  const childrenCountEl = document.getElementById('prodsrc-detail-children-count');
+  if (childrenBox && childrenGrid && cat) {
+    // 현재 폴더(cat) 으로 시작하는 자식 폴더 찾기
+    const allFolderNames = new Set();
+    (_prodsrcState.rows || []).forEach(r => {
+      const fn = r.folderName || r.category;
+      if (fn) allFolderNames.add(fn);
+    });
+    const children = [];
+    allFolderNames.forEach(fn => {
+      if (fn.startsWith(cat + ' > ')) {
+        // 직속 자식만 (한 레벨 깊은 것)
+        const rest = fn.slice(cat.length + 3);  // ' > ' 뒤
+        if (!rest.includes(' > ')) {
+          // 통계 집계
+          const childRows = (_prodsrcState.rows || []).filter(r => (r.folderName || r.category) === fn);
+          const count = childRows.length;
+          let totalSearch = 0;
+          childRows.forEach(r => { if (r.totalSearch != null) totalSearch += Number(r.totalSearch) || 0; });
+          children.push({ name: fn, leaf: rest, count, totalSearch });
+        }
+      }
+    });
+    if (children.length > 0) {
+      childrenBox.classList.remove('hidden');
+      if (childrenCountEl) childrenCountEl.textContent = `(${children.length}개)`;
+      children.sort((a, b) => b.count - a.count);
+      childrenGrid.innerHTML = children.map(ch => {
+        const safeName = _prodsrcEsc(ch.name).replace(/'/g, "\\'");
+        return `<div onclick="prodsrcOpenCategory('${safeName}')"
+          class="bg-white hover:bg-brand-bg border border-brand-border hover:border-brand-blue rounded-xl p-3 cursor-pointer transition-all"
+          title="${_prodsrcEsc(ch.name)} — 클릭해서 들어가기">
+          <div class="flex items-center gap-2 mb-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
+            <span class="font-bold text-xs truncate">${_prodsrcEsc(ch.leaf)}</span>
+          </div>
+          <div class="text-[10px] text-brand-gray">키워드 ${ch.count}개 · ${_prodsrcFmt(ch.totalSearch)}</div>
+        </div>`;
+      }).join('');
+    } else {
+      childrenBox.classList.add('hidden');
+    }
+  }
 
   // 변동 요약 — 폴더 내 재업로드 시 비교 결과가 있을 때만 표시
   const diffBox = document.getElementById('prodsrc-detail-diff');
