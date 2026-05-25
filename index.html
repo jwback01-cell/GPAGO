@@ -10939,6 +10939,17 @@ function prodsrcOpenCategory(name) {
   _prodsrcRender();
 }
 function prodsrcBackToFolders() {
+  // 현재 폴더의 부모 path 로 이동 — 검색으로 도달했든 트리로 도달했든 동일하게 동작
+  // 예) "디지털/가전 > 광학기기/용품" → group="디지털/가전" 으로 진입
+  // 예) "광학기기/용품" (root 폴더) → group=null (root 목록)
+  const cur = _prodsrcCurrentCategory || '';
+  if (cur.includes(' > ')) {
+    const parts = cur.split(' > ');
+    parts.pop();
+    _prodsrcCurrentGroup = parts.join(' > ');
+  } else {
+    _prodsrcCurrentGroup = null;
+  }
   _prodsrcCurrentCategory = null;
   _prodsrcRender();
 }
@@ -11292,6 +11303,7 @@ function prodsrcRenderDetail() {
       });
     }
     const kwEsc = _prodsrcEsc(r.keyword);
+    const naverUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(r.keyword)}`;
     const rowCat = r.category || '';
     // 마지막 ' > ' 뒤 segment 만 표시 (전체 경로는 title 툴팁으로 제공)
     const catLast = rowCat.includes(' > ') ? rowCat.split(' > ').pop() : rowCat;
@@ -11302,7 +11314,7 @@ function prodsrcRenderDetail() {
     const catCls = catMismatch ? 'text-brand-pink font-semibold' : 'text-brand-gray';
     return `<tr class="border-b border-brand-border hover:bg-brand-bg/40 group">
       <td class="p-3 pl-4 whitespace-nowrap" style="min-width:60px">${r.rank != null ? r.rank : '-'}</td>
-      <td class="p-3 font-semibold whitespace-nowrap" style="min-width:180px">${kwEsc}</td>
+      <td class="p-3 font-semibold whitespace-nowrap" style="min-width:180px"><a href="${naverUrl}" target="_blank" rel="noopener" class="text-brand-black hover:text-brand-blue hover:underline" title="네이버 쇼핑에서 '${kwEsc}' 검색">${kwEsc}</a></td>
       <td class="p-3 text-xs whitespace-nowrap ${catCls}" style="min-width:200px" title="${catFullEsc}">${catEsc || '<span class="text-brand-gray">-</span>'}</td>
       ${dateCells}
       <td class="p-0" style="width:100%"></td>
