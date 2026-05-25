@@ -9648,7 +9648,6 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     prevUploadedAt: (_prodsrcState && _prodsrcState.lastUploadedAt) || '',
     favorites: Array.isArray(_prodsrcState && _prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
   };
-  _prodsrcSave();
 
   // 결과 요약
   const totalNew = folderStats.reduce((s, f) => s + f.newC, 0);
@@ -9669,13 +9668,51 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   let summary;
   if (folderStats.length === 1) {
     const s = folderStats[0];
-    summary = `✅ "${s.folderName}" ${s.isNew ? '폴더 생성' : '폴더 갱신'} (아이템스카우트) — 신규 ${s.newC} · 증가 ${s.upC} · 감소 ${s.downC}`;
+    summary = `"${s.folderName}" ${s.isNew ? '폴더 생성' : '폴더 갱신'} (아이템스카우트) — 신규 ${s.newC} · 증가 ${s.upC} · 감소 ${s.downC}`;
   } else {
-    summary = `✅ ${analysisPath || 'itemscout'} 분석 → ${folderStats.length}개 폴더 분배 (신규 ${newFolders}개 폴더 · 갱신 ${updFolders}개 폴더), 키워드 신규 ${totalNew} · 증가 ${totalUp} · 감소 ${totalDown}`;
+    summary = `${analysisPath || 'itemscout'} 분석 → ${folderStats.length}개 폴더 분배 (신규 ${newFolders}개 폴더 · 갱신 ${updFolders}개 폴더), 키워드 신규 ${totalNew} · 증가 ${totalUp} · 감소 ${totalDown}`;
   }
-  _prodsrcMsg(summary, 'ok');
+
+  // ━━━ 화면 즉시 갱신 + 진행 표시 ━━━
+  // 압축/저장은 Worker 가 백그라운드 처리 → 메인 스레드 안 막힘
+  // 단, batch(range) 모드면 _prodsrcAutoFetchRange 가 자체 진행바 띄우므로 여기선 생략
+  const showOverlay = !window._prodsrcBatchActive && folderStats.length >= 5;
+  if (showOverlay) {
+    _prodsrcShowSavingOverlay(`💾 저장 중 — ${folderStats.length}개 폴더, 키워드 ${totalNew + totalUp + totalDown}개 처리 중...`);
+  }
+  _prodsrcMsg('⏳ ' + summary + ' — 저장 중...', 'info');
   _prodsrcRender();
-  if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
+  // 비동기 저장 (Worker 압축)
+  _prodsrcSaveAsync().then(() => {
+    if (showOverlay) _prodsrcHideSavingOverlay();
+    _prodsrcMsg('✅ ' + summary, 'ok');
+    if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
+  });
+}
+
+// 저장 진행 중에 표시하는 간단한 오버레이 (취소 버튼 없음, 스피너 + 텍스트만)
+function _prodsrcShowSavingOverlay(text) {
+  let el = document.getElementById('prodsrc-saving-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'prodsrc-saving-overlay';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99997;background:rgba(0,0,0,.25);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;font-family:Pretendard,-apple-system,BlinkMacSystemFont,sans-serif;';
+    el.innerHTML = `
+      <div style="background:white;border-radius:20px;padding:24px 32px;box-shadow:0 16px 48px rgba(0,0,0,.2);display:flex;align-items:center;gap:16px;min-width:320px;max-width:560px;">
+        <div style="width:36px;height:36px;border-radius:50%;border:3px solid #E5E7EB;border-top-color:#3478F6;animation:gpagoSpin 0.8s linear infinite;flex-shrink:0;"></div>
+        <div id="prodsrc-saving-overlay-text" style="font-size:14px;font-weight:600;color:#111;flex:1;line-height:1.4;">저장 중...</div>
+      </div>
+      <style>@keyframes gpagoSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}</style>
+    `;
+    document.body.appendChild(el);
+  }
+  const t = document.getElementById('prodsrc-saving-overlay-text');
+  if (t) t.textContent = text || '저장 중...';
+  el.style.display = 'flex';
+}
+function _prodsrcHideSavingOverlay() {
+  const el = document.getElementById('prodsrc-saving-overlay');
+  if (el) el.style.display = 'none';
 }
 
 // 여러 파일을 순차적으로 처리 — 중복 폴더 체크가 매 단계 누적 상태 기준으로 동작하도록
