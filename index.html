@@ -2132,14 +2132,33 @@ function _renderAuthUI(sessionOrUser) {
   }
 }
 
-// 페이지 로드 시 자동 로그인 복원 + PULL
+// 페이지 로드 시 자동 로그인 복원 + PULL (UX 개선: PULL 은 첫 화면 렌더 후 지연 시작)
 if (_supabase) {
-  _supabase.auth.getSession().then(async ({ data: { session } }) => {
-    if (session) {
-      _renderAuthUI(session);
-      await gpagoCloudPullAll();
-    }
+  // 1단계: 세션 복원 + UI 표시 (즉시) — 로그인 상태는 빠르게 보여줘야 함
+  _supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) _renderAuthUI(session);
   });
+  // 2단계: 클라우드 PULL — 페이지 인터랙티브 + idle 시점에 시작
+  // (첫 폴더 카드 렌더링이 1242개 ~1초 걸리는데 PULL 까지 같이 돌면 UI 멈춤)
+  const startCloudPull = async () => {
+    try {
+      const { data: { session } } = await _supabase.auth.getSession();
+      if (session) await gpagoCloudPullAll();
+    } catch (e) { console.warn('[cloud-pull] deferred start failed:', e); }
+  };
+  const scheduleCloudPull = () => {
+    // requestIdleCallback 우선 (브라우저 idle 일 때 실행), 미지원 시 setTimeout fallback
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(startCloudPull, { timeout: 3000 });
+    } else {
+      setTimeout(startCloudPull, 1500);
+    }
+  };
+  if (document.readyState === 'complete') {
+    setTimeout(scheduleCloudPull, 800);
+  } else {
+    window.addEventListener('load', () => setTimeout(scheduleCloudPull, 800), { once: true });
+  }
   _supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT') _renderAuthUI(null);
     else if (session) _renderAuthUI(session);
