@@ -8736,6 +8736,38 @@ function _prodsrcSave() {
   }
 }
 
+// 진단용 — F12 콘솔에서 `gpagoCheckFolder('키워드 일부')` 또는 `gpagoCheckFolder()` 호출
+// 특정 폴더의 모든 행 + 각 행의 r.category 를 콘솔에 표시 (카테고리 정리가 안 잡는 행 추적)
+window.gpagoCheckFolder = function (folderKeyword) {
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  const byFolder = new Map();
+  rows.forEach(r => {
+    const fn = r.folderName || r.category || '';
+    if (!byFolder.has(fn)) byFolder.set(fn, []);
+    byFolder.get(fn).push(r);
+  });
+  // 검색어로 필터 (없으면 전체 폴더 목록)
+  const target = [...byFolder.entries()].filter(([fn]) =>
+    !folderKeyword || fn.includes(folderKeyword)
+  );
+  if (!target.length) {
+    console.log('일치하는 폴더 없음.', folderKeyword ? `검색어: "${folderKeyword}"` : '전체 폴더 0개');
+    return;
+  }
+  target.forEach(([folderName, folderRows]) => {
+    console.group(`📁 ${folderName} (${folderRows.length}개 행)`);
+    const catCounts = new Map();
+    folderRows.forEach(r => catCounts.set(r.category || '(없음)', (catCounts.get(r.category || '(없음)') || 0) + 1));
+    const sorted = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
+    console.log('카테고리 분포:', sorted.map(([k, v]) => `${v}× ${k}`));
+    const hasMatching = folderRows.some(r => (r.category || '') === folderName);
+    console.log('folderName 과 일치하는 행 있음?', hasMatching);
+    console.log('정리 정답 카테고리:', hasMatching ? folderName + ' (folderName)' : sorted[0][0] + ' (다수파)');
+    console.table(folderRows.map(r => ({ rank: r.rank, keyword: r.keyword, category: r.category })));
+    console.groupEnd();
+  });
+};
+
 // 진단용 — F12 콘솔에서 `gpagoForcePush()` 호출하면 즉시 클라우드로 업로드 + 결과 표시
 // debounce 우회, 성공/실패 명확히 출력. PC2 데이터가 클라우드에 안 올라가는 원인 추적용
 window.gpagoForcePush = async function (key) {
@@ -10251,11 +10283,13 @@ function prodsrcCleanupMismatched() {
     console.log('[cleanup] 제거 대상 0개');
     return;
   }
-  const preview = summary.slice(0, 8).map(s =>
-    `• ${s.folderName.length > 50 ? s.folderName.slice(0, 50) + '…' : s.folderName} — ${s.removeCount}개 제외 (총 ${s.totalInFolder}개 중)`
-  ).join('\n');
-  const moreNote = summary.length > 8 ? `\n…외 ${summary.length - 8}개 폴더` : '';
-  const message = `총 ${totalRemove}개 행을 ${summary.length}개 폴더에서 제거합니다.\n\n${preview}${moreNote}\n\n계속할까요? (되돌릴 수 없음)`;
+  // 전체 폴더를 미리보기에 모두 표시 (사용자가 어떤 폴더가 정리되는지 한눈에 확인 가능)
+  const preview = summary
+    .sort((a, b) => b.removeCount - a.removeCount)  // 많이 제거되는 순 정렬
+    .map(s =>
+      `• ${s.folderName.length > 60 ? s.folderName.slice(0, 60) + '…' : s.folderName} — ${s.removeCount}개 제외 (총 ${s.totalInFolder}개 중)`
+    ).join('\n');
+  const message = `총 ${totalRemove}개 행을 ${summary.length}개 폴더에서 제거합니다.\n\n${preview}\n\n계속할까요? (되돌릴 수 없음)`;
   const doCleanup = () => {
     const keptRows = [];
     for (const [folderName, folderRows] of byFolder) {
