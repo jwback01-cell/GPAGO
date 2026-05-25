@@ -5103,7 +5103,7 @@ function renderKwTrend() {
   }
 
   // 키워드 칩 1개 렌더
-  function _renderChip(item) {
+  function _renderChip(item, isHidden) {
     const { rank, prev } = _latest(item.histKey, item.rankType === 'price' ? item.legacyKey : null);
     let body = '';
     if (rank === undefined) {
@@ -5129,7 +5129,8 @@ function renderKwTrend() {
     const typeIcon = item.rankType === 'plus'
       ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[9px] font-bold px-1 py-0 rounded ml-1 align-middle">+</span>'
       : '';
-    return `<span class="group inline-flex items-center gap-1 bg-brand-bg border border-brand-border rounded-full pl-2.5 pr-1.5 py-1 text-[12px] font-semibold whitespace-nowrap" title="${_escapeHtml(item.keyword)}${item.rankType === 'plus' ? ' (플러스스토어)' : ''}">
+    const hiddenCls = isHidden ? ' kw-chip-hidden hidden' : '';
+    return `<span class="group${hiddenCls} inline-flex items-center gap-1 bg-brand-bg border border-brand-border rounded-full pl-2.5 pr-1.5 py-1 text-[12px] font-semibold whitespace-nowrap" title="${_escapeHtml(item.keyword)}${item.rankType === 'plus' ? ' (플러스스토어)' : ''}">
       <span class="text-brand-black">${_escapeHtml(item.keyword)}${typeIcon}</span>
       ${body}
       <button type="button" onclick="event.stopPropagation(); deleteKwTrendItem('${item.id}', this)" title="키워드 삭제" class="ml-1 w-4 h-4 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center text-[12px] leading-none transition-colors" aria-label="삭제">×</button>
@@ -5143,11 +5144,10 @@ function renderKwTrend() {
     // 정렬은 manage 배열 순서(=사용자가 상세 모달 드롭다운으로 지정한 순서)를 그대로 따름
 
     const SHOWN = 6;
-    const visible = items.slice(0, SHOWN);
-    const hidden = items.slice(SHOWN);
-    const chipsHtml = visible.map(_renderChip).join(' ');
-    const hiddenHtml = hidden.length
-      ? `<details class="inline"><summary class="text-[11px] font-bold text-brand-blue cursor-pointer hover:underline list-none ml-1 inline">+${hidden.length}개 더보기</summary><div class="mt-2 flex flex-wrap gap-1.5">${hidden.map(_renderChip).join(' ')}</div></details>`
+    // 모든 칩을 한 flex 컨테이너에 넣고, 초과 칩은 hidden 클래스로 숨김 (펼치면 같은 줄바꿈 흐름 유지)
+    const allChipsHtml = items.map((it, idx) => _renderChip(it, idx >= SHOWN)).join(' ');
+    const hiddenHtml = items.length > SHOWN
+      ? `<button type="button" onclick="event.stopPropagation(); _toggleKwHiddenChips(this)" class="kw-more-btn text-[11px] font-bold text-brand-blue cursor-pointer hover:underline px-1 self-center" data-more-count="${items.length - SHOWN}">+${items.length - SHOWN}개 더보기</button>`
       : '';
     const productName = product.name || '<이름 없음>';
     const urlLink = product.url
@@ -5233,7 +5233,7 @@ function renderKwTrend() {
         <div class="border-t border-brand-border pt-2 flex flex-wrap gap-1.5 min-h-[36px]">
           ${items.length === 0
             ? '<span class="text-brand-gray text-xs">등록된 키워드 없음 — 순위 조회 후 "선택한 키워드 등록"으로 추가하세요</span>'
-            : chipsHtml + hiddenHtml}
+            : allChipsHtml + (hiddenHtml ? ' ' + hiddenHtml : '')}
         </div>
         <div class="border-t border-brand-border pt-2 flex items-center justify-between">
           <div>${updateText}</div>
@@ -5295,6 +5295,18 @@ function renderKwTrend() {
       })();
     }
   }
+}
+
+// 키워드 칩 더보기/접기 토글 — 같은 flex 컨테이너 안에서 hidden 칩들을 표시/숨김
+function _toggleKwHiddenChips(btn) {
+  const container = btn.parentElement;
+  if (!container) return;
+  const hiddenChips = container.querySelectorAll('.kw-chip-hidden');
+  if (!hiddenChips.length) return;
+  const isHidden = hiddenChips[0].classList.contains('hidden');
+  hiddenChips.forEach(c => c.classList.toggle('hidden', !isHidden));
+  const count = btn.dataset.moreCount || hiddenChips.length;
+  btn.textContent = isHidden ? '접기' : `+${count}개 더보기`;
 }
 
 // 상품 상세 정보 (리뷰/평점/찜/태그) 수동 새로고침 — 카드 우측 새로고침 버튼에서 호출
