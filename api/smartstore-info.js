@@ -31,7 +31,7 @@ export default async function handler(req, res) {
 
     const out = parseSmartstoreHtml(html);
     out.url = url;
-    res.setHeader('Cache-Control', 'public, max-age=300');  // 5분 캐시
+    res.setHeader('Cache-Control', 'public, max-age=1800');  // 30분 캐시 (네이버 rate limit 회피)
     res.status(200).json(out);
   } catch (err) {
     res.status(500).json({ error: err.message || String(err) });

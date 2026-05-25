@@ -3766,15 +3766,50 @@ async function _fetchKwProductImage(extraId, name, url) {
   } else if (typeof renderKwTrend === 'function') renderKwTrend();
 }
 
-// 스마트스토어 상품 상세 정보 가져오기 (별도 호출 가능)
-async function _fetchKwProductInfo(extraId, url, opts) {
+// ── 스마트스토어 정보 fetch 큐 (네이버 429 rate limit 회피용 직렬화) ──
+const _smartstoreQueue = [];
+let _smartstoreActive = false;
+async function _processSmartstoreQueue() {
+  if (_smartstoreActive || !_smartstoreQueue.length) return;
+  _smartstoreActive = true;
+  try {
+    while (_smartstoreQueue.length) {
+      const item = _smartstoreQueue.shift();
+      try { await _doFetchSmartstoreInfo(item.extraId, item.url, item.opts); }
+      catch (e) { console.warn('[smartstore-queue] item failed:', e); }
+      if (_smartstoreQueue.length) {
+        // 다음 요청 전 2초 대기 (네이버 봇 차단 회피)
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+  } finally { _smartstoreActive = false; }
+}
+
+// 외부 진입점: 큐에 추가 후 처리 시작
+function _fetchKwProductInfo(extraId, url, opts) {
+  opts = opts || {};
+  // 중복 큐잉 방지 — 같은 extraId 가 이미 대기 중이면 추가 안 함
+  if (_smartstoreQueue.some(q => q.extraId === extraId)) return;
+  _smartstoreQueue.push({ extraId, url, opts });
+  _processSmartstoreQueue();
+}
+
+// 실제 fetch + 데이터 적용 — 큐가 호출
+async function _doFetchSmartstoreInfo(extraId, url, opts) {
   opts = opts || {};
   try {
     console.log('[smartstore-info] 요청:', url);
     const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
     if (!r.ok) {
       console.warn('[smartstore-info] HTTP', r.status);
-      if (opts.showToast && typeof toast === 'function') toast(`⚠ 정보 가져오기 실패 (HTTP ${r.status})`);
+      if (opts.showToast && typeof toast === 'function') {
+        const msg = r.status === 429
+          ? '⚠ 네이버 요청 제한 (429) — 잠시 후 다시 시도하세요'
+          : `⚠ 정보 가져오기 실패 (HTTP ${r.status})`;
+        toast(msg);
+      }
+      // 429 일 때 큐 더 천천히 처리 — 추가 5초 지연
+      if (r.status === 429) await new Promise(rr => setTimeout(rr, 5000));
       return;
     }
     const info = await r.json();
@@ -4859,19 +4894,16 @@ function renderKwTrend() {
   const manage = _loadKwManage();
   const allProducts = _kwAllProductOptions(); // 등록된 모든 "조회할 상품"
 
-  // 백그라운드: 정보가 아직 없는 스마트스토어 상품들 자동 fetch (한 번만)
-  // 무한 루프 방지 — _kwInfoBackfillDone Set 으로 중복 호출 차단
+  // 백그라운드: 정보가 아직 없는 스마트스토어 상품들 큐에 추가
+  // (큐가 직렬 처리 — 한 번에 1개씩 2초 간격으로 fetch → 네이버 429 회피)
   if (!window._kwInfoBackfillDone) window._kwInfoBackfillDone = new Set();
   const extras = _loadKwExtras();
-  let backfillCount = 0;
   for (const p of extras) {
     if (!p.url || !p.id) continue;
     if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) continue;
-    if (p.reviewCount != null || p.rating != null || p.wishCount != null) continue;  // 이미 정보 있음
-    if (window._kwInfoBackfillDone.has(p.id)) continue;  // 이미 시도함
+    if (p.reviewCount != null || p.rating != null || p.wishCount != null) continue;
+    if (window._kwInfoBackfillDone.has(p.id)) continue;
     window._kwInfoBackfillDone.add(p.id);
-    backfillCount++;
-    if (backfillCount > 5) break;  // 한 번에 5개까지만 (API rate limit 보호)
     if (typeof _fetchKwProductInfo === 'function') _fetchKwProductInfo(p.id, p.url);
   }
 
