@@ -10221,7 +10221,7 @@ function prodsrcRenderDetail() {
     theadHtml += '<th class="p-3 font-semibold whitespace-nowrap" style="min-width:180px">키워드</th>';
     theadHtml += '<th class="p-3 font-semibold whitespace-nowrap" style="min-width:200px">카테고리</th>';
     if (dateCols.length === 0) {
-      theadHtml += '<th class="p-3 text-right font-bold w-40 text-brand-gray">데이터 없음</th>';
+      theadHtml += '<th class="p-3 text-right font-bold whitespace-nowrap text-brand-gray" style="min-width:120px">데이터 없음</th>';
     } else {
       dateCols.forEach(d => {
         const esc = _prodsrcEsc(d);
@@ -10243,7 +10243,7 @@ function prodsrcRenderDetail() {
     _prodsrcGetHistory(r).forEach(h => { if (h.date) histMap.set(h.date, h.totalSearch); });
     let dateCells = '';
     if (dateCols.length === 0) {
-      dateCells = '<td class="p-3 text-right w-40 text-brand-gray">-</td>';
+      dateCells = '<td class="p-3 text-right whitespace-nowrap text-brand-gray" style="min-width:120px">-</td>';
     } else {
       dateCols.forEach((d, idx) => {
         const v = histMap.get(d);
