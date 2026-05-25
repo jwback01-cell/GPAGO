@@ -10047,77 +10047,105 @@ function _prodsrcRenderFolders() {
   const searchRaw = (searchEl?.value || '').trim().toLowerCase();
   const searchTokens = searchRaw.split(/\s+/).filter(Boolean);
 
-  // ─── 부모-자식 prefix 자동 감지 ───
-  // 폴더명을 ' > ' 로 분리, 직속 부모(한 단계 위 경로) 가 같은 폴더 2개 이상이면 그룹으로 묶음
-  // 단, 자식 폴더 이름과 동일한 부모 폴더가 별도로 존재하면 그룹 처리 안 함 (혼동 방지)
-  const parentToChildren = new Map();  // parent path → children folder names
+  // ─── 다단계 경로 트리 빌드 ───
+  // 폴더명을 ' > ' 로 분리하여 트리 구성. 각 노드는 children (Map), hasOwn (folder 로 존재 여부),
+  // fullPath (이 노드까지의 전체 경로), firstIdx (정렬용)
+  const pathTree = { children: new Map() };
   for (const [name] of cats) {
     const parts = String(name).split(' > ');
-    if (parts.length <= 1) continue;
-    const parent = parts.slice(0, -1).join(' > ');
-    if (!parentToChildren.has(parent)) parentToChildren.set(parent, []);
-    parentToChildren.get(parent).push(name);
-  }
-  // 그룹 결정:
-  //   - 부모가 폴더로 존재 + 자식 1개 이상 → hybrid: 자식 숨기고 부모는 "+N개 하위" 배지로 표시
-  //     클릭 시 폴더 안에서 자식 목록 + 자체 키워드 함께 표시 (prodsrcRenderDetail)
-  //   - 부모가 폴더로 없음 + 자식 2개 이상 → 가상 그룹 (파란 카드)
-  const groupedChildren = new Set();  // 그룹/하위에 속한 자식 폴더명
-  const groups = [];  // 가상 그룹: [{ parent, children, count, totalSearch, firstIdx }]
-  const hybridParents = new Map();  // 부모 폴더명 → 자식 폴더명[] (부모도 폴더로 존재)
-  for (const [parent, children] of parentToChildren) {
-    if (cats.has(parent)) {
-      // hybrid: 자식 1개 이상이면 묶음
-      if (children.length < 1) continue;
-      children.forEach(c => groupedChildren.add(c));
-      hybridParents.set(parent, children);
-    } else {
-      // 가상 그룹: 자식 2개 이상일 때만 묶음
-      if (children.length < 2) continue;
-      children.forEach(c => groupedChildren.add(c));
-      let count = 0, totalSearch = 0, earliestIdx = Infinity;
-      children.forEach(c => {
-        const s = cats.get(c);
-        count += s.count;
-        totalSearch += s.totalSearch;
-        const idx = firstIdx.get(c) ?? Infinity;
-        if (idx < earliestIdx) earliestIdx = idx;
-      });
-      groups.push({ parent, children, count, totalSearch, firstIdx: earliestIdx });
+    let node = pathTree;
+    let acc = '';
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      acc = acc ? `${acc} > ${part}` : part;
+      if (!node.children.has(part)) {
+        node.children.set(part, { children: new Map(), fullPath: acc, firstIdx: Infinity });
+      }
+      node = node.children.get(part);
+      const idx = firstIdx.get(name) ?? Infinity;
+      if (idx < node.firstIdx) node.firstIdx = idx;
     }
+    node.hasOwn = true;
+    node.fullName = name;
   }
-  // 폴더 카드 표시용으로 hybrid 정보를 외부 (prodsrcRenderDetail) 에서도 쓸 수 있게 저장
+  // 노드 하위에 있는 모든 leaf 폴더의 통계 합계
+  function aggregateNodeStats(node) {
+    let count = 0, totalSearch = 0, descendantLeaves = 0;
+    const walk = (n) => {
+      if (n.hasOwn && n.fullName) {
+        const s = cats.get(n.fullName);
+        if (s) { count += s.count; totalSearch += s.totalSearch; }
+        descendantLeaves++;
+      }
+      n.children.forEach(c => walk(c));
+    };
+    walk(node);
+    return { count, totalSearch, descendantLeaves };
+  }
+  // 현재 경로에 해당하는 노드 찾기
+  function getNodeAtPath(path) {
+    if (!path) return pathTree;
+    const parts = String(path).split(' > ');
+    let node = pathTree;
+    for (const part of parts) {
+      const next = node.children.get(part);
+      if (!next) return null;
+      node = next;
+    }
+    return node;
+  }
+  const currentNode = _prodsrcCurrentGroup ? getNodeAtPath(_prodsrcCurrentGroup) : pathTree;
+  if (!currentNode) {
+    // 현재 경로가 사라졌으면 root 로 복귀
+    _prodsrcCurrentGroup = null;
+  }
+  const viewNode = currentNode || pathTree;
+
+  // hybrid 정보 — prodsrcRenderDetail 의 '하위 폴더' 섹션에서 사용
+  // (현재 폴더에 직접 자식이 있는지 확인용)
+  const hybridParents = new Map();
+  function buildHybridMap(node) {
+    if (node.hasOwn && node.children.size > 0) {
+      hybridParents.set(node.fullName, [...node.children.keys()].map(k => node.children.get(k).fullPath));
+    }
+    node.children.forEach(c => buildHybridMap(c));
+  }
+  buildHybridMap(pathTree);
   window._prodsrcHybridParents = hybridParents;
 
-  // 그룹 진입 모드일 때: 그 그룹의 자식 폴더만 표시
-  if (_prodsrcCurrentGroup) {
-    const grp = groups.find(g => g.parent === _prodsrcCurrentGroup);
-    if (!grp) {
-      // 그룹이 사라졌으면 일반 모드로 복귀
-      _prodsrcCurrentGroup = null;
+  // 현재 viewNode 의 직속 자식들을 displayItems 로 변환
+  let displayItems = [];
+  viewNode.children.forEach((childNode, key) => {
+    const childPath = childNode.fullPath;
+    const hasGrandchildren = childNode.children.size > 0;
+    const stats = aggregateNodeStats(childNode);
+    if (hasGrandchildren && childNode.hasOwn) {
+      // hybrid: 자체 leaf 가 있으면서 하위 폴더도 있음 → 노란 카드 + 배지
+      const own = cats.get(childNode.fullName);
+      displayItems.push({
+        kind: 'folder', name: childPath, count: own.count, totalSearch: own.totalSearch,
+        firstIdx: childNode.firstIdx, descendantCount: childNode.children.size,
+      });
+    } else if (hasGrandchildren) {
+      // virtual group: leaf 없고 자식만 → 파란 카드
+      displayItems.push({
+        kind: 'group', name: childPath, count: stats.count, totalSearch: stats.totalSearch,
+        firstIdx: childNode.firstIdx, childCount: childNode.children.size,
+      });
+    } else {
+      // 일반 leaf: 자식 없음
+      const own = cats.get(childNode.fullName);
+      displayItems.push({
+        kind: 'folder', name: childPath, count: own.count, totalSearch: own.totalSearch,
+        firstIdx: childNode.firstIdx,
+      });
     }
-  }
+  });
+  displayItems.sort((a, b) => a.firstIdx - b.firstIdx);
 
-  // 표시할 항목: 일반 모드면 그룹 + 그룹 안 속한 폴더, 그룹 모드면 그 그룹의 자식만
-  let displayItems;  // { kind: 'group'|'folder', name, count, totalSearch, firstIdx, children? }[]
-  if (_prodsrcCurrentGroup) {
-    const grp = groups.find(g => g.parent === _prodsrcCurrentGroup);
-    displayItems = grp.children.map(name => {
-      const s = cats.get(name);
-      return { kind: 'folder', name, count: s.count, totalSearch: s.totalSearch, firstIdx: firstIdx.get(name) ?? 0 };
-    });
-  } else {
-    const groupItems = groups.map(g => ({ kind: 'group', name: g.parent, count: g.count, totalSearch: g.totalSearch, firstIdx: g.firstIdx, childCount: g.children.length }));
-    const ungroupedFolders = [...cats.entries()]
-      .filter(([name]) => !groupedChildren.has(name))
-      .map(([name, c]) => ({ kind: 'folder', name, count: c.count, totalSearch: c.totalSearch, firstIdx: firstIdx.get(name) ?? 0 }));
-    displayItems = [...groupItems, ...ungroupedFolders].sort((a, b) => a.firstIdx - b.firstIdx);
-  }
-
-  // 검색 필터 — 폴더명 OR itemscout 카테고리 ID 매칭
-  // 그룹의 경우 자식 폴더 중 하나라도 매칭되면 그룹 표시
+  // 검색 필터 — 검색 모드에서는 트리 무시하고 전체 폴더 평면 검색
   if (searchTokens.length) {
-    const itemscoutIdsByFolder = folderItemscoutIds;  // 클로저 캡처
+    const itemscoutIdsByFolder = folderItemscoutIds;
     const matchFolder = (name) => {
       const lower = String(name).toLowerCase();
       const ids = itemscoutIdsByFolder.get(name);
@@ -10127,34 +10155,43 @@ function _prodsrcRenderFolders() {
         return false;
       });
     };
-    displayItems = displayItems.filter(it => {
-      if (it.kind === 'folder') return matchFolder(it.name);
-      // 그룹: 부모명 매칭 OR 자식 폴더 중 매칭 있음
-      if (matchFolder(it.name)) return true;
-      const grp = groups.find(g => g.parent === it.name);
-      if (grp && grp.children.some(c => matchFolder(c))) return true;
-      return false;
-    });
+    // 트리 무시 — cats 전체에서 매칭되는 폴더 평면 표시
+    displayItems = [...cats.entries()]
+      .filter(([name]) => matchFolder(name))
+      .map(([name, c]) => ({
+        kind: 'folder', name, count: c.count, totalSearch: c.totalSearch,
+        firstIdx: firstIdx.get(name) ?? 0,
+      }));
+    displayItems.sort((a, b) => a.firstIdx - b.firstIdx);
   }
 
   // 카운트 표시
   const totalDisplayCount = _prodsrcCurrentGroup
-    ? groups.find(g => g.parent === _prodsrcCurrentGroup)?.children.length || 0
-    : (groups.length + (cats.size - groupedChildren.size));
+    ? (viewNode?.children.size || 0)
+    : displayItems.length;
   countEl.textContent = searchTokens.length
-    ? `(${displayItems.length} / ${totalDisplayCount}개)`
-    : `(${totalDisplayCount}개${_prodsrcCurrentGroup ? ' · 그룹 내 자식' : ''})`;
+    ? `(${displayItems.length} / ${cats.size}개)`
+    : `(${totalDisplayCount}개${_prodsrcCurrentGroup ? ' · 하위' : ''})`;
 
-  // 그룹 모드면 뒤로 가기 + 현재 그룹 경로 표시 (breadcrumb)
+  // 다단계 breadcrumb (현재 경로의 각 segment 를 클릭해서 해당 레벨로 이동 가능)
   let breadcrumbHtml = '';
   if (_prodsrcCurrentGroup) {
-    breadcrumbHtml = `<div class="col-span-full mb-2 flex items-center gap-2 text-sm">
+    const segments = _prodsrcCurrentGroup.split(' > ');
+    const crumbs = segments.map((seg, i) => {
+      const partialPath = segments.slice(0, i + 1).join(' > ');
+      const safe = _prodsrcEsc(partialPath).replace(/'/g, "\\'");
+      const isLast = i === segments.length - 1;
+      return isLast
+        ? `<span class="font-bold text-brand-black">${_prodsrcEsc(seg)}</span>`
+        : `<button onclick="prodsrcOpenGroup('${safe}')" class="text-brand-blue hover:underline">${_prodsrcEsc(seg)}</button>`;
+    }).join('<span class="text-brand-gray mx-1">›</span>');
+    breadcrumbHtml = `<div class="col-span-full mb-2 flex items-center gap-2 text-sm flex-wrap">
       <button onclick="prodsrcExitGroup()" class="px-3 py-1.5 rounded-full border border-brand-border text-xs font-bold hover:bg-brand-bg flex items-center gap-1.5">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
         폴더 목록
       </button>
-      <span class="font-bold">${_prodsrcEsc(_prodsrcCurrentGroup)}</span>
-      <span class="text-xs text-brand-gray">그룹 (자식 ${groups.find(g => g.parent === _prodsrcCurrentGroup)?.children.length || 0}개)</span>
+      <div class="text-xs">${crumbs}</div>
+      <span class="text-xs text-brand-gray">(${viewNode?.children.size || 0}개 하위)</span>
     </div>`;
   }
 
@@ -10204,7 +10241,7 @@ function _prodsrcRenderFolders() {
       ${checkboxHtml}
       <div class="mb-2 flex items-center justify-between">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1" class="shrink-0"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
-        ${hybridParents.has(name) ? `<span class="text-[10px] font-bold text-brand-blue bg-brand-blue-light px-2 py-0.5 rounded-full">+${hybridParents.get(name).length}개 하위</span>` : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2" class="shrink-0 opacity-60" title="드래그 가능"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>`}
+        ${it.descendantCount ? `<span class="text-[10px] font-bold text-brand-blue bg-brand-blue-light px-2 py-0.5 rounded-full">+${it.descendantCount}개 하위</span>` : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2" class="shrink-0 opacity-60" title="드래그 가능"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>`}
       </div>
       <div class="font-bold text-sm leading-tight mb-1 break-words" title="${_prodsrcEsc(name)}">${_prodsrcEsc(name)}</div>
       <div class="text-[11px] text-brand-gray">키워드 ${c.count}개 · 총검색합 ${_prodsrcFmt(c.totalSearch)}</div>
