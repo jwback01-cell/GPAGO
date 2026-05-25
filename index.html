@@ -3736,27 +3736,56 @@ function submitKwAddProduct() {
   _fetchKwProductImage(newId, name, url);
 }
 
-// 네이버 쇼핑 API에서 상품 이미지 자동 가져오기
+// 네이버 쇼핑 API에서 상품 이미지 자동 가져오기 + 스마트스토어 상세 정보 (리뷰/평점/찜/태그)
 async function _fetchKwProductImage(extraId, name, url) {
+  // 1) 네이버 쇼핑 API 로 이미지 매칭 (백그라운드)
   try {
     const productIdMatch = (url || '').match(/products\/(\d+)/);
     const productId = productIdMatch ? productIdMatch[1] : '';
     const r = await fetch(`/api/naver-shop?query=${encodeURIComponent(name)}&display=20&start=1`);
+    if (r.ok) {
+      const data = await r.json();
+      const items = data.items || [];
+      let matched = null;
+      if (productId) matched = items.find(it => (it.link || '').includes(productId) || String(it.productId) === productId);
+      if (!matched && url) matched = items.find(it => (it.link || '').includes(url.replace(/^https?:\/\//, '').split('/')[0]));
+      if (!matched) matched = items[0];
+      if (matched && matched.image) {
+        const extras = _loadKwExtras();
+        const target = extras.find(p => p.id === extraId);
+        if (target) {
+          target.imageUrl = matched.image;
+          _saveKwExtras(extras);
+        }
+      }
+    }
+  } catch (_) { /* 조용히 실패 */ }
+  // 2) 스마트스토어 상세 정보 (이미지/리뷰/평점/찜/등록일/태그)
+  if (url && (url.includes('smartstore.naver.com') || url.includes('brand.naver.com'))) {
+    _fetchKwProductInfo(extraId, url);
+  } else if (typeof renderKwTrend === 'function') renderKwTrend();
+}
+
+// 스마트스토어 상품 상세 정보 가져오기 (별도 호출 가능)
+async function _fetchKwProductInfo(extraId, url) {
+  try {
+    const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
     if (!r.ok) return;
-    const data = await r.json();
-    const items = data.items || [];
-    let matched = null;
-    if (productId) matched = items.find(it => (it.link || '').includes(productId) || String(it.productId) === productId);
-    if (!matched && url) matched = items.find(it => (it.link || '').includes(url.replace(/^https?:\/\//, '').split('/')[0]));
-    if (!matched) matched = items[0];
-    if (!matched || !matched.image) return;
+    const info = await r.json();
     const extras = _loadKwExtras();
     const target = extras.find(p => p.id === extraId);
     if (!target) return;
-    target.imageUrl = matched.image;
+    if (info.image && !target.imageUrl) target.imageUrl = info.image;
+    if (info.reviewCount != null) target.reviewCount = Number(info.reviewCount);
+    if (info.rating != null)      target.rating      = Number(info.rating);
+    if (info.wishCount != null)   target.wishCount   = Number(info.wishCount);
+    if (info.registDate)          target.registDate  = info.registDate;
+    if (Array.isArray(info.tags) && info.tags.length) target.tags = info.tags;
+    if (info.category)            target.category    = info.category;
+    target.infoFetchedAt = new Date().toISOString();
     _saveKwExtras(extras);
     if (typeof renderKwTrend === 'function') renderKwTrend();
-  } catch (_) { /* 조용히 실패 */ }
+  } catch (e) { console.warn('[smartstore-info] failed:', e); }
 }
 function removeKwExtraProduct(id) {
   const extras = _loadKwExtras().filter(p => p.id !== id);
@@ -4815,6 +4844,22 @@ function renderKwTrend() {
   const manage = _loadKwManage();
   const allProducts = _kwAllProductOptions(); // 등록된 모든 "조회할 상품"
 
+  // 백그라운드: 정보가 아직 없는 스마트스토어 상품들 자동 fetch (한 번만)
+  // 무한 루프 방지 — _kwInfoBackfillDone Set 으로 중복 호출 차단
+  if (!window._kwInfoBackfillDone) window._kwInfoBackfillDone = new Set();
+  const extras = _loadKwExtras();
+  let backfillCount = 0;
+  for (const p of extras) {
+    if (!p.url || !p.id) continue;
+    if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) continue;
+    if (p.reviewCount != null || p.rating != null || p.wishCount != null) continue;  // 이미 정보 있음
+    if (window._kwInfoBackfillDone.has(p.id)) continue;  // 이미 시도함
+    window._kwInfoBackfillDone.add(p.id);
+    backfillCount++;
+    if (backfillCount > 5) break;  // 한 번에 5개까지만 (API rate limit 보호)
+    if (typeof _fetchKwProductInfo === 'function') _fetchKwProductInfo(p.id, p.url);
+  }
+
   function _realKeyOf(pk) {
     const p = _kwResolveProduct(pk);
     return p ? (p.url || p.name) : pk;
@@ -4946,6 +4991,32 @@ function renderKwTrend() {
            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
          </div>`;
 
+    // ROPAGO 스타일 정보 라인 — 리뷰/평점/찜/등록일
+    const fmtNum = (v) => v == null ? null : Number(v).toLocaleString('ko-KR');
+    const ratingStr = (product.rating != null) ? Number(product.rating).toFixed(2) : null;
+    const infoBits = [];
+    if (product.reviewCount != null) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FF8A00" stroke="#FF8A00" stroke-width="0"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="text-brand-gray">리뷰</span> <span class="font-bold">${fmtNum(product.reviewCount)}개</span></span>`);
+    if (ratingStr) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FFB300" stroke="#FFB300"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span class="text-brand-gray">평점</span> <span class="font-bold">${ratingStr}점</span></span>`);
+    if (product.wishCount != null) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FF3B30" stroke="#FF3B30"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span class="text-brand-gray">찜</span> <span class="font-bold">${fmtNum(product.wishCount)}개</span></span>`);
+    if (product.registDate) {
+      const d = String(product.registDate).slice(0, 10).replace(/-/g, '.');
+      infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span class="text-brand-gray">등록일</span> <span class="font-bold">${_escapeHtml(d)}</span></span>`);
+    }
+    const infoRow = infoBits.length ? `<div class="flex items-center gap-3 text-[11px] flex-wrap">${infoBits.join('')}</div>` : '';
+
+    // 태그 칩 (있을 때만)
+    const tagsHtml = Array.isArray(product.tags) && product.tags.length
+      ? `<div class="flex flex-wrap gap-1 mt-0.5">
+          <span class="text-[10px] text-brand-gray mr-1 self-center">🏷</span>
+          ${product.tags.slice(0, 12).map(t => `<span class="bg-brand-bg border border-brand-border rounded-full px-2 py-0.5 text-[10px] font-semibold text-brand-black">${_escapeHtml(t)}</span>`).join('')}
+        </div>`
+      : '';
+
+    // 카테고리 경로 (있을 때)
+    const catLine = product.category
+      ? `<div class="text-[11px] text-brand-gray mt-0.5 truncate" title="${_escapeHtml(product.category)}">${_escapeHtml(product.category)}</div>`
+      : '';
+
     return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-5 flex gap-4 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer min-h-[180px]">
       <!-- 슬롯 번호 -->
       <div class="shrink-0 flex flex-col items-center justify-start w-14 pt-1">
@@ -4957,20 +5028,26 @@ function renderKwTrend() {
       ${imgBlock}
 
       <!-- 본문 -->
-      <div class="flex-1 min-w-0 flex flex-col gap-2.5">
+      <div class="flex-1 min-w-0 flex flex-col gap-2">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
             <h3 class="font-bold text-[15px] text-brand-black leading-tight truncate" title="${_escapeHtml(productName)}">${_escapeHtml(productName)}</h3>
+            ${catLine}
             <div class="mt-1">${urlLink}</div>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <span class="text-[10px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full whitespace-nowrap">${items.length}개</span>
+            <button type="button" onclick="event.stopPropagation(); _refreshKwProductInfo('${_escapeHtml(productKey)}')" title="상품 정보 새로고침" class="w-7 h-7 rounded-full text-brand-gray hover:text-brand-blue hover:bg-brand-bg flex items-center justify-center transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
             <button type="button" onclick="event.stopPropagation(); deleteKwTrendSlot('${_escapeHtml(productKey)}')" title="이 슬롯(상품) 삭제" class="w-7 h-7 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
             </button>
           </div>
         </div>
-        <div class="border-t border-brand-border pt-2.5 flex flex-wrap gap-1.5 min-h-[36px]">
+        ${infoRow}
+        ${tagsHtml}
+        <div class="border-t border-brand-border pt-2 flex flex-wrap gap-1.5 min-h-[36px]">
           ${items.length === 0
             ? '<span class="text-brand-gray text-xs">등록된 키워드 없음 — 순위 조회 후 "선택한 키워드 등록"으로 추가하세요</span>'
             : chipsHtml + hiddenHtml}
@@ -5035,6 +5112,18 @@ function renderKwTrend() {
       })();
     }
   }
+}
+
+// 상품 상세 정보 (리뷰/평점/찜/태그) 수동 새로고침 — 카드 우측 새로고침 버튼에서 호출
+function _refreshKwProductInfo(productKey) {
+  const m = String(productKey).match(/^ex:(.+)$/);
+  if (!m) { _showToast?.('해당 슬롯은 새로고침 지원 안 됨'); return; }
+  const id = m[1];
+  const extras = _loadKwExtras();
+  const target = extras.find(p => p.id === id);
+  if (!target || !target.url) { _showToast?.('URL 없음'); return; }
+  if (typeof _showToast === 'function') _showToast('상품 정보 갱신 중...');
+  if (typeof _fetchKwProductInfo === 'function') _fetchKwProductInfo(id, target.url);
 }
 
 // 슬롯(상품) 전체 삭제
