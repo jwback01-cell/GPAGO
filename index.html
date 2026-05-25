@@ -9357,7 +9357,12 @@ async function _prodsrcSaveAsync() {
           console.log('[prodsrc-async] 압축률:', (json.length/1024).toFixed(0), 'KB →', (payload.length/1024).toFixed(0), 'KB');
         }
         if (typeof _gpagoUpdateStorageBar === 'function') _gpagoUpdateStorageBar();
+        // IDB 저장 시점에 오버레이 닫음 — 클라우드 PUSH 는 백그라운드 진행
+        if (typeof window._prodsrcOnIdbSaved === 'function') {
+          try { window._prodsrcOnIdbSaved(); } catch (_) {}
+        }
         // 클라우드 PUSH 수동 트리거 — IDB 쓰기는 localStorage 후킹을 안 거쳐서 명시 호출 필요
+        // (await 안 함 → 백그라운드로 진행, 사용자는 바로 작업 계속 가능)
         if (typeof _gpagoCloudPushKey === 'function') _gpagoCloudPushKey(PRODSRC_KEY);
       } catch (e) {
         console.error('[prodsrc] IDB async save FAILED → sync fallback:', e);
@@ -10159,9 +10164,16 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   }
   _prodsrcMsg('⏳ ' + summary + ' — 저장 중...', 'info');
   _prodsrcRender();
+  // IDB 저장 완료 시점에 오버레이 닫기 (클라우드 PUSH 는 백그라운드 계속 진행)
+  if (showOverlay) {
+    window._prodsrcOnIdbSaved = () => {
+      _prodsrcHideSavingOverlay();
+      window._prodsrcOnIdbSaved = null;
+    };
+  }
   // 비동기 저장 (Worker 압축)
   _prodsrcSaveAsync().then(() => {
-    if (showOverlay) _prodsrcHideSavingOverlay();
+    if (showOverlay) _prodsrcHideSavingOverlay();  // 안전망 — IDB 콜백이 이미 닫았으면 무시됨
     _prodsrcMsg('✅ ' + summary, 'ok');
     if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
   });
