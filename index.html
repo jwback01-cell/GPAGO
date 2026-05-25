@@ -1414,6 +1414,9 @@ PBT키캡	1180
               title="이미 열려있는 itemscout.io 탭에서 현재 보이는 데이터를 가져옵니다.">
               📥 현재 탭에서 가져오기
             </button>
+            <button onclick="prodsrcCleanupMismatched()" id="prodsrc-cleanup-btn"
+              class="hidden px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-bold text-brand-orange hover:bg-brand-bg"
+              title="각 폴더에서 다수파 카테고리와 다른 행을 일괄 정리합니다 (이전 업로드 분 포함)">🧹 카테고리 정리</button>
             <button onclick="prodsrcClearAll()" id="prodsrc-clear-btn" class="hidden px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-bold text-brand-pink hover:bg-brand-bg">전체 초기화</button>
           </div>
         </div>
@@ -9619,6 +9622,7 @@ function _prodsrcRender() {
   const detailSec  = document.getElementById('prodsrc-detail');
   const emptySec   = document.getElementById('prodsrc-empty');
   const clearBtn   = document.getElementById('prodsrc-clear-btn');
+  const cleanupBtn = document.getElementById('prodsrc-cleanup-btn');
   const rows = _prodsrcState.rows || [];
 
   if (!rows.length) {
@@ -9627,10 +9631,12 @@ function _prodsrcRender() {
     detailSec.classList.add('hidden');
     emptySec.classList.remove('hidden');
     clearBtn.classList.add('hidden');
+    if (cleanupBtn) cleanupBtn.classList.add('hidden');
     return;
   }
   emptySec.classList.add('hidden');
   clearBtn.classList.remove('hidden');
+  if (cleanupBtn) cleanupBtn.classList.remove('hidden');
 
   if (_prodsrcCurrentCategory) {
     folderSec.classList.add('hidden');
@@ -10187,6 +10193,69 @@ function prodsrcDeleteDate(date) {
     showAppConfirm('날짜 데이터 삭제', `'${date}' 날짜의 데이터를 이 폴더에서 삭제할까요?\n해당 날짜만 있는 키워드는 행 전체가 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`, apply, { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' });
   } else {
     if (confirm(`'${date}' 날짜 데이터를 삭제할까요?\n해당 날짜만 있는 키워드는 행 전체가 함께 삭제됩니다.`)) apply();
+  }
+}
+
+// 각 폴더에서 다수파 카테고리와 다른 행을 일괄 정리 (이전 업로드 분 포함)
+function prodsrcCleanupMismatched() {
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  if (!rows.length) {
+    _prodsrcMsg('정리할 데이터가 없습니다.', 'warn');
+    return;
+  }
+  // 폴더별로 그룹화 + 폴더 내 다수파 카테고리 계산
+  const byFolder = new Map();
+  rows.forEach(r => {
+    const fn = r.folderName || r.category || '';
+    if (!byFolder.has(fn)) byFolder.set(fn, []);
+    byFolder.get(fn).push(r);
+  });
+  const summary = [];
+  let totalRemove = 0;
+  for (const [folderName, folderRows] of byFolder) {
+    const catCounts = new Map();
+    folderRows.forEach(r => catCounts.set(r.category || '', (catCounts.get(r.category || '') || 0) + 1));
+    const sorted = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
+    const dominant = sorted[0][0];
+    const removeCount = folderRows.filter(r => (r.category || '') !== dominant).length;
+    if (removeCount > 0) {
+      summary.push({ folderName, dominant, removeCount, totalInFolder: folderRows.length });
+      totalRemove += removeCount;
+    }
+  }
+  if (totalRemove === 0) {
+    _prodsrcMsg('✅ 정리할 행이 없습니다 — 모든 폴더가 단일 카테고리입니다.', 'ok');
+    return;
+  }
+  // 미리보기 메시지 만들기 (최대 8개 폴더만 표시)
+  const preview = summary.slice(0, 8).map(s =>
+    `• ${s.folderName.length > 50 ? s.folderName.slice(0, 50) + '…' : s.folderName} — ${s.removeCount}개 제외 (총 ${s.totalInFolder}개 중)`
+  ).join('\n');
+  const moreNote = summary.length > 8 ? `\n…외 ${summary.length - 8}개 폴더` : '';
+  const message = `총 ${totalRemove}개 행을 ${summary.length}개 폴더에서 제거합니다.\n\n${preview}${moreNote}\n\n계속할까요? (되돌릴 수 없음)`;
+  const doCleanup = () => {
+    const keptRows = [];
+    for (const [folderName, folderRows] of byFolder) {
+      const catCounts = new Map();
+      folderRows.forEach(r => catCounts.set(r.category || '', (catCounts.get(r.category || '') || 0) + 1));
+      const sorted = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
+      const dominant = sorted[0][0];
+      folderRows.forEach(r => {
+        if ((r.category || '') === dominant) keptRows.push(r);
+      });
+    }
+    _prodsrcState = {
+      ...(_prodsrcState || {}),
+      rows: keptRows,
+    };
+    _prodsrcSave();
+    _prodsrcMsg(`🧹 카테고리 정리 완료 — ${totalRemove}개 행 제거 (${summary.length}개 폴더)`, 'ok');
+    _prodsrcRender();
+  };
+  if (typeof showAppConfirm === 'function') {
+    showAppConfirm('카테고리 정리', message, doCleanup, { type: 'warning', confirmText: '정리', confirmStyle: 'danger' });
+  } else {
+    if (confirm(message)) doCleanup();
   }
 }
 
