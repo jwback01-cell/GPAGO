@@ -1474,8 +1474,13 @@ PBT키캡	1180
             <div class="relative">
               <input id="prodsrc-folder-search" type="search" placeholder="폴더 검색 (예: 음향가전, 카메라)"
                 oninput="_prodsrcRenderFolders()"
-                class="pl-8 pr-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[260px]"
-                autocomplete="off">
+                onfocus="_prodsrcClearFolderSearchAutofill()"
+                name="prodsrc-folder-q-search-x9z"
+                autocomplete="off"
+                data-form-type="other"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                class="pl-8 pr-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[260px]">
               <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
@@ -8977,12 +8982,25 @@ function _prodsrcClearItemscoutInput() {
     el.value = '';
   }
 }
+// 폴더 검색 입력란도 동일하게 — 이메일 자동완성 들어오면 비우기
+function _prodsrcClearFolderSearchAutofill() {
+  const el = document.getElementById('prodsrc-folder-search');
+  if (!el) return;
+  const v = (el.value || '').trim();
+  // '@' 포함하면 이메일 자동완성으로 간주 → 비움 + 폴더 재렌더 (필터 해제)
+  if (v && v.includes('@')) {
+    el.value = '';
+    if (typeof _prodsrcRenderFolders === 'function') _prodsrcRenderFolders();
+  }
+}
 // 페이지 로드 후 여러 시점에 시도 (브라우저 자동완성이 느리게 채우는 경우 대응)
 if (document.readyState !== 'loading') {
   [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearItemscoutInput, d));
+  [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearFolderSearchAutofill, d));
 } else {
   document.addEventListener('DOMContentLoaded', () => {
     [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearItemscoutInput, d));
+    [0, 200, 500, 1000].forEach(d => setTimeout(_prodsrcClearFolderSearchAutofill, d));
   });
 }
 
