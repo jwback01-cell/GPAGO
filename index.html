@@ -854,16 +854,16 @@
               </div>
             </div>
             <div class="flex flex-col gap-1">
-              <span class="text-[11px] font-bold text-brand-gray">상승 키워드 <span class="text-brand-blue">▲</span></span>
+              <span class="text-[11px] font-bold text-brand-gray">상승 키워드 <span class="text-brand-pink">▲</span></span>
               <div class="flex items-baseline gap-1">
-                <span id="kw-stat-up" class="text-[1.4rem] font-black text-brand-blue">0</span>
+                <span id="kw-stat-up" class="text-[1.4rem] font-black text-brand-pink">0</span>
                 <span class="text-xs text-brand-gray">개</span>
               </div>
             </div>
             <div class="flex flex-col gap-1">
-              <span class="text-[11px] font-bold text-brand-gray">하락 키워드 <span class="text-brand-pink">▼</span></span>
+              <span class="text-[11px] font-bold text-brand-gray">하락 키워드 <span class="text-brand-blue">▼</span></span>
               <div class="flex items-baseline gap-1">
-                <span id="kw-stat-down" class="text-[1.4rem] font-black text-brand-pink">0</span>
+                <span id="kw-stat-down" class="text-[1.4rem] font-black text-brand-blue">0</span>
                 <span class="text-xs text-brand-gray">개</span>
               </div>
             </div>
@@ -5520,9 +5520,9 @@ function _renderKwDetailTable() {
       if (typeof prev === 'number') {
         const diff = prev - cur;
         if (diff > 0) {
-          delta = `<span class="ml-1.5 text-green-600 font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,4 22,20 2,20"/></svg>${diff}</span>`;
+          delta = `<span class="ml-1.5 text-brand-pink font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,4 22,20 2,20"/></svg>${diff}</span>`;
         } else if (diff < 0) {
-          delta = `<span class="ml-1.5 text-red-500 font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,20 22,4 2,4"/></svg>${-diff}</span>`;
+          delta = `<span class="ml-1.5 text-brand-blue font-bold text-xs inline-flex items-center gap-0.5"><svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,20 22,4 2,4"/></svg>${-diff}</span>`;
         } else {
           delta = `<span class="ml-1.5 text-brand-gray font-bold text-xs">-</span>`;
         }
