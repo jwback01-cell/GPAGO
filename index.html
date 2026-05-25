@@ -3949,7 +3949,7 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
         console.warn('[smartstore-info] HTTP', r.status);
         if (opts.showToast && typeof toast === 'function') {
           const msg = r.status === 429
-            ? '⚠ 네이버 요청 제한 (429) — 확장프로그램 설치하면 해결됩니다'
+            ? '⚠ 네이버가 IP를 일시 차단 (429) — 10~30분 후 다시 시도하거나 모바일 핫스팟으로 IP 변경'
             : `⚠ 정보 가져오기 실패 (HTTP ${r.status})`;
           toast(msg);
         }
