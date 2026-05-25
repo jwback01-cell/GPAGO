@@ -8689,6 +8689,53 @@ function _gpagoDecompress(maybeCompressed) {
   }
 })();
 
+// 일회성 폴더 묶기 — 한 번만 실행되고 localStorage 플래그로 재실행 방지
+// 사용자 요청: 디지털/가전 > 음향가전 > 오디오 산하 자식 2개를 부모 1개로 통합
+(function _migrateMergeFoldersOnce() {
+  const MIGRATIONS = [
+    {
+      flag: '__gpago_merge_audio_v1__',
+      parent: '디지털/가전 > 음향가전 > 오디오',
+      children: [
+        '디지털/가전 > 음향가전 > 오디오 > 일체형오디오',
+        '디지털/가전 > 음향가전 > 오디오 > 오디오액세서리',
+      ],
+    },
+  ];
+  for (const mig of MIGRATIONS) {
+    try {
+      if (localStorage.getItem(mig.flag) === '1') continue;
+      const raw = localStorage.getItem(PRODSRC_KEY);
+      if (!raw) { localStorage.setItem(mig.flag, '1'); continue; }
+      const json = _gpagoDecompress(raw);
+      if (!json) { continue; }  // 압축 해제 실패 시 다음 로드에서 재시도
+      const data = JSON.parse(json);
+      const rows = data.rows || [];
+      const childSet = new Set(mig.children);
+      let moved = 0;
+      rows.forEach(r => {
+        const fn = r.folderName || r.category || '';
+        if (childSet.has(fn)) {
+          r.folderName = mig.parent;
+          // 자동분석 행(category === folderName) 인 경우 category 도 갱신해서 빨간색 강조 안 뜨게
+          if (r.category === fn) r.category = mig.parent;
+          moved++;
+        }
+      });
+      if (moved > 0) {
+        data.rows = rows;
+        const newJson = JSON.stringify(data);
+        const newRaw = _gpagoCompress(newJson);
+        localStorage.setItem(PRODSRC_KEY, newRaw);
+        console.log(`[migration] 폴더 묶기 완료: ${moved}개 행 → "${mig.parent}" (자식 ${mig.children.length}개 폴더 통합)`);
+      }
+      localStorage.setItem(mig.flag, '1');
+    } catch (e) {
+      console.warn('[migration] 폴더 묶기 실패:', mig.parent, e);
+    }
+  }
+})();
+
 function _prodsrcLoad() {
   try {
     const raw = localStorage.getItem(PRODSRC_KEY);
