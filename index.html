@@ -10000,6 +10000,7 @@ function _prodsrcRenderFolders() {
         : `prodsrcOpenGroup('${safeName}')`;
       return `<div onclick="${clickHandler}"
         oncontextmenu="showProdsrcFolderMenu(event, '${safeName}', true)"
+        data-folder-card="group" data-folder-name="${_prodsrcEsc(it.name)}"
         class="relative bg-brand-blue-light hover:bg-white border-2 border-brand-blue/30 hover:border-brand-blue rounded-2xl p-4 cursor-pointer transition-all${selectedRing}"
         title="그룹 — 클릭해서 자식 폴더 ${it.childCount}개 보기 · 우클릭 삭제">
         ${checkboxHtml}
@@ -10025,6 +10026,7 @@ function _prodsrcRenderFolders() {
       ondragend="prodsrcCatDragEnd(event)"
       onclick="${clickHandler}"
       oncontextmenu="showProdsrcFolderMenu(event, '${safeName}', false)"
+      data-folder-card="folder" data-folder-name="${_prodsrcEsc(name)}"
       class="relative bg-brand-bg hover:bg-white border border-brand-border hover:border-brand-black rounded-2xl p-4 cursor-pointer transition-all${selectedRing}"
       title="드래그해서 주요 폴더로 이동 가능 · 우클릭 삭제">
       ${checkboxHtml}
@@ -10240,6 +10242,87 @@ function prodsrcBackToFolders() {
   _prodsrcCurrentCategory = null;
   _prodsrcRender();
 }
+
+// ── lasso(드래그 박스) 선택 — 선택 모드일 때만 작동 ──
+(function bindLassoSelection() {
+  if (window._prodsrcLassoBound) return;
+  window._prodsrcLassoBound = true;
+  let lassoEl = null;
+  let startX = 0, startY = 0;
+  let active = false;
+  let container = null;
+
+  function getContainer() {
+    if (!container) container = document.getElementById('prodsrc-categories');
+    return container;
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (!_prodsrcSelectionMode) return;
+    if (e.button !== 0) return;  // 좌클릭만
+    const cont = getContainer();
+    if (!cont) return;
+    // 폴더 카드 자체 클릭이면 lasso 시작 안 함 (개별 토글로 처리됨)
+    if (e.target.closest('[data-folder-card]')) return;
+    // 컨테이너 또는 그 빈 공간에서 시작했는지 확인
+    if (!cont.contains(e.target) && e.target !== cont) return;
+    active = true;
+    startX = e.pageX;
+    startY = e.pageY;
+    lassoEl = document.createElement('div');
+    lassoEl.id = 'prodsrc-lasso';
+    lassoEl.style.cssText = 'position:absolute;border:2px dashed #3478F6;background:rgba(52,120,246,0.12);pointer-events:none;z-index:50;border-radius:4px;';
+    document.body.appendChild(lassoEl);
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!active || !lassoEl) return;
+    const x = Math.min(startX, e.pageX);
+    const y = Math.min(startY, e.pageY);
+    const w = Math.abs(e.pageX - startX);
+    const h = Math.abs(e.pageY - startY);
+    lassoEl.style.left = x + 'px';
+    lassoEl.style.top = y + 'px';
+    lassoEl.style.width = w + 'px';
+    lassoEl.style.height = h + 'px';
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!active) return;
+    active = false;
+    const minX = Math.min(startX, e.pageX);
+    const maxX = Math.max(startX, e.pageX);
+    const minY = Math.min(startY, e.pageY);
+    const maxY = Math.max(startY, e.pageY);
+    if (lassoEl) { try { lassoEl.remove(); } catch(_) {} lassoEl = null; }
+    // 너무 짧은 드래그(=클릭)면 무시
+    if (Math.abs(maxX - minX) < 5 && Math.abs(maxY - minY) < 5) return;
+    const cont = getContainer();
+    if (!cont) return;
+    const cards = cont.querySelectorAll('[data-folder-card]');
+    let toggledCount = 0;
+    cards.forEach(card => {
+      const rect = card.getBoundingClientRect();
+      const cardX1 = rect.left + window.scrollX;
+      const cardY1 = rect.top  + window.scrollY;
+      const cardX2 = cardX1 + rect.width;
+      const cardY2 = cardY1 + rect.height;
+      // 박스가 카드의 일부라도 덮으면 선택 추가
+      if (cardX1 < maxX && cardX2 > minX && cardY1 < maxY && cardY2 > minY) {
+        const fn = card.getAttribute('data-folder-name');
+        if (fn && !_prodsrcSelectedFolders.has(fn)) {
+          _prodsrcSelectedFolders.add(fn);
+          toggledCount++;
+        }
+      }
+    });
+    if (toggledCount > 0) {
+      _prodsrcUpdateSelectionUI();
+      _prodsrcRenderFolders();
+    }
+  });
+})();
 
 // ── 다중 선택 모드 ──
 function prodsrcToggleSelectionMode() {
