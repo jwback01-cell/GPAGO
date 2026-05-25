@@ -1439,14 +1439,24 @@ PBT키캡	1180
             주요 폴더
             <span id="prodsrc-fav-count" class="text-brand-gray font-normal text-sm ml-1">(0개)</span>
           </h3>
-          <div class="flex items-center gap-2 relative">
-            <label class="text-xs text-brand-gray">카테고리에서 추가:</label>
-            <button type="button" id="prodsrc-fav-add-btn" onclick="prodsrcToggleFavMenu(event)"
-              class="px-3 py-1.5 bg-brand-bg rounded-full text-xs font-semibold border border-brand-border hover:bg-white hover:ring-1 hover:ring-brand-border flex items-center gap-2 min-w-[260px] justify-between">
-              <span id="prodsrc-fav-add-label">주요 폴더로 옮길 카테고리 선택...</span>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div id="prodsrc-fav-add-menu" class="hidden absolute right-0 top-full mt-1 bg-white border border-brand-border rounded-2xl shadow-lg max-h-[400px] overflow-y-auto z-20 min-w-[280px]"></div>
+          <div class="flex flex-col items-end gap-1.5 relative">
+            <div class="flex items-center gap-2">
+              <label class="text-xs text-brand-gray">카테고리에서 추가:</label>
+              <button type="button" id="prodsrc-fav-add-btn" onclick="prodsrcToggleFavMenu(event)"
+                class="px-3 py-1.5 bg-brand-bg rounded-full text-xs font-semibold border border-brand-border hover:bg-white hover:ring-1 hover:ring-brand-border flex items-center gap-2 min-w-[260px] justify-between">
+                <span id="prodsrc-fav-add-label">주요 폴더로 옮길 카테고리 선택...</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div id="prodsrc-fav-add-menu" class="hidden absolute right-0 top-full mt-1 bg-white border border-brand-border rounded-2xl shadow-lg max-h-[400px] overflow-y-auto z-20 min-w-[280px]"></div>
+            </div>
+            <!-- 저장 공간 사용량 표시 (브라우저 localStorage 한도 약 5MB) -->
+            <div id="prodsrc-storage-bar" class="flex items-center gap-2 text-[11px]" title="브라우저 localStorage 사용량 — 한도 약 5MB. 한도 임박 시 자동 알림">
+              <span class="text-brand-gray font-semibold">저장 공간</span>
+              <div class="w-[160px] h-1.5 bg-brand-bg rounded-full overflow-hidden border border-brand-border">
+                <div id="prodsrc-storage-fill" class="h-full transition-all" style="width:0%;background:#10B981;"></div>
+              </div>
+              <span id="prodsrc-storage-text" class="text-brand-gray tabular-nums whitespace-nowrap">- MB / 5 MB</span>
+            </div>
           </div>
         </div>
         <div id="prodsrc-favorites" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
@@ -8691,6 +8701,8 @@ function _prodsrcSave() {
     } else if (json.length > 1024 * 1024) {
       console.log('[prodsrc] 압축률:', (json.length/1024).toFixed(0), 'KB →', (payload.length/1024).toFixed(0), 'KB');
     }
+    // 저장 공간 사용량 막대 즉시 갱신
+    if (typeof _gpagoUpdateStorageBar === 'function') _gpagoUpdateStorageBar();
     return true;
   } catch (e) {
     console.error('[prodsrc] save FAILED:', e);
@@ -8728,6 +8740,36 @@ window.gpagoStorageInfo = function () {
   console.table(items.slice(0, 20));
   return { totalMB: (total / 1024 / 1024).toFixed(2), top: items.slice(0, 20) };
 };
+
+// 주요 폴더 섹션의 저장 공간 사용량 막대 갱신 — _prodsrcSave / _prodsrcRender / 페이지 로드 시 호출
+function _gpagoUpdateStorageBar() {
+  try {
+    const fillEl = document.getElementById('prodsrc-storage-fill');
+    const textEl = document.getElementById('prodsrc-storage-text');
+    if (!fillEl || !textEl) return;
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k) || '';
+      total += k.length + v.length;
+    }
+    const LIMIT_BYTES = 5 * 1024 * 1024;  // Chrome 표준 한도 5MB
+    const pct = Math.min(100, (total / LIMIT_BYTES) * 100);
+    const usedMB = (total / 1024 / 1024).toFixed(2);
+    fillEl.style.width = pct.toFixed(1) + '%';
+    // 색상: 초록 → 노랑 → 빨강 단계
+    let color = '#10B981';
+    let textCls = 'text-brand-gray';
+    if (pct >= 85) { color = '#EF4444'; textCls = 'text-brand-pink font-bold'; }
+    else if (pct >= 60) { color = '#F59E0B'; textCls = 'text-brand-orange font-semibold'; }
+    fillEl.style.background = color;
+    textEl.textContent = usedMB + ' MB / 5 MB (' + pct.toFixed(0) + '%)';
+    textEl.className = 'tabular-nums whitespace-nowrap ' + textCls;
+  } catch (_) {}
+}
+// 페이지 로드 시 + 5초 주기로 자동 갱신 (다른 곳에서 저장되는 경우 대비)
+document.addEventListener('DOMContentLoaded', () => _gpagoUpdateStorageBar());
+setInterval(_gpagoUpdateStorageBar, 5000);
 function _prodsrcKey(row) { return (row.category || '') + '|' + (row.keyword || ''); }
 function _prodsrcFmt(v) { return v == null || v === '' ? '-' : Number(v).toLocaleString('ko-KR'); }
 function _prodsrcEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
