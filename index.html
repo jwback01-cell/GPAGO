@@ -1576,6 +1576,13 @@ PBT키캡	1180
         <div class="font-bold text-base text-brand-gray">아직 업로드된 엑셀이 없습니다</div>
         <div class="text-xs text-brand-gray">위 영역에 엑셀 파일을 업로드하면 대표 카테고리별로 폴더가 생성됩니다.</div>
       </section>
+
+      <!-- 로딩 상태 (IDB 데이터 로드 중) -->
+      <section id="prodsrc-loading" class="hidden bg-white rounded-4xl panel p-12 flex flex-col items-center justify-center text-center gap-3">
+        <div class="w-12 h-12 rounded-full border-4 border-brand-bg border-t-brand-blue animate-spin"></div>
+        <div class="font-bold text-base text-brand-gray">데이터를 불러오는 중...</div>
+        <div class="text-xs text-brand-gray">잠시만 기다려주세요</div>
+      </section>
 </div>
   </main>
 </div>
@@ -10157,9 +10164,23 @@ function _prodsrcRender() {
   const favSec     = document.getElementById('prodsrc-fav-section');
   const detailSec  = document.getElementById('prodsrc-detail');
   const emptySec   = document.getElementById('prodsrc-empty');
+  const loadingSec = document.getElementById('prodsrc-loading');
   const clearBtn   = document.getElementById('prodsrc-clear-btn');
   const cleanupBtn = document.getElementById('prodsrc-cleanup-btn');
   const rows = _prodsrcState.rows || [];
+
+  // 로딩 중 (IDB 데이터 로드 대기) — 빈 화면 대신 스피너 표시
+  if (window._prodsrcLoading && !rows.length) {
+    folderSec.classList.add('hidden');
+    if (favSec) favSec.classList.add('hidden');
+    detailSec.classList.add('hidden');
+    emptySec.classList.add('hidden');
+    if (loadingSec) loadingSec.classList.remove('hidden');
+    clearBtn.classList.add('hidden');
+    if (cleanupBtn) cleanupBtn.classList.add('hidden');
+    return;
+  }
+  if (loadingSec) loadingSec.classList.add('hidden');
 
   if (!rows.length) {
     folderSec.classList.add('hidden');
@@ -11458,23 +11479,33 @@ function prodsrcClearAll() {
 }
 
 // 페이지 로드 시 데이터 복원 (IndexedDB 우선 → localStorage 폴백)
+// IDB 로드 완료 전 빈 화면이 잠시 표시되는 것 방지 — 로딩 상태로 표시
+window._prodsrcLoading = true;
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1단계: 동기적으로 localStorage 에서 빠르게 읽기 (IDB 가 비어있거나 마이그레이션 전인 경우 즉시 표시)
-  _prodsrcState = _prodsrcLoad();
-  try { _prodsrcRender(); } catch(_) {}
-  // 2단계: localStorage → IDB 마이그레이션 (1회만)
+  // 1단계: localStorage 에 데이터가 있으면 동기로 빠르게 표시 (마이그레이션 전 케이스)
+  const lsState = _prodsrcLoad();
+  if (lsState.rows.length > 0) {
+    _prodsrcState = lsState;
+    window._prodsrcLoading = false;
+    try { _prodsrcRender(); } catch(_) {}
+  } else {
+    // localStorage 가 비어있음 (IDB 로 이전된 상태) — 로딩 상태 그대로 두고 IDB 우선 로드
+    try { _prodsrcRender(); } catch(_) {}
+  }
+  // 2단계: localStorage → IDB 마이그레이션 (1회만, 보통은 no-op)
   if (typeof _migrateProdsrcToIDB === 'function') await _migrateProdsrcToIDB();
-  // 3단계: IDB 에서 최종 로드 (마이그레이션 후 또는 이미 IDB 에 있는 경우)
+  // 3단계: IDB 에서 최종 로드
   if (typeof _prodsrcLoadAsync === 'function') {
     try {
       const idbState = await _prodsrcLoadAsync();
-      // IDB 데이터가 더 많으면 교체 (마이그레이션 직후이거나 다른 PC 데이터가 IDB 로 들어왔을 때)
+      // IDB 가 더 많으면 교체 / localStorage 가 비어있으면 무조건 IDB 사용
       if (idbState.rows.length > (_prodsrcState.rows?.length || 0)) {
         _prodsrcState = idbState;
-        try { _prodsrcRender(); } catch(_) {}
       }
     } catch (e) { console.warn('[prodsrcLoad] async failed:', e); }
   }
+  window._prodsrcLoading = false;
+  try { _prodsrcRender(); } catch(_) {}
 });
 
 // ════════════════════════════════════════
