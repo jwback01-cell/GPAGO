@@ -9438,7 +9438,7 @@ function _prodsrcProcessFile(file) {
         return;
       }
       const num = (v) => { const n = Number(v); return isNaN(n) ? null : n; };
-      const newRows = [];
+      let newRows = [];
       for (let i = headerIdx + 1; i < aoa.length; i++) {
         const r = aoa[i]; if (!r) continue;
         const keyword = String(r[cols.keyword] || '').trim();
@@ -9477,6 +9477,18 @@ function _prodsrcProcessFile(file) {
       // ── 폴더 안에서 업로드한 경우 — history 누적 모드 (각 업로드 날짜를 컬럼으로 보존)
       if (_prodsrcCurrentCategory) {
         const currentFolder = _prodsrcCurrentCategory;
+        // 현재 폴더와 다른 대표 카테고리 행은 업로드에서 제외 (폴더 오염 방지)
+        const beforeCount = newRows.length;
+        newRows = newRows.filter(r => (r.category || '') === currentFolder);
+        const skippedMismatch = beforeCount - newRows.length;
+        if (!newRows.length) {
+          _prodsrcMsg(`❌ 모든 행의 대표 카테고리가 "${currentFolder}" 와 달라서 업로드 안 됨 (${beforeCount}개 제외)`, 'error');
+          resolve('error');
+          return;
+        }
+        if (skippedMismatch > 0) {
+          console.log('[prodsrc] 카테고리 불일치 제외:', skippedMismatch, '개');
+        }
         const todayStr = _prodsrcTodayDateStr();
         const nowIso = new Date().toISOString();
         const existingFolderRows = existing.filter(r => (r.folderName || r.category) === currentFolder);
@@ -9531,7 +9543,8 @@ function _prodsrcProcessFile(file) {
           favorites: Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
         };
         _prodsrcSave();
-        _prodsrcMsg(`✅ "${currentFolder}" 폴더 갱신 (${todayStr}) — 신규 ${newC} · 증가 ${upC} · 감소 ${downC}`, 'ok');
+        const skipNote2 = skippedMismatch > 0 ? ` · 다른 카테고리 ${skippedMismatch}개 제외` : '';
+        _prodsrcMsg(`✅ "${currentFolder}" 폴더 갱신 (${todayStr}) — 신규 ${newC} · 증가 ${upC} · 감소 ${downC}${skipNote2}`, 'ok');
         _prodsrcRender();
         resolve('ok');
         return;
@@ -9543,6 +9556,14 @@ function _prodsrcProcessFile(file) {
       newRows.forEach(r => catCounts.set(r.category, (catCounts.get(r.category) || 0) + 1));
       const sortedCats = [...catCounts.entries()].sort((a, b) => b[1] - a[1]);
       const folderName = sortedCats[0][0];
+
+      // 1-b) 대표 카테고리와 다른 행은 제외 (폴더 오염 방지)
+      const beforeCount = newRows.length;
+      newRows = newRows.filter(r => r.category === folderName);
+      const skippedMismatch = beforeCount - newRows.length;
+      if (skippedMismatch > 0) {
+        console.log('[prodsrc] 대표 카테고리 불일치 제외:', skippedMismatch, '개 (다수파:', folderName, ')');
+      }
 
       // 2) 동일 이름 폴더가 이미 있는지 검사
       const existingFolderNames = new Set(existing.map(r => r.folderName || r.category).filter(Boolean));
@@ -9577,7 +9598,8 @@ function _prodsrcProcessFile(file) {
       };
       _prodsrcSave();
       _prodsrcCurrentCategory = null;
-      _prodsrcMsg(`✅ "${folderName}" 폴더 생성 — ${newRows.length}개 키워드`, 'ok');
+      const skipNote = skippedMismatch > 0 ? ` · 다른 카테고리 ${skippedMismatch}개 제외` : '';
+      _prodsrcMsg(`✅ "${folderName}" 폴더 생성 — ${newRows.length}개 키워드${skipNote}`, 'ok');
       _prodsrcRender();
       resolve('ok');
     } catch (e) {
