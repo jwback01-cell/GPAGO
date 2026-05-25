@@ -11333,23 +11333,19 @@ function prodsrcExportExcel() {
   const search = (document.getElementById('prodsrc-detail-search')?.value || '').trim().toLowerCase();
   let rows = (_prodsrcState.rows || []).filter(r => (r.folderName || r.category) === cat);
   if (search) rows = rows.filter(r => (r.keyword || '').toLowerCase().includes(search));
-  // 정렬 (화면과 동일)
+  // 정렬: 순위 오름차순 (1, 2, 3... — 순위 없는 행은 맨 뒤)
   rows.sort((a, b) => {
-    const aHotNew = !!(a.isNew && Number(a.totalSearch || 0) >= 500);
-    const bHotNew = !!(b.isNew && Number(b.totalSearch || 0) >= 500);
-    if (aHotNew && !bHotNew) return -1;
-    if (!aHotNew && bHotNew) return 1;
-    const av = a.totalSearch == null ? -Infinity : Number(a.totalSearch);
-    const bv = b.totalSearch == null ? -Infinity : Number(b.totalSearch);
-    return bv - av;
+    const ar = (a.rank == null || a.rank === '') ? Infinity : Number(a.rank);
+    const br = (b.rank == null || b.rank === '') ? Infinity : Number(b.rank);
+    return ar - br;
   });
   if (!rows.length) { alert('내보낼 데이터가 없습니다'); return; }
   // 날짜 컬럼 수집
   const allDatesSet = new Set();
   rows.forEach(r => _prodsrcGetHistory(r).forEach(h => { if (h.date) allDatesSet.add(h.date); }));
   const dateCols = [...allDatesSet].sort((a, b) => String(a).localeCompare(String(b)));
-  // 헤더
-  const header = ['순위', '키워드', ...dateCols];
+  // 헤더 — 카테고리 컬럼 추가
+  const header = ['순위', '키워드', '카테고리', ...dateCols];
   // 날짜별 변동폭 컬럼 (두 번째 날짜부터)
   for (let i = 1; i < dateCols.length; i++) header.push(`${dateCols[i]} 변동`);
   header.push('신규여부', 'URL');
@@ -11357,7 +11353,7 @@ function prodsrcExportExcel() {
   const data = rows.map(r => {
     const histMap = new Map();
     _prodsrcGetHistory(r).forEach(h => { if (h.date) histMap.set(h.date, h.totalSearch); });
-    const row = [r.rank ?? '', r.keyword || ''];
+    const row = [r.rank ?? '', r.keyword || '', r.folderName || r.category || ''];
     dateCols.forEach(d => row.push(histMap.get(d) ?? ''));
     for (let i = 1; i < dateCols.length; i++) {
       const v = histMap.get(dateCols[i]);
@@ -11372,8 +11368,8 @@ function prodsrcExportExcel() {
   });
   // 워크북 생성
   const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-  // 컬럼 폭 자동 (간단)
-  ws['!cols'] = header.map((_, i) => ({ wch: i === 1 ? 30 : 14 }));
+  // 컬럼 폭 — 키워드 30, 카테고리 18, 나머지 14
+  ws['!cols'] = header.map((h, i) => ({ wch: i === 1 ? 30 : (i === 2 ? 18 : 14) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '상품소싱');
   const today = new Date().toISOString().slice(0, 10);
