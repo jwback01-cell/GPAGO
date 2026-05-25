@@ -9320,6 +9320,7 @@ async function _prodsrcAutoFetchRange(startId, endId) {
   const totalSec = count * 30;
   if (!confirm(`itemscout 카테고리 ID ${startId} ~ ${endId} (총 ${count}개)를 순차 자동 분석합니다.\n예상 소요 시간: 약 ${totalSec}초 (${Math.ceil(totalSec/60)}분)\n\n빈 카테고리는 자동으로 건너뜁니다.\n계속할까요?`)) return;
   window._prodsrcBatchActive = true;
+  window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
   _prodsrcShowProgress(`itemscout 범위 자동 분석 (${startId} ~ ${endId})`);
   let ok = 0, empty = 0, fail = 0;
   let done = 0;
@@ -9336,6 +9337,7 @@ async function _prodsrcAutoFetchRange(startId, endId) {
     try {
       const snap = await _prodsrcAutoFetchAndWaitRaw(id);
       if (snap && snap.rows && snap.rows.length) {
+        // _prodsrcBatchActive=true 이므로 _prodsrcImportItemscoutSnapshot 은 render/save 안 함
         try { _prodsrcImportItemscoutSnapshot(snap); } catch(err) { console.warn(err); fail++; continue; }
         ok++;
       } else {
@@ -9347,10 +9349,19 @@ async function _prodsrcAutoFetchRange(startId, endId) {
     }
     _prodsrcUpdateProgress(done, count, `완료: 카테고리 ${id}`, `성공 ${ok} · 빈것 ${empty} · 실패 ${fail}`);
   }
+  // 배치 완료 — 한 번만 render + save
   _prodsrcHideProgress();
-  _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 카테고리 ${empty} · 실패 ${fail} / 총 ${count}`, ok ? 'ok' : 'warn');
-  window._prodsrcBatchActive = false;
-  _prodsrcBeep(cancelled ? 'warn' : 'ok');
+  const stats = window._prodsrcBatchStats || { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
+  const uniqueFolders = new Set(stats.folderStats.map(s => s.folderName)).size;
+  _prodsrcShowSavingOverlay(`💾 저장 중 — ${uniqueFolders}개 폴더, 키워드 ${stats.totalNew + stats.totalUp + stats.totalDown}개 처리 중...`);
+  _prodsrcRender();
+  _prodsrcSaveAsync().then(() => {
+    _prodsrcHideSavingOverlay();
+    _prodsrcMsg(`✅ 범위 자동 분석 완료 (${startId}~${endId}) — 성공 ${ok} · 빈 ${empty} · 실패 ${fail} / 총 ${count} · ${uniqueFolders}개 폴더 갱신`, ok ? 'ok' : 'warn');
+    window._prodsrcBatchActive = false;
+    window._prodsrcBatchStats = null;
+    _prodsrcBeep(cancelled ? 'warn' : 'ok');
+  });
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (스냅샷 반환, _prodsrcImportItemscoutSnapshot 호출은 안 함)
@@ -9416,6 +9427,7 @@ async function _prodsrcAutoRefreshAllFolders() {
     return;
   }
   window._prodsrcBatchActive = true;
+  window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
   let done = 0, ok = 0, fail = 0;
   let cancelled = false;
   const total = folderIds.size;
@@ -9438,10 +9450,19 @@ async function _prodsrcAutoRefreshAllFolders() {
     }
     _prodsrcUpdateProgress(done, total, `완료: ${folderName.length > 50 ? folderName.slice(0, 50) + '…' : folderName}`, `성공 ${ok} · 실패 ${fail}`);
   }
+  // 배치 완료 — 한 번만 render + save
   _prodsrcHideProgress();
-  _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total}`, ok ? 'ok' : 'warn');
-  window._prodsrcBatchActive = false;
-  _prodsrcBeep(cancelled ? 'warn' : 'ok');
+  const stats = window._prodsrcBatchStats || { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
+  const uniqueFolders = new Set(stats.folderStats.map(s => s.folderName)).size;
+  _prodsrcShowSavingOverlay(`💾 저장 중 — ${uniqueFolders}개 폴더 갱신됨...`);
+  _prodsrcRender();
+  _prodsrcSaveAsync().then(() => {
+    _prodsrcHideSavingOverlay();
+    _prodsrcMsg(`✅ 전체 자동 갱신 완료 — 성공 ${ok} · 실패 ${fail} / 총 ${total} · ${uniqueFolders}개 폴더 영향`, ok ? 'ok' : 'warn');
+    window._prodsrcBatchActive = false;
+    window._prodsrcBatchStats = null;
+    _prodsrcBeep(cancelled ? 'warn' : 'ok');
+  });
 }
 
 // 자동 분석 1건 요청 + 응답 대기 (Promise) — 전체 갱신 시 순차 처리용
@@ -9677,10 +9698,21 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     summary = `${analysisPath || 'itemscout'} 분석 → ${folderStats.length}개 폴더 분배 (신규 ${newFolders}개 폴더 · 갱신 ${updFolders}개 폴더), 키워드 신규 ${totalNew} · 증가 ${totalUp} · 감소 ${totalDown}`;
   }
 
-  // ━━━ 화면 즉시 갱신 + 진행 표시 ━━━
+  // ━━━ batch 모드: render/save 건너뜀 (호출자가 마지막에 한 번만 처리) ━━━
+  // 1242 개 폴더 × 50 카테고리 = 25초 렌더링 시간 막힘 방지
+  if (window._prodsrcBatchActive) {
+    // batch 통계 누적 (range 함수가 종합 결과 표시할 때 사용)
+    if (!window._prodsrcBatchStats) window._prodsrcBatchStats = { folderStats: [], totalNew: 0, totalUp: 0, totalDown: 0 };
+    window._prodsrcBatchStats.folderStats.push(...folderStats);
+    window._prodsrcBatchStats.totalNew  += totalNew;
+    window._prodsrcBatchStats.totalUp   += totalUp;
+    window._prodsrcBatchStats.totalDown += totalDown;
+    return;
+  }
+
+  // ━━━ 단일 모드: 화면 즉시 갱신 + 진행 표시 ━━━
   // 압축/저장은 Worker 가 백그라운드 처리 → 메인 스레드 안 막힘
-  // 단, batch(range) 모드면 _prodsrcAutoFetchRange 가 자체 진행바 띄우므로 여기선 생략
-  const showOverlay = !window._prodsrcBatchActive && folderStats.length >= 5;
+  const showOverlay = folderStats.length >= 5;
   if (showOverlay) {
     _prodsrcShowSavingOverlay(`💾 저장 중 — ${folderStats.length}개 폴더, 키워드 ${totalNew + totalUp + totalDown}개 처리 중...`);
   }
@@ -9690,7 +9722,7 @@ function _prodsrcImportItemscoutSnapshot(snap) {
   _prodsrcSaveAsync().then(() => {
     if (showOverlay) _prodsrcHideSavingOverlay();
     _prodsrcMsg('✅ ' + summary, 'ok');
-    if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
+    _prodsrcBeep('ok');
   });
 }
 
