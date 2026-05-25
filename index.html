@@ -10851,7 +10851,8 @@ function prodsrcRenderDetail() {
     if (children.length > 0) {
       childrenBox.classList.remove('hidden');
       if (childrenCountEl) childrenCountEl.textContent = `(${children.length}개)`;
-      children.sort((a, b) => b.count - a.count);
+      // 가나다 순 정렬 (한글 로케일 기준 — 영문/숫자는 그 뒤로)
+      children.sort((a, b) => String(a.leaf).localeCompare(String(b.leaf), 'ko'));
       childrenGrid.innerHTML = children.map(ch => {
         const safeName = _prodsrcEsc(ch.name).replace(/'/g, "\\'");
         return `<div onclick="prodsrcOpenCategory('${safeName}')"
