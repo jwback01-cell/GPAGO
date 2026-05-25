@@ -9365,110 +9365,180 @@ window.addEventListener('message', (e) => {
 });
 
 function _prodsrcImportItemscoutSnapshot(snap) {
-  // 폴더 이름: 카테고리 경로(트리/breadcrumb/leaf 이름) 우선, 없으면 fallback
-  const folderName = (snap.categoryPath && String(snap.categoryPath).trim())
-    || ('itemscout 카테고리 ' + (snap.categoryId || '?'));
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 옵션 A: itemscout 응답을 각 키워드의 실제 카테고리별로 분배
+  // (이전: 모든 행을 분석 폴더명 하나로 강제 → mismatch 누적 → 정리 필요)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) {
+    _prodsrcMsg('❌ 변환된 키워드 행이 없습니다.', 'error');
+    return;
+  }
+  const analysisPath = (snap.categoryPath && String(snap.categoryPath).trim()) || '';
   const itemscoutCategoryId = snap.categoryId ? String(snap.categoryId) : null;
   const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return isNaN(n) ? null : n; };
-  const newRows = (snap.rows || []).map(r => ({
-    url: r.keywordId ? ('https://itemscout.io/keyword/' + r.keywordId) : '',
-    rank: num(r.rank),
-    keyword: String(r.keyword || '').trim(),
-    dup: '',
-    category: folderName,
-    kwType: '',
-    shopScore: null, infoScore: null,
-    pcAd: null, mobileAd: null,
-    pcSearch: null, mobileSearch: null,
-    totalSearch: num(r.searchCount),
-    productCount: num(r.productCount),
-    competition: num(r.competitionIntensity),
-    avgClicks: null, pcCTR: null, mobileCTR: null, clickComp: null, clickAd: null,
-    isNew: false, totalSearchPrev: null, totalSearchDiff: 0,
-    itemscoutCategoryId: itemscoutCategoryId  // 자동 갱신용 메타
-  })).filter(r => r.keyword);
+  const todayStr = (typeof _prodsrcTodayDateStr === 'function') ? _prodsrcTodayDateStr() : new Date().toISOString().slice(0,10);
+  const nowIso = new Date().toISOString();
 
-  if (!newRows.length) {
+  const existing = (_prodsrcState && _prodsrcState.rows) || [];
+
+  // 기존 폴더명 수집 + leaf → fullPath 매핑
+  // (itemscout 의 per-row category 는 leaf 만 주는 경우가 많아서, 기존 폴더의 fullPath 로 매핑해야 함)
+  const existingFolderNames = new Set();
+  existing.forEach(r => {
+    const fn = r.folderName || r.category;
+    if (fn) existingFolderNames.add(fn);
+  });
+  const leafToFullPath = new Map();
+  existingFolderNames.forEach(fn => {
+    const parts = String(fn).split(' > ');
+    if (parts.length <= 1) return;
+    const leaf = parts[parts.length - 1];
+    if (!leafToFullPath.has(leaf)) {
+      leafToFullPath.set(leaf, fn);
+    } else {
+      // leaf 가 여러 fullPath 에 존재 → 분석 컨텍스트(analysisPath)로 시작하는 쪽 우선
+      const cur = leafToFullPath.get(leaf);
+      if (analysisPath && fn.startsWith(analysisPath + ' > ') && !cur.startsWith(analysisPath + ' > ')) {
+        leafToFullPath.set(leaf, fn);
+      }
+    }
+  });
+
+  // 행 별 effective folderName 결정 → 폴더별 그룹화
+  const rowsByFolder = new Map();
+  for (const r of snap.rows) {
+    const rawCat = String(r.category || '').trim();
+    const keyword = String(r.keyword || '').trim();
+    if (!keyword) continue;
+
+    let folderName;
+    if (rawCat.includes(' > ')) {
+      folderName = rawCat;  // 이미 fullPath
+    } else if (rawCat && rawCat !== '-') {
+      // leaf 만 있음 — 매핑 시도
+      const mapped = leafToFullPath.get(rawCat);
+      if (mapped) {
+        folderName = mapped;
+      } else if (analysisPath) {
+        const analysisLeaf = analysisPath.split(' > ').pop();
+        folderName = (analysisLeaf === rawCat) ? analysisPath : `${analysisPath} > ${rawCat}`;
+      } else {
+        folderName = rawCat;
+      }
+    } else {
+      // 카테고리 정보 없음 → analysisPath 로 폴백
+      folderName = analysisPath || ('itemscout 카테고리 ' + (itemscoutCategoryId || '?'));
+    }
+
+    if (!rowsByFolder.has(folderName)) rowsByFolder.set(folderName, []);
+    rowsByFolder.get(folderName).push({
+      url: r.keywordId ? ('https://itemscout.io/keyword/' + r.keywordId) : '',
+      rank: num(r.rank),
+      keyword,
+      dup: '',
+      category: folderName,
+      kwType: '',
+      shopScore: null, infoScore: null,
+      pcAd: null, mobileAd: null,
+      pcSearch: null, mobileSearch: null,
+      totalSearch: num(r.searchCount),
+      productCount: num(r.productCount),
+      competition: num(r.competitionIntensity),
+      avgClicks: null, pcCTR: null, mobileCTR: null, clickComp: null, clickAd: null,
+      isNew: false, totalSearchPrev: null, totalSearchDiff: 0,
+      itemscoutCategoryId
+    });
+  }
+
+  if (!rowsByFolder.size) {
     _prodsrcMsg('❌ 변환된 키워드 행이 없습니다.', 'error');
     return;
   }
 
-  const existing = (_prodsrcState && _prodsrcState.rows) || [];
-  const todayStr = (typeof _prodsrcTodayDateStr === 'function') ? _prodsrcTodayDateStr() : new Date().toISOString().slice(0,10);
-  const nowIso = new Date().toISOString();
-
-  // 폴더 안에서 호출됐거나, 같은 이름의 폴더가 이미 존재하면 → 자동 갱신 모드
-  // (이전: 폴더 밖 + 중복 이름 → 에러. 변경: 폴더 밖 + 중복 → 자동 갱신)
-  const existingFolderNames = new Set(existing.map(r => r.folderName || r.category).filter(Boolean));
-  const isUpdate = !!_prodsrcCurrentCategory || existingFolderNames.has(folderName);
-  if (isUpdate) {
-    const currentFolder = _prodsrcCurrentCategory || folderName;
-    const existingFolderRows = existing.filter(r => (r.folderName || r.category) === currentFolder);
-    const existingByKw = new Map();
-    existingFolderRows.forEach(r => existingByKw.set(r.keyword, r));
-    let newC = 0, upC = 0, downC = 0;
-    const mergedFolderRows = [];
-    existingFolderRows.forEach(old => {
-      old.history = _prodsrcGetHistory(old);
-      mergedFolderRows.push(old);
-    });
-    newRows.forEach(r => {
-      r.folderName = currentFolder;
-      r.uploadedAt = nowIso;
-      const old = existingByKw.get(r.keyword);
-      if (!old) {
+  // 폴더별 처리 (갱신 or 신규 생성)
+  const allRows = existing.slice();
+  const folderStats = [];
+  for (const [folderName, batch] of rowsByFolder) {
+    const isExisting = existingFolderNames.has(folderName);
+    if (isExisting) {
+      const folderRows = allRows.filter(r => (r.folderName || r.category) === folderName);
+      const byKw = new Map();
+      folderRows.forEach(r => byKw.set(r.keyword, r));
+      let newC = 0, upC = 0, downC = 0;
+      batch.forEach(r => {
+        r.folderName = folderName;
+        r.uploadedAt = nowIso;
+        const old = byKw.get(r.keyword);
+        if (!old) {
+          r.isNew = true;
+          r.history = [{ date: todayStr, totalSearch: r.totalSearch }];
+          allRows.push(r);
+          newC++;
+        } else {
+          old.history = _prodsrcGetHistory(old);
+          const hist = old.history.slice().filter(h => h.date !== todayStr);
+          hist.push({ date: todayStr, totalSearch: r.totalSearch });
+          hist.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          old.history = hist;
+          const prevVal = old.totalSearch;
+          old.totalSearch = r.totalSearch;
+          old.uploadedAt = nowIso;
+          old.rank = r.rank != null ? r.rank : old.rank;
+          old.url = r.url || old.url;
+          if (r.itemscoutCategoryId) old.itemscoutCategoryId = r.itemscoutCategoryId;
+          if (prevVal != null && r.totalSearch != null) {
+            const diff = r.totalSearch - prevVal;
+            if (diff > 0) upC++;
+            else if (diff < 0) downC++;
+          }
+        }
+      });
+      folderStats.push({ folderName, newC, upC, downC, totalIn: batch.length, isNew: false });
+    } else {
+      // 신규 폴더
+      batch.forEach(r => {
+        r.folderName = folderName;
+        r.uploadedAt = nowIso;
         r.isNew = true;
         r.history = [{ date: todayStr, totalSearch: r.totalSearch }];
-        mergedFolderRows.push(r);
-        newC++;
-      } else {
-        const hist = Array.isArray(old.history) ? old.history.slice() : [];
-        const filtered = hist.filter(h => h.date !== todayStr);
-        filtered.push({ date: todayStr, totalSearch: r.totalSearch });
-        filtered.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-        old.history = filtered;
-        const prevVal = old.totalSearch;
-        old.totalSearch = r.totalSearch;
-        old.uploadedAt = nowIso;
-        old.rank = r.rank != null ? r.rank : old.rank;
-        old.url = r.url || old.url;
-        if (r.itemscoutCategoryId) old.itemscoutCategoryId = r.itemscoutCategoryId; // 메타 갱신/저장
-        if (prevVal != null && r.totalSearch != null) {
-          const diff = r.totalSearch - prevVal;
-          if (diff > 0) upC++;
-          else if (diff < 0) downC++;
-        }
-      }
-    });
-    const otherRows = existing.filter(r => (r.folderName || r.category) !== currentFolder);
-    _prodsrcState = {
-      rows: [...otherRows, ...mergedFolderRows],
-      lastUploadedAt: nowIso,
-      prevUploadedAt: _prodsrcState.lastUploadedAt || '',
-      favorites: Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
-    };
-    _prodsrcSave();
-    _prodsrcMsg(`✅ "${currentFolder}" 폴더 갱신 (아이템스카우트) — 신규 ${newC} · 증가 ${upC} · 감소 ${downC}`, 'ok');
-    _prodsrcRender();
-    if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
-    return;
+      });
+      allRows.push(...batch);
+      folderStats.push({ folderName, newC: batch.length, upC: 0, downC: 0, totalIn: batch.length, isNew: true });
+    }
   }
 
-  // 새 폴더 생성 (위에서 중복은 갱신으로 처리됐으므로 여기 도달 시는 신규)
-  newRows.forEach(r => {
-    r.folderName = folderName;
-    r.uploadedAt = nowIso;
-    r.isNew = true;
-    r.history = [{ date: todayStr, totalSearch: r.totalSearch }];
-  });
   _prodsrcState = {
-    rows: [...existing, ...newRows],
+    rows: allRows,
     lastUploadedAt: nowIso,
     prevUploadedAt: (_prodsrcState && _prodsrcState.lastUploadedAt) || '',
     favorites: Array.isArray(_prodsrcState && _prodsrcState.favorites) ? _prodsrcState.favorites.slice() : [],
   };
   _prodsrcSave();
-  _prodsrcMsg(`✅ "${folderName}" 폴더 생성 (아이템스카우트) — ${newRows.length}개 키워드`, 'ok');
+
+  // 결과 요약
+  const totalNew = folderStats.reduce((s, f) => s + f.newC, 0);
+  const totalUp  = folderStats.reduce((s, f) => s + f.upC, 0);
+  const totalDown = folderStats.reduce((s, f) => s + f.downC, 0);
+  const newFolders = folderStats.filter(f => f.isNew).length;
+  const updFolders = folderStats.length - newFolders;
+
+  // 콘솔에 폴더별 상세 (많이 들어간 순)
+  console.group(`[itemscout 분배] ${analysisPath || '분석'} → ${folderStats.length}개 폴더`);
+  folderStats.slice().sort((a, b) => b.totalIn - a.totalIn).forEach(s => {
+    const short = s.folderName.length > 60 ? s.folderName.slice(0, 60) + '…' : s.folderName;
+    console.log(`  ${s.isNew ? '🆕' : '📁'} ${short} — 총 ${s.totalIn} (신규 ${s.newC} · 증가 ${s.upC} · 감소 ${s.downC})`);
+  });
+  console.groupEnd();
+
+  // 사용자 메시지: 폴더 1개면 간단히, 여러개면 분배 요약
+  let summary;
+  if (folderStats.length === 1) {
+    const s = folderStats[0];
+    summary = `✅ "${s.folderName}" ${s.isNew ? '폴더 생성' : '폴더 갱신'} (아이템스카우트) — 신규 ${s.newC} · 증가 ${s.upC} · 감소 ${s.downC}`;
+  } else {
+    summary = `✅ ${analysisPath || 'itemscout'} 분석 → ${folderStats.length}개 폴더 분배 (신규 ${newFolders}개 폴더 · 갱신 ${updFolders}개 폴더), 키워드 신규 ${totalNew} · 증가 ${totalUp} · 감소 ${totalDown}`;
+  }
+  _prodsrcMsg(summary, 'ok');
   _prodsrcRender();
   if (!window._prodsrcBatchActive) _prodsrcBeep('ok');
 }
