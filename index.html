@@ -5279,12 +5279,15 @@ function renderKwTrend() {
     const status = items.length > 0 ? '추적완료' : '키워드 미등록';
     const statusColor = items.length > 0 ? 'text-brand-green' : 'text-brand-gray';
     const imgUrl = product.imageUrl || '';
-    // ROPAGO 스타일 — 큰 정사각형 썸네일 (모바일 64, 데스크탑 100)
-    const imgBlock = imgUrl
-      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-[64px] h-[64px] md:w-[100px] md:h-[100px] rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
+    // ROPAGO 스타일 — 큰 정사각형 썸네일 (모바일 64, 데스크탑 100) + 클릭 시 상품 페이지로
+    const imgInner = imgUrl
+      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-[64px] h-[64px] md:w-[100px] md:h-[100px] rounded-2xl object-cover bg-brand-bg shrink-0 block" onerror="this.style.display='none'">`
       : `<div class="w-[64px] h-[64px] md:w-[100px] md:h-[100px] rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
          </div>`;
+    const imgBlock = product.url
+      ? `<a href="${_escapeHtml(product.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="상품 페이지 새 탭으로 열기" class="shrink-0 hover:opacity-80 transition-opacity">${imgInner}</a>`
+      : imgInner;
 
     // 정보 라인 — 4종 메타 (리뷰/평점/찜/등록일)
     const fmtNum = (v) => v == null ? null : Number(v).toLocaleString('ko-KR');
