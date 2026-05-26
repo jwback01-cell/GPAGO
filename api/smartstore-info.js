@@ -1,5 +1,75 @@
 // Vercel 서버리스 함수 — 네이버 스마트스토어 상품 정보 추출 (이미지/리뷰/평점/찜/등록일/태그)
 // 호출: GET /api/smartstore-info?url=https://smartstore.naver.com/{mall}/products/{productId}
+//
+// 캐싱 흐름 (ROPAGO 식):
+//   1) 요청 → Supabase smartstore_info_cache 에서 url 로 조회
+//   2) 캐시 있고 만료 안 됨 → 즉시 반환 (네이버 fetch 안 함, 0.1초)
+//   3) 캐시 없거나 만료 → 네이버 fetch → 의미있는 데이터면 캐시 저장 → 반환
+//   4) 네이버 차단(429) → 만료된 캐시라도 있으면 반환 (정보 안 보이는 것보단 나음)
+//
+// 사전 준비: Supabase 대시보드에서 smartstore_cache_setup.sql 한 번 실행 필요
+
+const SUPABASE_URL = 'https://gdsutxmceghvkemcfyuw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdkc3V0eG1jZWdodmtlbWNmeXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5ODc0MDEsImV4cCI6MjA5MTU2MzQwMX0.yO_UwxtQVtVBLC2dVsmJQ4_qgOuWl5LBVAbsnmlwq1U';
+const CACHE_TTL_DAYS = 7;
+
+// Supabase REST API helpers (의존성 없이 fetch 만 사용)
+async function _cacheRead(url) {
+  try {
+    const endpoint = `${SUPABASE_URL}/rest/v1/smartstore_info_cache?url=eq.${encodeURIComponent(url)}&select=data,fetched_at,expires_at`;
+    const r = await fetch(endpoint, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        Accept: 'application/json',
+      },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    return rows[0]; // { data, fetched_at, expires_at }
+  } catch (e) {
+    console.warn('[smartstore-info] cache read failed:', e.message || e);
+    return null;
+  }
+}
+
+async function _cacheWrite(url, data) {
+  try {
+    const expiresAt = new Date(Date.now() + CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const endpoint = `${SUPABASE_URL}/rest/v1/smartstore_info_cache`;
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates', // url 중복이면 upsert
+      },
+      body: JSON.stringify({
+        url,
+        data,
+        fetched_at: new Date().toISOString(),
+        expires_at: expiresAt,
+      }),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.warn('[smartstore-info] cache write HTTP', r.status, txt.slice(0, 200));
+    }
+  } catch (e) {
+    console.warn('[smartstore-info] cache write failed:', e.message || e);
+  }
+}
+
+function _hasMeaningfulData(out) {
+  // 의미있는 정보가 하나라도 있을 때만 캐싱 (빈 결과 캐싱 방지)
+  return !!(
+    out.title || out.image ||
+    out.reviewCount != null || out.rating != null || out.wishCount != null ||
+    out.registDate || (Array.isArray(out.tags) && out.tags.length)
+  );
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,6 +85,24 @@ export default async function handler(req, res) {
     res.status(400).json({ error: '네이버 스마트스토어/브랜드스토어 URL 만 지원' }); return;
   }
 
+  const bypassCache = String(q.refresh || '') === '1';  // ?refresh=1 이면 캐시 무시
+
+  // 1) 캐시 우선 조회
+  let cached = null;
+  if (!bypassCache) {
+    cached = await _cacheRead(url);
+    if (cached) {
+      const fresh = new Date(cached.expires_at) > new Date();
+      if (fresh) {
+        res.setHeader('X-Cache', 'HIT');
+        res.setHeader('Cache-Control', 'public, max-age=1800');
+        res.status(200).json({ ...cached.data, _cached: true, _cachedAt: cached.fetched_at });
+        return;
+      }
+    }
+  }
+
+  // 2) 캐시 miss/expired → 네이버 fetch
   try {
     const r = await fetch(url, {
       headers: {
@@ -24,6 +112,13 @@ export default async function handler(req, res) {
       },
     });
     if (!r.ok) {
+      // 네이버 차단 시 — 만료된 캐시라도 있으면 그걸 반환 (정보 안 보이는 것보단 나음)
+      if (cached) {
+        res.setHeader('X-Cache', 'STALE');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.status(200).json({ ...cached.data, _cached: true, _stale: true, _cachedAt: cached.fetched_at });
+        return;
+      }
       res.status(r.status).json({ error: '페이지 fetch 실패', status: r.status });
       return;
     }
@@ -31,9 +126,22 @@ export default async function handler(req, res) {
 
     const out = parseSmartstoreHtml(html);
     out.url = url;
-    res.setHeader('Cache-Control', 'public, max-age=1800');  // 30분 캐시 (네이버 rate limit 회피)
+
+    // 3) 의미있는 데이터면 캐시 저장 (백그라운드 — await 안 함)
+    if (_hasMeaningfulData(out)) {
+      _cacheWrite(url, out).catch(() => {});
+    }
+
+    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', 'public, max-age=1800');  // 30분 브라우저 캐시
     res.status(200).json(out);
   } catch (err) {
+    // 예외 발생 시도 — 만료 캐시라도 있으면 반환
+    if (cached) {
+      res.setHeader('X-Cache', 'STALE');
+      res.status(200).json({ ...cached.data, _cached: true, _stale: true, _cachedAt: cached.fetched_at });
+      return;
+    }
     res.status(500).json({ error: err.message || String(err) });
   }
 }

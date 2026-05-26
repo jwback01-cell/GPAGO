@@ -3795,6 +3795,40 @@ function _fetchKwProductInfo(extraId, url, opts) {
   _processSmartstoreQueue();
 }
 
+// 확장이 받아온 데이터를 Supabase 캐시에도 저장 (다른 사용자/PC와 공유)
+// 효과: PC1이 fetch 성공한 상품을 PC2/다른 사람이 볼 때도 즉시 표시
+async function _pushSmartstoreInfoToCache(url, info) {
+  try {
+    if (!_supabase) return;
+    if (!url || !info) return;
+    // 의미있는 데이터가 하나라도 있을 때만 저장 (빈 결과 캐싱 방지)
+    const meaningful = !!(info.title || info.image ||
+      info.reviewCount != null || info.rating != null || info.wishCount != null ||
+      info.registDate || (Array.isArray(info.tags) && info.tags.length));
+    if (!meaningful) return;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await _supabase
+      .from('smartstore_info_cache')
+      .upsert(
+        {
+          url,
+          data: info,
+          fetched_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        },
+        { onConflict: 'url' }
+      );
+    if (error) {
+      // 테이블이 없거나 RLS 정책 미설정 시 — 콘솔만 띄우고 무시 (사용자 흐름 방해 X)
+      console.warn('[smartstore-info] 캐시 PUSH 실패:', error.message || error);
+    } else {
+      console.log('[smartstore-info] 캐시 PUSH 완료 — 다른 사용자도 즉시 사용 가능');
+    }
+  } catch (e) {
+    console.warn('[smartstore-info] 캐시 PUSH 예외:', e.message || e);
+  }
+}
+
 // 확장프로그램으로 fetch (사용자 IP 사용 → 네이버 429 회피)
 function _fetchSmartstoreViaExtension(url, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -3936,6 +3970,8 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
         info._source = 'extension';
         window._gpagoExtensionAvailable = true;
         console.log('[smartstore-info] 확장으로 받음 (', ext.htmlLen, 'bytes), 추출:', info);
+        // 확장이 성공했으면 캐시에도 저장 — 다른 사용자/PC가 같은 상품을 볼 때 즉시 사용 가능
+        _pushSmartstoreInfoToCache(url, info);
       } else {
         console.log('[smartstore-info] 확장 응답 없음/실패:', ext.error || 'unknown');
       }
