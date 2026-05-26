@@ -3860,7 +3860,8 @@ async function _pushSmartstoreInfoToCache(url, info) {
   }
 }
 
-// 확장프로그램으로 fetch (사용자 IP 사용 → 네이버 429 회피)
+// 확장프로그램으로 정보 가져오기 — 새 방식(v1.4.0+): 백그라운드 탭으로 실제 페이지 방문 후 DOM 추출
+// 응답 형식: { ok, data } (v1.4.0+) 또는 { ok, html, htmlLen } (v1.3.x 호환)
 function _fetchSmartstoreViaExtension(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const reqId = 'ss_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -3872,8 +3873,18 @@ function _fetchSmartstoreViaExtension(url, timeoutMs) {
       if (e.data.reqId !== reqId) return;
       done = true;
       window.removeEventListener('message', handler);
-      if (e.data.ok) resolve({ ok: true, html: e.data.html, htmlLen: e.data.htmlLen });
-      else resolve({ ok: false, error: e.data.error });
+      if (e.data.ok) {
+        // 새 방식 우선 — data 객체가 있으면 그대로 사용 (파싱 불필요)
+        if (e.data.data) {
+          resolve({ ok: true, data: e.data.data });
+        } else if (e.data.html) {
+          resolve({ ok: true, html: e.data.html, htmlLen: e.data.htmlLen });
+        } else {
+          resolve({ ok: false, error: '확장 응답에 data/html 없음' });
+        }
+      } else {
+        resolve({ ok: false, error: e.data.error });
+      }
     };
     window.addEventListener('message', handler);
     try {
@@ -3890,7 +3901,7 @@ function _fetchSmartstoreViaExtension(url, timeoutMs) {
         window.removeEventListener('message', handler);
         resolve({ ok: false, error: 'extension timeout' });
       }
-    }, timeoutMs || 15000);
+    }, timeoutMs || 40000);  // 백그라운드 탭 로드 + 데이터 비동기 로드 여유 (35초 background timeout + 5초)
   });
 }
 
@@ -3993,15 +4004,22 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
   try {
     console.log('[smartstore-info] 요청:', url);
     let info = null;
-    // 1) 확장 시도 (사용자 IP, 네이버 차단 안 됨)
+    // 1) 확장 시도 (백그라운드 탭으로 실제 페이지 방문 → DOM 추출)
     try {
-      const ext = await _fetchSmartstoreViaExtension(url, 15000);
-      if (ext.ok && ext.html) {
-        info = _parseSmartstoreHtmlClient(ext.html);
-        info._source = 'extension';
+      const ext = await _fetchSmartstoreViaExtension(url, 40000);
+      if (ext.ok && ext.data) {
+        // 새 방식 (v1.4.0+): 확장이 이미 파싱한 데이터 객체
+        info = ext.data;
+        info._source = 'extension-tab';
         window._gpagoExtensionAvailable = true;
-        console.log('[smartstore-info] 확장으로 받음 (', ext.htmlLen, 'bytes), 추출:', info);
-        // 확장이 성공했으면 캐시에도 저장 — 다른 사용자/PC가 같은 상품을 볼 때 즉시 사용 가능
+        console.log('[smartstore-info] 확장(백그라운드 탭)에서 받음:', info);
+        _pushSmartstoreInfoToCache(url, info);
+      } else if (ext.ok && ext.html) {
+        // 기존 방식 (v1.3.x): HTML 문자열 → 페이지에서 파싱
+        info = _parseSmartstoreHtmlClient(ext.html);
+        info._source = 'extension-fetch';
+        window._gpagoExtensionAvailable = true;
+        console.log('[smartstore-info] 확장(fetch)에서 받음 (', ext.htmlLen, 'bytes), 추출:', info);
         _pushSmartstoreInfoToCache(url, info);
       } else {
         console.log('[smartstore-info] 확장 응답 없음/실패:', ext.error || 'unknown');
