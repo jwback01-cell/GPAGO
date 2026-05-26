@@ -63,12 +63,15 @@ async function _cacheWrite(url, data) {
 }
 
 function _hasMeaningfulData(out) {
-  // 의미있는 정보가 하나라도 있을 때만 캐싱 (빈 결과 캐싱 방지)
-  return !!(
-    out.title || out.image ||
-    out.reviewCount != null || out.rating != null || out.wishCount != null ||
-    out.registDate || (Array.isArray(out.tags) && out.tags.length)
-  );
+  // 리뷰/평점/찜/등록일/태그 중 최소 2개 있어야 캐싱 (부실 데이터 캐싱 방지)
+  // title/image 만 있는 경우는 캐싱하지 않음 — 다음번에 다시 시도하면 더 풍부한 데이터 가능
+  let cnt = 0;
+  if (out.reviewCount != null) cnt++;
+  if (out.rating != null) cnt++;
+  if (out.wishCount != null) cnt++;
+  if (out.registDate) cnt++;
+  if (Array.isArray(out.tags) && out.tags.length) cnt++;
+  return cnt >= 2;
 }
 
 export default async function handler(req, res) {

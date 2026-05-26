@@ -3838,11 +3838,8 @@ async function _pushSmartstoreInfoToCache(url, info) {
   try {
     if (!_supabase) return;
     if (!url || !info) return;
-    // 의미있는 데이터가 하나라도 있을 때만 저장 (빈 결과 캐싱 방지)
-    const meaningful = !!(info.title || info.image ||
-      info.reviewCount != null || info.rating != null || info.wishCount != null ||
-      info.registDate || (Array.isArray(info.tags) && info.tags.length));
-    if (!meaningful) return;
+    // 리뷰/평점/찜/등록일/태그 중 2개 이상 있을 때만 캐시 저장 (부실 데이터 캐싱 방지)
+    if (!_isInfoMeaningful(info)) return;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const { error } = await _supabase
       .from('smartstore_info_cache')
@@ -4003,53 +4000,91 @@ function _decodeHtmlEntities(s) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'");
 }
 
+// 의미있는 데이터 판정 — 리뷰/평점/찜/등록일/태그 중 최소 2개 있어야 함
+// (title/image/reviewCount 하나만 있는 부실 데이터는 신뢰하지 않음)
+function _isInfoMeaningful(info) {
+  if (!info) return false;
+  let cnt = 0;
+  if (info.reviewCount != null) cnt++;
+  if (info.rating != null) cnt++;
+  if (info.wishCount != null) cnt++;
+  if (info.registDate) cnt++;
+  if (Array.isArray(info.tags) && info.tags.length) cnt++;
+  return cnt >= 2;
+}
+
 // 실제 fetch + 데이터 적용 — 큐가 호출
-// 확장 사용 우선, 실패 시 Vercel API 폴백
+// 흐름 (v2): Supabase 캐시 우선 → 확장 폴백
+//   1) /api/smartstore-info 호출 → 캐시 hit + 의미있는 데이터면 즉시 사용 (0.1초)
+//   2) 캐시 miss/부실 시 확장으로 백그라운드 탭 방문 (15~40초)
+//   3) 확장이 성공하면 캐시에 PUSH → 다음번부터 모두 캐시 hit
 async function _doFetchSmartstoreInfo(extraId, url, opts) {
   opts = opts || {};
   try {
     console.log('[smartstore-info] 요청:', url);
     let info = null;
-    // 1) 확장 시도 (백그라운드 탭으로 실제 페이지 방문 → DOM 추출)
+
+    // 1) Vercel API 먼저 시도 (캐시 hit 이면 즉시)
     try {
-      const ext = await _fetchSmartstoreViaExtension(url, 50000);
-      if (ext.ok && ext.data) {
-        // 새 방식 (v1.4.0+): 확장이 이미 파싱한 데이터 객체
-        info = ext.data;
-        info._source = 'extension-tab';
-        window._gpagoExtensionAvailable = true;
-        console.log('[smartstore-info] 확장(백그라운드 탭)에서 받음:', info);
-        _pushSmartstoreInfoToCache(url, info);
-      } else if (ext.ok && ext.html) {
-        // 기존 방식 (v1.3.x): HTML 문자열 → 페이지에서 파싱
-        info = _parseSmartstoreHtmlClient(ext.html);
-        info._source = 'extension-fetch';
-        window._gpagoExtensionAvailable = true;
-        console.log('[smartstore-info] 확장(fetch)에서 받음 (', ext.htmlLen, 'bytes), 추출:', info);
-        _pushSmartstoreInfoToCache(url, info);
-      } else {
-        console.log('[smartstore-info] 확장 응답 없음/실패:', ext.error || 'unknown');
+      const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
+      if (r.ok) {
+        const apiInfo = await r.json();
+        const fromCache = apiInfo && (apiInfo._cached || apiInfo._stale);
+        const meaningful = _isInfoMeaningful(apiInfo);
+        if (fromCache && meaningful) {
+          info = apiInfo;
+          info._source = 'vercel-cache';
+          console.log('[smartstore-info] Vercel 캐시 hit (즉시 응답):', info);
+        } else if (!fromCache && meaningful) {
+          // Vercel 이 직접 fetch 성공한 경우 — 의미있는 데이터면 사용
+          info = apiInfo;
+          info._source = 'vercel-fetch';
+          console.log('[smartstore-info] Vercel 직접 fetch:', info);
+        } else {
+          console.log('[smartstore-info] Vercel 응답 의미있는 데이터 부족 — 확장 시도:', apiInfo);
+        }
+      } else if (r.status === 429) {
+        console.log('[smartstore-info] Vercel 429 (네이버 차단) — 확장 시도');
       }
     } catch (e) {
-      console.log('[smartstore-info] 확장 시도 실패:', e.message || e);
+      console.log('[smartstore-info] Vercel 시도 실패 — 확장 시도:', e.message || e);
     }
-    // 2) 확장 실패 시 Vercel API 폴백
+
+    // 2) 캐시 miss/부실 → 확장으로 백그라운드 탭 방문
     if (!info) {
-      const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
-      if (!r.ok) {
-        console.warn('[smartstore-info] HTTP', r.status);
-        if (opts.showToast && typeof toast === 'function') {
-          const msg = r.status === 429
-            ? '⚠ 네이버가 IP를 일시 차단 (429) — 10~30분 후 다시 시도하거나 모바일 핫스팟으로 IP 변경'
-            : `⚠ 정보 가져오기 실패 (HTTP ${r.status})`;
-          toast(msg);
+      try {
+        const ext = await _fetchSmartstoreViaExtension(url, 50000);
+        if (ext.ok && ext.data) {
+          info = ext.data;
+          info._source = 'extension-tab';
+          window._gpagoExtensionAvailable = true;
+          console.log('[smartstore-info] 확장(백그라운드 탭)에서 받음:', info);
+          // 의미있는 데이터일 때만 캐시 PUSH (부실 데이터 캐싱 방지)
+          if (_isInfoMeaningful(info)) {
+            _pushSmartstoreInfoToCache(url, info);
+          } else {
+            console.log('[smartstore-info] 데이터 부실로 캐시 PUSH 건너뜀');
+          }
+        } else if (ext.ok && ext.html) {
+          info = _parseSmartstoreHtmlClient(ext.html);
+          info._source = 'extension-fetch';
+          window._gpagoExtensionAvailable = true;
+          console.log('[smartstore-info] 확장(fetch)에서 받음 (', ext.htmlLen, 'bytes), 추출:', info);
+          if (_isInfoMeaningful(info)) _pushSmartstoreInfoToCache(url, info);
+        } else {
+          console.log('[smartstore-info] 확장 응답 없음/실패:', ext.error || 'unknown');
         }
-        if (r.status === 429) await new Promise(rr => setTimeout(rr, 5000));
-        return;
+      } catch (e) {
+        console.log('[smartstore-info] 확장 시도 실패:', e.message || e);
       }
-      info = await r.json();
-      info._source = 'vercel-api';
-      console.log('[smartstore-info] Vercel API 응답:', info);
+    }
+
+    // 3) 모두 실패 — 토스트 안내
+    if (!info) {
+      if (opts.showToast && typeof toast === 'function') {
+        toast('⚠ 정보 가져오기 실패 — 네이버 일시 차단 또는 페이지 로드 실패. 잠시 후 다시 시도');
+      }
+      return;
     }
     const extras = _loadKwExtras();
     const target = extras.find(p => p.id === extraId);
