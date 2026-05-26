@@ -181,8 +181,8 @@ function parseSmartstoreHtml(html) {
           if (o.aggregateRating) {
             const ar = o.aggregateRating;
             if (ar.ratingValue != null) result.rating = result.rating ?? Number(ar.ratingValue);
+            // ratingCount(별점만 매긴 수) 는 실제 리뷰 수와 다를 수 있어 fallback 제거
             if (ar.reviewCount != null) result.reviewCount = result.reviewCount ?? Number(ar.reviewCount);
-            else if (ar.ratingCount != null) result.reviewCount = result.reviewCount ?? Number(ar.ratingCount);
           }
           if (o.offers) {
             const offer = Array.isArray(o.offers) ? o.offers[0] : o.offers;
