@@ -178,10 +178,16 @@
 <!-- ═════════════ 상단 헤더 (GPLAN 스타일 glass nav) ═════════════ -->
 <header class="w-full px-4 md:px-6 pt-5 pb-3 shrink-0">
   <nav class="glass-nav rounded-full px-4 md:px-6 py-3.5 flex justify-between items-center w-full">
-    <div class="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition" onclick="goPage('analysis')">
-      <div class="w-7 h-7 bg-brand-blue rounded-lg flex items-center justify-center text-white font-black text-sm shadow-sm">G</div>
-      <span class="font-black text-[1.15rem] tracking-tight">GPAGO</span>
-      <span class="ml-2 px-2 py-0.5 bg-brand-pink-light text-brand-pink text-[10px] font-bold rounded-full">v5 NEW</span>
+    <div class="flex items-center gap-2.5">
+      <!-- 모바일 햄버거 버튼 (md 미만에서만 표시) -->
+      <button id="gpago-mobile-menu-btn" onclick="toggleGpagoSidebar()" class="md:hidden w-9 h-9 rounded-full hover:bg-brand-bg flex items-center justify-center mr-1" title="메뉴 열기">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition" onclick="goPage('analysis')">
+        <div class="w-7 h-7 bg-brand-blue rounded-lg flex items-center justify-center text-white font-black text-sm shadow-sm">G</div>
+        <span class="font-black text-[1.15rem] tracking-tight">GPAGO</span>
+        <span class="ml-2 px-2 py-0.5 bg-brand-pink-light text-brand-pink text-[10px] font-bold rounded-full">v5 NEW</span>
+      </div>
     </div>
     <div class="flex items-center gap-4 md:gap-6">
       <!-- 미로그인 상태 -->
@@ -207,10 +213,15 @@
 </header>
 
 <!-- ═════════════ 메인 레이아웃 ═════════════ -->
-<div class="flex-1 flex gap-6 px-4 md:px-6 pb-6 w-full overflow-hidden">
+<div class="flex-1 flex gap-3 md:gap-6 px-2 md:px-6 pb-3 md:pb-6 w-full overflow-hidden relative">
 
-  <!-- 사이드바 -->
-  <aside class="w-[260px] shrink-0 bg-white rounded-4xl panel p-6 flex flex-col h-full overflow-y-auto">
+  <!-- 모바일 사이드바 백드롭 (오버레이) -->
+  <div id="gpago-sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 md:hidden" onclick="toggleGpagoSidebar()"></div>
+
+  <!-- 사이드바 — 모바일에서는 fixed 오버레이, md 이상에서는 inline -->
+  <aside id="gpago-sidebar" class="fixed inset-y-0 left-0 z-50 w-[280px] -translate-x-full transition-transform duration-200
+                                   md:relative md:translate-x-0 md:w-[260px] md:z-auto
+                                   shrink-0 bg-white md:rounded-4xl panel p-6 flex flex-col h-full overflow-y-auto">
     <div class="text-xs font-bold text-brand-gray tracking-wider mb-4 px-2">MENU</div>
     <nav class="flex flex-col gap-2">
       <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="dashboard">
@@ -2245,7 +2256,27 @@ document.addEventListener('click', (e) => {
   document.querySelectorAll('[data-kw-tab]').forEach(a => a.classList.toggle('active', a === sub));
 });
 
+// 모바일 사이드바 토글 — 햄버거 버튼 / 백드롭 클릭 / 메뉴 항목 선택 시 호출
+function toggleGpagoSidebar(forceState) {
+  const sidebar = document.getElementById('gpago-sidebar');
+  const backdrop = document.getElementById('gpago-sidebar-backdrop');
+  if (!sidebar) return;
+  const isOpen = !sidebar.classList.contains('-translate-x-full');
+  const shouldOpen = typeof forceState === 'boolean' ? forceState : !isOpen;
+  if (shouldOpen) {
+    sidebar.classList.remove('-translate-x-full');
+    if (backdrop) backdrop.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  } else {
+    sidebar.classList.add('-translate-x-full');
+    if (backdrop) backdrop.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+}
+
 function goPage(pageId) {
+  // 모바일에서 메뉴 항목 선택 시 사이드바 자동 닫기
+  if (window.innerWidth < 768) toggleGpagoSidebar(false);
   PAGES.forEach(p => {
     const el = document.getElementById('page-' + p);
     if (el) el.classList.toggle('active', p === pageId);
@@ -5205,8 +5236,8 @@ function renderKwTrend() {
     const statusColor = items.length > 0 ? 'text-brand-green' : 'text-brand-gray';
     const imgUrl = product.imageUrl || '';
     const imgBlock = imgUrl
-      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-16 h-16 rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
-      : `<div class="w-16 h-16 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
+      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-12 h-12 md:w-16 md:h-16 rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
+      : `<div class="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
          </div>`;
 
@@ -5236,11 +5267,11 @@ function renderKwTrend() {
       ? `<div class="text-[11px] text-brand-gray mt-0.5 truncate" title="${_escapeHtml(product.category)}">${_escapeHtml(product.category)}</div>`
       : '';
 
-    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-5 flex gap-4 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer min-h-[180px]">
+    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-3 md:p-5 flex gap-2.5 md:gap-4 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer min-h-[180px]">
       <!-- 슬롯 번호 -->
-      <div class="shrink-0 flex flex-col items-center justify-start w-14 pt-1">
-        <div class="text-[1.6rem] font-black text-brand-black leading-none">${numStr}</div>
-        <div class="text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
+      <div class="shrink-0 flex flex-col items-center justify-start w-10 md:w-14 pt-1">
+        <div class="text-[1.2rem] md:text-[1.6rem] font-black text-brand-black leading-none">${numStr}</div>
+        <div class="text-[9px] md:text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
       </div>
 
       <!-- 썸네일 -->
