@@ -71,8 +71,10 @@ async function _tryNaverInternalAPI(productUrl) {
   const channelName = m[1];
   const productId = m[2];
 
-  // 시도할 endpoint 후보 (가장 가능성 높은 순서)
+  // 시도할 endpoint 후보 (실제 네이버 페이지가 호출하는 endpoint 우선)
+  // ⭐ /i/v1/contents/reviews/product-summary/{id} → reviewCount, averageReviewScore 등 (사용자가 Network 분석으로 발견)
   const endpoints = [
+    `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${productId}`,
     `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}/contents/PC/info`,
     `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}`,
     `https://smartstore.naver.com/i/v2/products/${productId}`,
@@ -119,6 +121,22 @@ function _parseNaverApiResponse(data) {
     reviewCount: null, rating: null, wishCount: null,
     registDate: null, tags: [], category: null, price: null,
   };
+
+  // ⭐ /i/v1/contents/reviews/product-summary/{id} 응답 형식 — 리뷰/평점 전용
+  // { productReviewInfo: {reviewCount, averageReviewScore, ...}, recentProductReviewInfo: {...}, reviewTopics: [...] }
+  if (data && typeof data === 'object') {
+    const pri = data.productReviewInfo;
+    if (pri && typeof pri === 'object') {
+      if (pri.reviewCount != null) result.reviewCount = Number(pri.reviewCount);
+      if (pri.averageReviewScore != null) result.rating = Number(pri.averageReviewScore);
+    }
+    const rpri = data.recentProductReviewInfo;
+    if (rpri && typeof rpri === 'object') {
+      // recent 가 더 최신이면 우선 적용 (보통 더 정확)
+      if (result.reviewCount == null && rpri.recentReviewCount != null) result.reviewCount = Number(rpri.recentReviewCount);
+      if (result.rating == null && rpri.recentAverageReviewScore != null) result.rating = Number(rpri.recentAverageReviewScore);
+    }
+  }
   function findProduct(obj, depth) {
     if (!obj || typeof obj !== 'object' || depth > 8) return null;
     if (Array.isArray(obj)) {
