@@ -62,6 +62,118 @@ async function _cacheWrite(url, data) {
   }
 }
 
+// 네이버 스마트스토어 내부 JSON API 시도 — 여러 endpoint 차례로
+// 성공하면 HTML fetch 보다 훨씬 빠름 (1~2초), 차단도 덜할 수 있음 (다른 endpoint)
+async function _tryNaverInternalAPI(productUrl) {
+  // URL 에서 channelName + productId 추출
+  const m = productUrl.match(/(?:smartstore|brand)\.naver\.com\/([^/?#]+)\/products\/(\d+)/);
+  if (!m) return null;
+  const channelName = m[1];
+  const productId = m[2];
+
+  // 시도할 endpoint 후보 (가장 가능성 높은 순서)
+  const endpoints = [
+    `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}/contents/PC/info`,
+    `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}`,
+    `https://smartstore.naver.com/i/v2/products/${productId}`,
+    `https://smartstore.naver.com/i/v1/products/${productId}`,
+    `https://smartstore.naver.com/i/v2/seo/products/${productId}`,
+  ];
+
+  const commonHeaders = {
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': productUrl,
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'X-Client-Version': 'PC',
+  };
+
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep, { headers: commonHeaders });
+      console.log('[smartstore-info] internal API try:', ep, '→', r.status);
+      if (!r.ok) continue;
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.toLowerCase().includes('json')) continue;
+      const data = await r.json();
+      const parsed = _parseNaverApiResponse(data);
+      if (_hasMeaningfulData(parsed)) {
+        parsed._endpoint = ep;
+        parsed._source = 'naver-internal-api';
+        return parsed;
+      }
+    } catch (e) {
+      // 다음 endpoint
+    }
+  }
+  return null;
+}
+
+// 네이버 내부 API 응답을 파싱 — product 객체 깊이 탐색
+function _parseNaverApiResponse(data) {
+  const result = {
+    title: null, image: null, description: null,
+    reviewCount: null, rating: null, wishCount: null,
+    registDate: null, tags: [], category: null, price: null,
+  };
+  function findProduct(obj, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 8) return null;
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length && i < 100; i++) {
+        const r = findProduct(obj[i], depth + 1);
+        if (r) return r;
+      }
+      return null;
+    }
+    const looksLikeProduct = (
+      (obj.name || obj.productName) &&
+      (obj.reviewCount != null || obj.totalReviewCount != null ||
+       obj.averageReviewScore != null || obj.reviewAverageScore != null ||
+       obj.wishListCount != null || obj.zzimCount != null ||
+       obj.regDate || obj.registDate)
+    );
+    if (looksLikeProduct) return obj;
+    for (const k in obj) {
+      const v = obj[k];
+      if (v && typeof v === 'object') {
+        const r = findProduct(v, depth + 1);
+        if (r) return r;
+      }
+    }
+    return null;
+  }
+  const product = findProduct(data, 0) || data;
+  if (product && typeof product === 'object') {
+    result.title       = product.name || product.productName || null;
+    result.image       = product.representativeImage || product.representImage || product.image || product.thumbnailImage || null;
+    if (typeof result.image === 'object' && result.image) {
+      result.image = result.image.url || result.image.src || null;
+    }
+    result.description = product.description || product.shortDescription || null;
+    result.reviewCount = product.reviewCount ?? product.totalReviewCount ?? null;
+    result.rating      = product.averageReviewScore ?? product.reviewAverageScore ?? product.rating ?? null;
+    result.wishCount   = product.wishListCount ?? product.zzimCount ?? product.likeCount ?? product.interestCount ?? null;
+    result.registDate  = product.regDate || product.registDate || product.regDateStr || product.registrationDate || null;
+    result.price       = product.salePrice ?? product.dispSalePrice ?? product.price ?? null;
+    const tagList = product.tags || product.searchTags || product.productTags || product.userSearchTags || product.tagList || [];
+    if (Array.isArray(tagList) && tagList.length) {
+      result.tags = tagList.map(t => (typeof t === 'string' ? t : (t && (t.text || t.tagName || t.name)) || '')).filter(Boolean);
+    }
+    const cats = product.fullCategoryName || product.categoryFullName || product.wholeCategoryName || product.category;
+    if (cats) {
+      result.category = typeof cats === 'string' ? cats : (Array.isArray(cats) ? cats.join(' > ') : (cats.name || null));
+    }
+  }
+  // registDate 정규화
+  if (result.registDate) {
+    result.registDate = String(result.registDate).slice(0, 10).replace(/[.\/]/g, '-');
+  }
+  return result;
+}
+
 function _hasMeaningfulData(out) {
   // 리뷰/평점/찜/등록일/태그 중 최소 2개 있어야 캐싱 (부실 데이터 캐싱 방지)
   // title/image 만 있는 경우는 캐싱하지 않음 — 다음번에 다시 시도하면 더 풍부한 데이터 가능
@@ -105,7 +217,22 @@ export default async function handler(req, res) {
     }
   }
 
-  // 2) 캐시 miss/expired → 네이버 fetch
+  // 2-A) 네이버 내부 JSON API 먼저 시도 (HTML fetch 보다 빠름, 차단도 덜할 수 있음)
+  try {
+    const internal = await _tryNaverInternalAPI(url);
+    if (internal && _hasMeaningfulData(internal)) {
+      internal.url = url;
+      _cacheWrite(url, internal).catch(() => {});
+      res.setHeader('X-Cache', 'MISS-API');
+      res.setHeader('Cache-Control', 'public, max-age=1800');
+      res.status(200).json(internal);
+      return;
+    }
+  } catch (e) {
+    console.log('[smartstore-info] internal API 시도 실패:', e?.message || e);
+  }
+
+  // 2-B) 내부 API 실패 → HTML fetch 폴백 (기존 방식)
   try {
     const r = await fetch(url, {
       headers: {
