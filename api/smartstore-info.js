@@ -65,27 +65,16 @@ async function _cacheWrite(url, data) {
 // 네이버 스마트스토어 내부 JSON API 시도 — 여러 endpoint 차례로
 // 성공하면 HTML fetch 보다 훨씬 빠름 (1~2초), 차단도 덜할 수 있음 (다른 endpoint)
 async function _tryNaverInternalAPI(productUrl) {
-  // URL 에서 channelName + productId 추출
   const m = productUrl.match(/(?:smartstore|brand)\.naver\.com\/([^/?#]+)\/products\/(\d+)/);
   if (!m) return null;
-  const channelName = m[1];
   const productId = m[2];
 
-  const commonHeaders = {
+  const headers = {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Referer': productUrl,
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-origin',
-    'X-Client-Version': 'PC',
   };
-
-  // ⭐ 1차: 리뷰 요약 (reviewCount, averageReviewScore) — 가장 가벼운 endpoint
-  const reviewSummaryUrl = `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${productId}`;
-  // ⭐ 2차: 리뷰 태그 (relevant tags from reviews)
-  const reviewTagsUrl = `https://smartstore.naver.com/i/v1/contents/reviews/summary-tag/${productId}`;
 
   const result = {
     title: null, image: null, description: null,
@@ -93,53 +82,57 @@ async function _tryNaverInternalAPI(productUrl) {
     registDate: null, tags: [], category: null, price: null,
   };
 
-  // 리뷰 요약 + 태그를 병렬 fetch
-  const fetches = [
-    fetch(reviewSummaryUrl, { headers: commonHeaders }).then(async r => {
-      console.log('[smartstore-info] review-summary →', r.status);
-      if (!r.ok) return null;
-      const ct = r.headers.get('content-type') || '';
-      if (!ct.toLowerCase().includes('json')) return null;
-      return r.json();
-    }).catch(() => null),
-    fetch(reviewTagsUrl, { headers: commonHeaders }).then(async r => {
-      console.log('[smartstore-info] review-tags →', r.status);
-      if (!r.ok) return null;
-      const ct = r.headers.get('content-type') || '';
-      if (!ct.toLowerCase().includes('json')) return null;
-      return r.json();
-    }).catch(() => null),
-  ];
-
-  const [reviewSummary, reviewTags] = await Promise.all(fetches);
-
-  // 리뷰 요약 응답 파싱
-  if (reviewSummary && typeof reviewSummary === 'object') {
-    const pri = reviewSummary.productReviewInfo;
-    if (pri && typeof pri === 'object') {
-      if (pri.reviewCount != null) result.reviewCount = Number(pri.reviewCount);
-      if (pri.averageReviewScore != null) result.rating = Number(pri.averageReviewScore);
+  // 1) 리뷰 요약 — reviewCount, averageReviewScore
+  try {
+    const url = 'https://smartstore.naver.com/i/v1/contents/reviews/product-summary/' + productId;
+    const r = await fetch(url, { headers: headers });
+    console.log('[smartstore-info] review-summary status:', r.status);
+    if (r.ok) {
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (ct.indexOf('json') !== -1) {
+        const data = await r.json();
+        if (data && data.productReviewInfo) {
+          const pri = data.productReviewInfo;
+          if (pri.reviewCount != null) result.reviewCount = Number(pri.reviewCount);
+          if (pri.averageReviewScore != null) result.rating = Number(pri.averageReviewScore);
+        }
+        if (data && data.recentProductReviewInfo) {
+          const rpri = data.recentProductReviewInfo;
+          if (result.reviewCount == null && rpri.recentReviewCount != null) result.reviewCount = Number(rpri.recentReviewCount);
+          if (result.rating == null && rpri.recentAverageReviewScore != null) result.rating = Number(rpri.recentAverageReviewScore);
+        }
+      }
     }
-    const rpri = reviewSummary.recentProductReviewInfo;
-    if (rpri && typeof rpri === 'object') {
-      if (result.reviewCount == null && rpri.recentReviewCount != null) result.reviewCount = Number(rpri.recentReviewCount);
-      if (result.rating == null && rpri.recentAverageReviewScore != null) result.rating = Number(rpri.recentAverageReviewScore);
-    }
+  } catch (e) {
+    console.log('[smartstore-info] review-summary error:', e && e.message);
   }
 
-  // 리뷰 태그 응답 파싱 — [{tagGroupNo, representTagName, ...}, ...]
-  if (Array.isArray(reviewTags) && reviewTags.length) {
-    const tagSet = new Set();
-    for (const t of reviewTags) {
-      const name = t && (t.representTagName || t.tagName || t.name);
-      if (name && typeof name === 'string') tagSet.add(name.trim());
+  // 2) 리뷰 태그 — representTagName 추출
+  try {
+    const url = 'https://smartstore.naver.com/i/v1/contents/reviews/summary-tag/' + productId;
+    const r = await fetch(url, { headers: headers });
+    console.log('[smartstore-info] review-tags status:', r.status);
+    if (r.ok) {
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (ct.indexOf('json') !== -1) {
+        const data = await r.json();
+        if (Array.isArray(data) && data.length) {
+          const tags = [];
+          for (let i = 0; i < data.length; i++) {
+            const t = data[i];
+            const name = t && (t.representTagName || t.tagName || t.name);
+            if (name && typeof name === 'string') tags.push(name.trim());
+          }
+          if (tags.length) result.tags = tags.slice(0, 12);
+        }
+      }
     }
-    if (tagSet.size) result.tags = [...tagSet].slice(0, 12);
+  } catch (e) {
+    console.log('[smartstore-info] review-tags error:', e && e.message);
   }
 
   if (_hasMeaningfulData(result)) {
     result._source = 'naver-internal-api';
-    result._endpoints = [reviewSummaryUrl, reviewTagsUrl];
     return result;
   }
   return null;
