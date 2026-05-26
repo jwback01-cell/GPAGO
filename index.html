@@ -3691,7 +3691,9 @@ function _loadKwExtras() {
   const arr = raw.map(item => {
     let obj;
     if (typeof item === 'string') { obj = { id: '', name: item, url: '' }; mutated = true; }
-    else obj = { id: item.id || '', name: item.name || '', url: item.url || '' };
+    // 기존엔 id/name/url 만 골라서 reviewCount/rating/wishCount/imageUrl 등 모두 유실됐던 버그
+    // → spread 로 모든 필드 보존 (id/name/url 만 보장)
+    else obj = { ...item, id: item.id || '', name: item.name || '', url: item.url || '' };
     if (!obj.id) { obj.id = _kwExtraUid(); mutated = true; }
     return obj;
   });
