@@ -836,6 +836,10 @@
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 검색량 새로고침
               </button>
+              <button type="button" onclick="refreshAllKwProductInfo()" title="등록된 모든 상품의 리뷰·평점·찜·등록일·태그 정보를 일괄로 갱신합니다 (백그라운드 탭으로 1개씩 순차 처리)" class="text-xs font-bold text-brand-pink hover:underline flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+                전체 상품 정보 갱신
+              </button>
             </div>
           </div>
 
@@ -5427,6 +5431,31 @@ function _toggleKwHiddenChips(btn) {
   hiddenChips.forEach(c => c.classList.toggle('hidden', !isHidden));
   const count = btn.dataset.moreCount || hiddenChips.length;
   btn.textContent = isHidden ? '접기' : `+${count}개 더보기`;
+}
+
+// 전체 상품 정보 일괄 갱신 — 등록된 모든 스마트스토어/브랜드스토어 상품의
+// 리뷰·평점·찜·등록일·태그를 한 번에 큐에 추가 (큐는 1개씩 순차 처리 → 네이버 차단 회피)
+function refreshAllKwProductInfo() {
+  const extras = _loadKwExtras();
+  const targets = extras.filter(p =>
+    p.url && (p.url.includes('smartstore.naver.com') || p.url.includes('brand.naver.com'))
+  );
+  if (!targets.length) {
+    if (typeof toast === 'function') toast('⚠ 갱신할 스마트스토어 상품이 없습니다');
+    return;
+  }
+  if (typeof toast === 'function') {
+    toast(`📡 ${targets.length}개 상품 정보 일괄 갱신 시작 — 백그라운드 탭으로 1개씩 처리 (캐시 hit 은 즉시, 첫 fetch 는 10~30초씩 걸림)`);
+  }
+  // 큐에 모두 추가 — _fetchKwProductInfo 가 중복 큐잉 방지 + 순차 처리
+  let queued = 0;
+  targets.forEach(p => {
+    if (!_smartstoreQueue.some(q => q.extraId === p.id)) {
+      _fetchKwProductInfo(p.id, p.url);
+      queued++;
+    }
+  });
+  console.log(`[refreshAll] 큐에 추가됨: ${queued}개 / 전체 ${targets.length}개`);
 }
 
 // 상품 상세 정보 (리뷰/평점/찜/태그) 수동 새로고침 — 카드 우측 새로고침 버튼에서 호출
