@@ -5281,20 +5281,9 @@ function renderKwTrend() {
   const cardsHtml = allProducts.map((p, i) => _renderCard(p.id, p, i + 1)).join('');
   canvas.innerHTML = cardsHtml + _plusCard(nextSlot);
 
-  // 이미지가 없는 기존 상품은 백그라운드로 자동 가져오기 (한 번에 하나씩, 중복 호출 방지)
-  if (!window._kwImgFetching) {
-    const extras = _loadKwExtras();
-    const missing = extras.filter(p => !p.imageUrl && p.name);
-    if (missing.length) {
-      window._kwImgFetching = true;
-      (async () => {
-        for (const p of missing.slice(0, 5)) { // 최대 5개씩만
-          await _fetchKwProductImage(p.id, p.name, p.url || '');
-        }
-        window._kwImgFetching = false;
-      })();
-    }
-  }
+  // 자동 이미지 백필 제거됨 — _fetchKwProductImage 내부에서 _fetchKwProductInfo 까지 호출해서
+  // 8개 카드가 한꺼번에 스마트스토어 fetch → 네이버 429 차단 유발하던 원인
+  // 사용자가 카드의 새로고침 ↻ 버튼을 누르면 정보+이미지 모두 1개씩 가져옴
 }
 
 // 키워드 칩 더보기/접기 토글 — 같은 flex 컨테이너 안에서 hidden 칩들을 표시/숨김
