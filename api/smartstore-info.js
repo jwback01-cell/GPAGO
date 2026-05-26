@@ -71,17 +71,6 @@ async function _tryNaverInternalAPI(productUrl) {
   const channelName = m[1];
   const productId = m[2];
 
-  // 시도할 endpoint 후보 (실제 네이버 페이지가 호출하는 endpoint 우선)
-  // ⭐ /i/v1/contents/reviews/product-summary/{id} → reviewCount, averageReviewScore 등 (사용자가 Network 분석으로 발견)
-  const endpoints = [
-    `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${productId}`,
-    `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}/contents/PC/info`,
-    `https://smartstore.naver.com/i/v2/channels/${channelName}/products/${productId}`,
-    `https://smartstore.naver.com/i/v2/products/${productId}`,
-    `https://smartstore.naver.com/i/v1/products/${productId}`,
-    `https://smartstore.naver.com/i/v2/seo/products/${productId}`,
-  ];
-
   const commonHeaders = {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
@@ -93,23 +82,65 @@ async function _tryNaverInternalAPI(productUrl) {
     'X-Client-Version': 'PC',
   };
 
-  for (const ep of endpoints) {
-    try {
-      const r = await fetch(ep, { headers: commonHeaders });
-      console.log('[smartstore-info] internal API try:', ep, '→', r.status);
-      if (!r.ok) continue;
+  // ⭐ 1차: 리뷰 요약 (reviewCount, averageReviewScore) — 가장 가벼운 endpoint
+  const reviewSummaryUrl = `https://smartstore.naver.com/i/v1/contents/reviews/product-summary/${productId}`;
+  // ⭐ 2차: 리뷰 태그 (relevant tags from reviews)
+  const reviewTagsUrl = `https://smartstore.naver.com/i/v1/contents/reviews/summary-tag/${productId}`;
+
+  const result = {
+    title: null, image: null, description: null,
+    reviewCount: null, rating: null, wishCount: null,
+    registDate: null, tags: [], category: null, price: null,
+  };
+
+  // 리뷰 요약 + 태그를 병렬 fetch
+  const fetches = [
+    fetch(reviewSummaryUrl, { headers: commonHeaders }).then(async r => {
+      console.log('[smartstore-info] review-summary →', r.status);
+      if (!r.ok) return null;
       const ct = r.headers.get('content-type') || '';
-      if (!ct.toLowerCase().includes('json')) continue;
-      const data = await r.json();
-      const parsed = _parseNaverApiResponse(data);
-      if (_hasMeaningfulData(parsed)) {
-        parsed._endpoint = ep;
-        parsed._source = 'naver-internal-api';
-        return parsed;
-      }
-    } catch (e) {
-      // 다음 endpoint
+      if (!ct.toLowerCase().includes('json')) return null;
+      return r.json();
+    }).catch(() => null),
+    fetch(reviewTagsUrl, { headers: commonHeaders }).then(async r => {
+      console.log('[smartstore-info] review-tags →', r.status);
+      if (!r.ok) return null;
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.toLowerCase().includes('json')) return null;
+      return r.json();
+    }).catch(() => null),
+  ];
+
+  const [reviewSummary, reviewTags] = await Promise.all(fetches);
+
+  // 리뷰 요약 응답 파싱
+  if (reviewSummary && typeof reviewSummary === 'object') {
+    const pri = reviewSummary.productReviewInfo;
+    if (pri && typeof pri === 'object') {
+      if (pri.reviewCount != null) result.reviewCount = Number(pri.reviewCount);
+      if (pri.averageReviewScore != null) result.rating = Number(pri.averageReviewScore);
     }
+    const rpri = reviewSummary.recentProductReviewInfo;
+    if (rpri && typeof rpri === 'object') {
+      if (result.reviewCount == null && rpri.recentReviewCount != null) result.reviewCount = Number(rpri.recentReviewCount);
+      if (result.rating == null && rpri.recentAverageReviewScore != null) result.rating = Number(rpri.recentAverageReviewScore);
+    }
+  }
+
+  // 리뷰 태그 응답 파싱 — [{tagGroupNo, representTagName, ...}, ...]
+  if (Array.isArray(reviewTags) && reviewTags.length) {
+    const tagSet = new Set();
+    for (const t of reviewTags) {
+      const name = t && (t.representTagName || t.tagName || t.name);
+      if (name && typeof name === 'string') tagSet.add(name.trim());
+    }
+    if (tagSet.size) result.tags = [...tagSet].slice(0, 12);
+  }
+
+  if (_hasMeaningfulData(result)) {
+    result._source = 'naver-internal-api';
+    result._endpoints = [reviewSummaryUrl, reviewTagsUrl];
+    return result;
   }
   return null;
 }
