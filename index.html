@@ -4474,7 +4474,9 @@ function _saveKwManage(arr) { localStorage.setItem(KW_MANAGE_KEY, JSON.stringify
 function _kwUid() { return 'k_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 function _kwAllProductOptions() {
-  return _loadKwExtras().map(p => ({ id: 'ex:' + p.id, name: p.name, url: p.url || '', imageUrl: p.imageUrl || '' }));
+  // 모든 extras 필드를 카드까지 전달 (reviewCount/rating/wishCount/registDate/tags/category 포함)
+  // — 이전엔 id/name/url/imageUrl만 전달해서 fetch 한 정보가 카드에 안 보이던 버그 수정
+  return _loadKwExtras().map(p => ({ ...p, id: 'ex:' + p.id }));
 }
 function _kwResolveProduct(productKey) {
   if (!productKey) return null;
