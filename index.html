@@ -3901,7 +3901,7 @@ function _fetchSmartstoreViaExtension(url, timeoutMs) {
         window.removeEventListener('message', handler);
         resolve({ ok: false, error: 'extension timeout' });
       }
-    }, timeoutMs || 40000);  // 백그라운드 탭 로드 + 데이터 비동기 로드 여유 (35초 background timeout + 5초)
+    }, timeoutMs || 50000);  // background 45초 + 5초 여유
   });
 }
 
@@ -4006,7 +4006,7 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
     let info = null;
     // 1) 확장 시도 (백그라운드 탭으로 실제 페이지 방문 → DOM 추출)
     try {
-      const ext = await _fetchSmartstoreViaExtension(url, 40000);
+      const ext = await _fetchSmartstoreViaExtension(url, 50000);
       if (ext.ok && ext.data) {
         // 새 방식 (v1.4.0+): 확장이 이미 파싱한 데이터 객체
         info = ext.data;
