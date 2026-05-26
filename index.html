@@ -4052,6 +4052,8 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
     if (!target) return;
     let filled = 0;
     if (info.image && !target.imageUrl) { target.imageUrl = info.image; filled++; }
+    if (info.title)               { target.fetchedTitle = info.title; filled++; }   // 원본 상품명 (셀러명 추출용)
+    if (info.description)         { target.description = info.description; filled++; }  // 셀러명 추출용
     if (info.reviewCount != null) { target.reviewCount = Number(info.reviewCount); filled++; }
     if (info.rating != null)      { target.rating      = Number(info.rating); filled++; }
     if (info.wishCount != null)   { target.wishCount   = Number(info.wishCount); filled++; }
@@ -5226,22 +5228,38 @@ function renderKwTrend() {
     </span>`;
   }
 
-  // 카드 1개 렌더 — 등록 상품별로 (슬롯 번호 + ROPAGO 스타일 가로 레이아웃)
+  // URL 에서 상품 ID 추출 (예: smartstore.naver.com/xxx/products/13265050582 → 13265050582)
+  function _extractProductId(url) {
+    const m = String(url || '').match(/products\/(\d+)/);
+    return m ? m[1] : '';
+  }
+  // description "[셀러명] ..." 또는 fetchedTitle 끝 "- 셀러명" 에서 셀러명 추출
+  function _extractSeller(product) {
+    if (product.description) {
+      const m = String(product.description).match(/^\[([^\]]+)\]/);
+      if (m) return m[1].trim();
+    }
+    if (product.fetchedTitle) {
+      const m = String(product.fetchedTitle).match(/\s-\s([^-]+)$/);
+      if (m) return m[1].trim();
+    }
+    return '';
+  }
+
+  // 카드 1개 렌더 — ROPAGO 식 큰 썸네일 + 정보 그리드 + 태그 + 키워드 칩
   function _renderCard(productKey, product, slotNum) {
     const data = byProduct.get(productKey);
     const items = data ? data.items : [];
-    // 정렬은 manage 배열 순서(=사용자가 상세 모달 드롭다운으로 지정한 순서)를 그대로 따름
 
     const SHOWN = 6;
-    // 모든 칩을 한 flex 컨테이너에 넣고, 초과 칩은 hidden 클래스로 숨김 (펼치면 같은 줄바꿈 흐름 유지)
     const allChipsHtml = items.map((it, idx) => _renderChip(it, idx >= SHOWN)).join(' ');
     const hiddenHtml = items.length > SHOWN
       ? `<button type="button" onclick="event.stopPropagation(); _toggleKwHiddenChips(this)" class="kw-more-btn text-[11px] font-bold text-brand-blue cursor-pointer hover:underline px-1 self-center" data-more-count="${items.length - SHOWN}">+${items.length - SHOWN}개 더보기</button>`
       : '';
+
     const productName = product.name || '<이름 없음>';
-    const urlLink = product.url
-      ? `<a href="${_escapeHtml(product.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[11px] text-brand-blue hover:underline truncate inline-block max-w-full align-bottom">${_escapeHtml(product.url.replace(/^https?:\/\//, ''))}</a>`
-      : `<span class="text-[11px] text-brand-gray">URL 없음</span>`;
+    const productId = _extractProductId(product.url);
+    const sellerName = _extractSeller(product);
 
     // 가장 최근 업데이트 시간
     let latestTime = '';
@@ -5250,86 +5268,110 @@ function renderKwTrend() {
       if (t && t > latestTime) latestTime = t;
     });
     const updateText = latestTime
-      ? `<span class="text-[10px] font-bold text-brand-gray">LAST RANK UPDATE</span><span class="text-[11px] font-bold text-brand-black ml-1.5">${_escapeHtml(latestTime.replace('T', ' ').slice(0, 16))}</span>`
+      ? `<span class="text-[10px] font-bold text-brand-gray uppercase tracking-wider">LAST RANK UPDATE</span><div class="text-[11px] font-bold text-brand-black mt-0.5">${_escapeHtml(latestTime.replace('T', ' ').slice(0, 16))}</div>`
       : `<span class="text-[10px] font-bold text-brand-gray">미조회</span>`;
 
     const numStr = String(slotNum).padStart(2, '0');
     const status = items.length > 0 ? '추적완료' : '키워드 미등록';
     const statusColor = items.length > 0 ? 'text-brand-green' : 'text-brand-gray';
     const imgUrl = product.imageUrl || '';
+    // ROPAGO 스타일 — 큰 정사각형 썸네일 (모바일 64, 데스크탑 100)
     const imgBlock = imgUrl
-      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-12 h-12 md:w-16 md:h-16 rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
-      : `<div class="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
-           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      ? `<img src="${_escapeHtml(imgUrl)}" alt="" class="w-[64px] h-[64px] md:w-[100px] md:h-[100px] rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
+      : `<div class="w-[64px] h-[64px] md:w-[100px] md:h-[100px] rounded-2xl bg-brand-bg flex items-center justify-center shrink-0">
+           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
          </div>`;
 
-    // ROPAGO 스타일 정보 라인 — 리뷰/평점/찜/등록일
+    // 정보 라인 — 4종 메타 (리뷰/평점/찜/등록일)
     const fmtNum = (v) => v == null ? null : Number(v).toLocaleString('ko-KR');
     const ratingStr = (product.rating != null) ? Number(product.rating).toFixed(2) : null;
     const infoBits = [];
-    if (product.reviewCount != null) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FF8A00" stroke="#FF8A00" stroke-width="0"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="text-brand-gray">리뷰</span> <span class="font-bold">${fmtNum(product.reviewCount)}개</span></span>`);
-    if (ratingStr) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FFB300" stroke="#FFB300"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span class="text-brand-gray">평점</span> <span class="font-bold">${ratingStr}점</span></span>`);
-    if (product.wishCount != null) infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="#FF3B30" stroke="#FF3B30"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span class="text-brand-gray">찜</span> <span class="font-bold">${fmtNum(product.wishCount)}개</span></span>`);
+    if (product.reviewCount != null) {
+      infoBits.push(`<span class="inline-flex items-center gap-1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="#FF8A00" stroke="#FF8A00" stroke-width="0"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="text-brand-gray">리뷰</span> <span class="font-bold text-brand-blue">${fmtNum(product.reviewCount)}개</span></span>`);
+    }
+    if (ratingStr) {
+      infoBits.push(`<span class="inline-flex items-center gap-1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="#FFB300" stroke="#FFB300"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span class="text-brand-gray">평점</span> <span class="font-bold text-brand-blue">${ratingStr}점</span></span>`);
+    }
+    if (product.wishCount != null) {
+      infoBits.push(`<span class="inline-flex items-center gap-1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="#FF3B30" stroke="#FF3B30"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span class="text-brand-gray">찜</span> <span class="font-bold text-brand-blue">${fmtNum(product.wishCount)}개</span></span>`);
+    }
     if (product.registDate) {
       const d = String(product.registDate).slice(0, 10).replace(/-/g, '.');
-      infoBits.push(`<span class="inline-flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span class="text-brand-gray">등록일</span> <span class="font-bold">${_escapeHtml(d)}</span></span>`);
+      infoBits.push(`<span class="inline-flex items-center gap-1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span class="text-brand-gray">등록일</span> <span class="font-bold text-brand-black">${_escapeHtml(d)}</span></span>`);
     }
-    const infoRow = infoBits.length ? `<div class="flex items-center gap-3 text-[11px] flex-wrap">${infoBits.join('')}</div>` : '';
+    const infoRow = infoBits.length ? `<div class="flex items-center gap-4 text-[12px] flex-wrap mt-1.5">${infoBits.join('')}</div>` : '';
 
-    // 태그 칩 (있을 때만)
+    // 태그 칩 (있을 때만) — ROPAGO 스타일 회색 배경 둥근 칩
     const tagsHtml = Array.isArray(product.tags) && product.tags.length
-      ? `<div class="flex flex-wrap gap-1 mt-0.5">
-          <span class="text-[10px] text-brand-gray mr-1 self-center">🏷</span>
-          ${product.tags.slice(0, 12).map(t => `<span class="bg-brand-bg border border-brand-border rounded-full px-2 py-0.5 text-[10px] font-semibold text-brand-black">${_escapeHtml(t)}</span>`).join('')}
+      ? `<div class="flex flex-wrap gap-1.5 items-center mt-1.5">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" class="shrink-0"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          <span class="text-[11px] font-semibold text-brand-gray mr-1">태그</span>
+          ${product.tags.slice(0, 12).map(t => `<span class="bg-brand-bg border border-brand-border rounded-md px-2 py-0.5 text-[11px] font-semibold text-brand-black">${_escapeHtml(t)}</span>`).join('')}
         </div>`
       : '';
 
-    // 카테고리 경로 (있을 때)
+    // 카테고리 경로
     const catLine = product.category
-      ? `<div class="text-[11px] text-brand-gray mt-0.5 truncate" title="${_escapeHtml(product.category)}">${_escapeHtml(product.category)}</div>`
+      ? `<div class="text-[12px] text-brand-gray mt-0.5 truncate" title="${_escapeHtml(product.category)}">${_escapeHtml(product.category)}</div>`
       : '';
 
-    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-3 md:p-5 flex gap-2.5 md:gap-4 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer min-h-[180px]">
-      <!-- 슬롯 번호 -->
-      <div class="shrink-0 flex flex-col items-center justify-start w-10 md:w-14 pt-1">
-        <div class="text-[1.2rem] md:text-[1.6rem] font-black text-brand-black leading-none">${numStr}</div>
-        <div class="text-[9px] md:text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
-      </div>
+    // 셀러명 + 상품 ID (ROPAGO 스타일 헤더)
+    const sellerLine = (sellerName || productId)
+      ? `<div class="flex items-center gap-2 text-[12px] text-brand-gray mb-1">
+          ${sellerName ? `<span class="font-semibold text-brand-black">${_escapeHtml(sellerName)}</span>` : ''}
+          ${productId ? `<span class="text-brand-gray">#&nbsp;${_escapeHtml(productId)}</span>` : ''}
+        </div>`
+      : '';
 
-      <!-- 썸네일 -->
-      ${imgBlock}
-
-      <!-- 본문 -->
-      <div class="flex-1 min-w-0 flex flex-col gap-2">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-bold text-[15px] text-brand-black leading-tight truncate" title="${_escapeHtml(productName)}">${_escapeHtml(productName)}</h3>
-            ${catLine}
-            <div class="mt-1">${urlLink}</div>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <span class="text-[10px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full whitespace-nowrap">${items.length}개</span>
-            <button type="button" onclick="event.stopPropagation(); _refreshKwProductInfo('${_escapeHtml(productKey)}')" title="상품 정보 새로고침" class="w-7 h-7 rounded-full text-brand-gray hover:text-brand-blue hover:bg-brand-bg flex items-center justify-center transition-colors">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </button>
-            <button type="button" onclick="event.stopPropagation(); deleteKwTrendSlot('${_escapeHtml(productKey)}')" title="이 슬롯(상품) 삭제" class="w-7 h-7 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
-            </button>
-          </div>
+    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-4 md:p-6 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer">
+      <!-- 상단: 슬롯번호 + 썸네일 + 본문 + 우측액션 -->
+      <div class="flex gap-3 md:gap-5">
+        <!-- 슬롯 번호 -->
+        <div class="shrink-0 flex flex-col items-center justify-start w-10 md:w-14 pt-1">
+          <div class="text-[1.3rem] md:text-[1.7rem] font-black text-brand-black leading-none">${numStr}</div>
+          <div class="text-[9px] md:text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
         </div>
-        ${infoRow}
-        ${tagsHtml}
-        <div class="border-t border-brand-border pt-2 flex flex-wrap gap-1.5 min-h-[36px]">
+        <!-- 썸네일 -->
+        ${imgBlock}
+        <!-- 본문 -->
+        <div class="flex-1 min-w-0 flex flex-col">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              ${sellerLine}
+              <h3 class="font-bold text-[15px] md:text-[17px] text-brand-black leading-snug" title="${_escapeHtml(productName)}">${_escapeHtml(productName)}</h3>
+              ${catLine}
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" onclick="event.stopPropagation(); _refreshKwProductInfo('${_escapeHtml(productKey)}')" title="상품 정보 새로고침" class="w-7 h-7 rounded-full text-brand-gray hover:text-brand-blue hover:bg-brand-bg flex items-center justify-center transition-colors">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              </button>
+              <button type="button" onclick="event.stopPropagation(); deleteKwTrendSlot('${_escapeHtml(productKey)}')" title="이 슬롯(상품) 삭제" class="w-7 h-7 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+              </button>
+            </div>
+          </div>
+          ${infoRow}
+          ${tagsHtml}
+        </div>
+      </div>
+      <!-- 하단: 키워드 칩 + 마지막 업데이트 -->
+      <div class="mt-4 pt-3 border-t border-brand-border">
+        <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div class="flex items-center gap-2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3478F6" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span class="text-[11px] font-bold text-brand-gray uppercase tracking-wider">추적 키워드</span>
+            <span class="text-[10px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full">${items.length}개</span>
+          </div>
+          <div>${updateText}</div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 min-h-[36px]">
           ${items.length === 0
             ? '<span class="text-brand-gray text-xs">등록된 키워드 없음 — 순위 조회 후 "선택한 키워드 등록"으로 추가하세요</span>'
             : allChipsHtml + (hiddenHtml ? ' ' + hiddenHtml : '')}
         </div>
-        <div class="border-t border-brand-border pt-2 flex items-center justify-between">
-          <div>${updateText}</div>
-          <div class="text-[11px] text-brand-gray flex items-center gap-1">
-            <span>날짜별 추이 보기</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>
+        <div class="mt-3 text-[11px] text-brand-gray flex items-center justify-end gap-1">
+          <span>날짜별 추이 보기</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>
     </div>`;
