@@ -4048,6 +4048,14 @@ function _renderTagStatsList() {
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
+  // 새 DOM 의 검색량 셀 즉시 채우기 (캐시 hit 만 — fetch 안 함)
+  if (typeof _loadKwVolume === 'function') {
+    const cache = _loadKwVolume();
+    tagsBox.querySelectorAll('[data-vol-kw]').forEach(el => {
+      const kw = el.getAttribute('data-vol-kw');
+      try { el.innerHTML = _kwVolumeText(cache[kw]); } catch(_) {}
+    });
+  }
 }
 
 // 3-1) 키워드 → 확장프로그램으로 네이버 쇼핑 캡처 (마누태그 추출)
