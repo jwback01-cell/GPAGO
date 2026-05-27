@@ -654,7 +654,13 @@
             </div>
           </div>
           <div>
-            <div class="text-[11px] font-black text-brand-gray tracking-wider mb-3">TAG STATS</div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[11px] font-black text-brand-gray tracking-wider">TAG STATS</div>
+              <div id="tool-json-sort-toggle" class="hidden flex gap-1 bg-brand-bg p-1 rounded-lg">
+                <button data-sort="count" onclick="setTagStatsSort('count')" class="tag-sort-btn px-3 py-1 text-[11px] font-bold bg-white shadow-sm rounded text-brand-black">빈도순</button>
+                <button data-sort="volume" onclick="setTagStatsSort('volume')" class="tag-sort-btn px-3 py-1 text-[11px] font-medium text-brand-gray hover:text-brand-black transition-colors">검색량순</button>
+              </div>
+            </div>
             <div id="tool-json-tags" class="min-h-[300px] text-sm text-brand-gray">
               <div class="text-center py-12">분석 후 표시됩니다</div>
             </div>
@@ -3985,6 +3991,65 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('tool-terms-result')) _renderTermsRecent({});
 });
 
+// TAG STATS 정렬 토글 — 빈도순(count) / 검색량순(volume)
+window._tagStatsSortBy = 'count';
+function setTagStatsSort(mode) {
+  if (mode !== 'count' && mode !== 'volume') return;
+  window._tagStatsSortBy = mode;
+  document.querySelectorAll('.tag-sort-btn').forEach(b => {
+    const active = b.dataset.sort === mode;
+    b.classList.toggle('bg-white', active);
+    b.classList.toggle('shadow-sm', active);
+    b.classList.toggle('text-brand-black', active);
+    b.classList.toggle('font-bold', active);
+    b.classList.toggle('text-brand-gray', !active);
+    b.classList.toggle('font-medium', !active);
+  });
+  _renderTagStatsList();
+}
+
+function _renderTagStatsList() {
+  const tagsBox = document.getElementById('tool-json-tags');
+  const data = window._lastTagStats;
+  if (!tagsBox || !data) return;
+  const { sorted, totalProducts } = data;
+  const sortBy = window._tagStatsSortBy || 'count';
+  // 정렬: 검색량순일 땐 캐시된 월 검색량 활용
+  let arr = sorted.slice(0, 60);
+  if (sortBy === 'volume') {
+    const volCache = (typeof _loadKwVolume === 'function') ? _loadKwVolume() : {};
+    const volOf = (kw) => {
+      const v = volCache[kw];
+      if (!v || v.error) return -1; // 데이터 없으면 뒤로
+      if (typeof v.total === 'string') return 0; // "< 20" 등 표시값
+      return v.total || 0;
+    };
+    arr = arr.slice().sort((a, b) => volOf(b[0]) - volOf(a[0]));
+  }
+  const maxPct = Math.max(1, Math.round((sorted[0]?.[1] || 1) / totalProducts * 100));
+  const tierStyle = (pct) => {
+    if (pct >= 30) return { fill: 'bg-brand-pink/25', count: 'text-brand-pink', text: 'text-brand-pink' };
+    if (pct >= 15) return { fill: 'bg-brand-orange/25', count: 'text-brand-orange', text: 'text-brand-orange' };
+    if (pct >= 7)  return { fill: 'bg-brand-blue/20', count: 'text-brand-blue', text: 'text-brand-black' };
+    return { fill: 'bg-brand-gray/15', count: 'text-brand-gray', text: 'text-brand-black' };
+  };
+  const html = arr.map(([t, c]) => {
+    const pct = Math.round(c / totalProducts * 100);
+    const ts = tierStyle(pct);
+    const barWidth = Math.max(4, Math.min(100, Math.round((pct / maxPct) * 100)));
+    return `<div class="relative overflow-hidden rounded-md my-0.5">
+      <div class="absolute inset-y-0 left-0 ${ts.fill} transition-all" style="width:${barWidth}%"></div>
+      <div class="relative flex items-center gap-2 px-2 py-1.5 text-xs">
+        <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
+        <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
+        <span class="font-semibold ${ts.text} truncate flex-1" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
+        <span data-vol-kw="${escapeHtml(t)}" class="text-[10px] text-brand-gray shrink-0 whitespace-nowrap">—</span>
+      </div>
+    </div>`;
+  }).join('');
+  tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
+}
+
 // 3-1) 키워드 → 확장프로그램으로 네이버 쇼핑 캡처 (마누태그 추출)
 //      확장이 없거나 응답 없을 시 안내 메시지만 표시 (서버 스크래핑/Open API 폴백 없음)
 async function extractFromKeyword() {
@@ -4145,35 +4210,12 @@ function parseShopJson() {
   // 좌측 RESULT — 쉼표 구분 태그 목록 (상위 12개)
   const resultList = sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',');
   resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${resultList}</span>`;
-  // 우측 TAG STATS — ROPAGO 스타일 막대그래프 (빈도 % 만큼 배경 채움)
-  //  >= 30% : 분홍 (핵심)
-  //  >= 15% : 주황 (주요)
-  //  >= 7%  : 파랑 (보통)
-  //  < 7%   : 회색 (참고)
-  const top = sorted.slice(0, 60);
-  const maxPct = Math.max(1, Math.round((top[0]?.[1] || 1) / totalProducts * 100));
-  const tierStyle = (pct) => {
-    if (pct >= 30) return { fill: 'bg-brand-pink/25', count: 'text-brand-pink', text: 'text-brand-pink' };
-    if (pct >= 15) return { fill: 'bg-brand-orange/25', count: 'text-brand-orange', text: 'text-brand-orange' };
-    if (pct >= 7)  return { fill: 'bg-brand-blue/20', count: 'text-brand-blue', text: 'text-brand-black' };
-    return { fill: 'bg-brand-gray/15', count: 'text-brand-gray', text: 'text-brand-black' };
-  };
-  const html = top.map(([t, c]) => {
-    const pct = Math.round(c / totalProducts * 100);
-    const ts = tierStyle(pct);
-    // 막대 폭: 가장 큰 % 를 100% 로 정규화 (시각 차이 강조)
-    const barWidth = Math.max(4, Math.min(100, Math.round((pct / maxPct) * 100)));
-    return `<div class="relative overflow-hidden rounded-md my-0.5">
-      <div class="absolute inset-y-0 left-0 ${ts.fill} transition-all" style="width:${barWidth}%"></div>
-      <div class="relative flex items-center gap-2 px-2 py-1.5 text-xs">
-        <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
-        <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
-        <span class="font-semibold ${ts.text} truncate flex-1" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
-        <span data-vol-kw="${escapeHtml(t)}" class="text-[10px] text-brand-gray shrink-0 whitespace-nowrap">—</span>
-      </div>
-    </div>`;
-  }).join('');
-  tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
+  // 우측 TAG STATS — ROPAGO 스타일 막대그래프 + 정렬 토글 (빈도순 / 검색량순)
+  window._lastTagStats = { sorted, totalProducts };
+  // 정렬 토글 버튼 표시
+  const toggleEl = document.getElementById('tool-json-sort-toggle');
+  if (toggleEl) { toggleEl.classList.remove('hidden'); toggleEl.classList.add('flex'); }
+  _renderTagStatsList();
   // 월간 검색량 비동기 조회 (캐시 즉시 표시 → 만료된 키워드만 백그라운드 fetch)
   if (typeof _refreshKwVolumesForRendered === 'function') {
     try { _refreshKwVolumesForRendered(); } catch(_) {}
@@ -7117,6 +7159,10 @@ function _applyKwVolumesToCells() {
     const kw = el.getAttribute('data-vol-kw');
     el.innerHTML = _kwVolumeText(cache[kw]);
   });
+  // 검색량순 정렬 활성화된 경우 — 캐시 업데이트 시 다시 정렬해서 그리기
+  if (window._tagStatsSortBy === 'volume' && window._lastTagStats && typeof _renderTagStatsList === 'function') {
+    try { _renderTagStatsList(); } catch(_) {}
+  }
 }
 let _kwVolumeFetchInFlight = false;
 let _kwVolumePendingRefresh = false;
