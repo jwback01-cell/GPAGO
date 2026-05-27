@@ -6243,24 +6243,17 @@ function _renderKwDetailTable() {
   const W_VOL = 120;
   const W_DATE = 150;
   const COL_STYLE = `style="width:${W_DATE}px;min-width:${W_DATE}px;max-width:${W_DATE}px"`;
+  // 날짜와 시각 컬럼 헤더 동일 구조 (높이/패딩 동일) — 라벨 텍스트만 다름
   const headerCells = columns.map(c => {
-    if (c.type === 'date') {
-      return `<th ${COL_STYLE} onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다" class="font-semibold p-3 text-left whitespace-nowrap cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
-        <span>${c.label}</span>
-        <svg class="inline-block ml-1 text-brand-gray" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </th>`;
-    } else {
-      const dateLabelHtml = c.dateLabel
-        ? `<div class="text-[10px] font-bold text-brand-blue mb-0.5">${c.dateLabel}</div>`
-        : `<div class="h-[14px] mb-0.5"></div>`;
-      const collapseIcon = c.isFirstOfDay
-        ? `<svg class="inline-block ml-1 text-brand-blue" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>`
-        : '';
-      return `<th ${COL_STYLE} onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 날짜별 보기로 돌아갑니다" class="font-semibold p-3 text-left whitespace-nowrap cursor-pointer hover:bg-brand-blue-light/40 transition-colors bg-brand-blue-light/20 select-none">
-        ${dateLabelHtml}
-        <span class="text-brand-blue font-bold">${c.label}${collapseIcon}</span>
-      </th>`;
-    }
+    const isTime = c.type === 'time';
+    const label = c.label; // 날짜는 "05.27" / 시각은 "20:18"
+    // 화살표: 날짜는 ▼(펼치기), 시각은 ▲(접기)
+    const arrowPath = isTime ? '18 15 12 9 6 15' : '6 9 12 15 18 9';
+    const title = isTime ? '클릭하면 날짜별 보기로 돌아갑니다' : '클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다';
+    return `<th ${COL_STYLE} onclick="toggleKwDetailDay('${c.dateKey}')" title="${title}" class="font-semibold p-3 text-left whitespace-nowrap cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
+      <span>${label}</span>
+      <svg class="inline-block ml-1 text-brand-gray" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="${arrowPath}"/></svg>
+    </th>`;
   }).join('');
   const rowsHtml = items.map(item => {
     const lk = item.rankType === 'price' ? item.legacyKey : null;
