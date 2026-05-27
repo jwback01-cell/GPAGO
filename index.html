@@ -3744,14 +3744,14 @@ async function analyzeTerms() {
   } catch(_) {}
 }
 
-// 3-1) 키워드 → 확장프로그램 우선 → 서버 스크래핑 → Open API 폴백 (ROPAGO 방식)
+// 3-1) 키워드 → 확장프로그램으로 네이버 쇼핑 캡처 (마누태그 추출)
+//      확장이 없거나 응답 없을 시 안내 메시지만 표시 (서버 스크래핑/Open API 폴백 없음)
 async function extractFromKeyword() {
   const kw = (document.getElementById('tool-json-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
   const btn = document.getElementById('tool-json-extract-btn');
   const tagsBox  = document.getElementById('tool-json-tags');
   const totalEl  = document.getElementById('tool-json-tag-total');
-  const kwBox    = document.getElementById('tool-json-keyword');
   const resultListBox = document.getElementById('tool-json-result-list');
   const termsBox = document.getElementById('tool-json-terms');
   const origBtnText = btn ? btn.innerHTML : '';
@@ -3760,139 +3760,38 @@ async function extractFromKeyword() {
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
 
-  // 0차: 확장프로그램으로 자동 캡처 시도 (가장 정확한 마누태그 결과)
-  //     - 확장이 N 입력란(kw-naver)을 읽으므로 거기에 키워드 미리 채워줌
-  //     - GPAGO_REQUEST_TRIGGER 메시지 보내면 확장이 새 팝업 윈도우 열고 캡처
-  //     - 확장이 GPAGO_AUTO_ANALYZE 로 데이터 반환 → _processExtensionPayload 가 parseShopJson 호출
+  // 확장이 kw-naver 입력란을 읽으므로 키워드 미리 동기화
+  const nInput = document.getElementById('kw-naver');
+  if (nInput) nInput.value = kw;
+  let ackReceived = false;
+  let dataReceived = false;
+  const ackListener = (e) => {
+    if (e.source !== window) return;
+    if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') ackReceived = true;
+    if (e.data?.source === 'gpago-extension' && e.data?.type === 'GPAGO_AUTO_ANALYZE') dataReceived = true;
+  };
+  window.addEventListener('message', ackListener);
   try {
-    const nInput = document.getElementById('kw-naver');
-    if (nInput) nInput.value = kw;
-    let ackReceived = false;
-    let dataReceived = false;
-    const ackListener = (e) => {
-      if (e.source !== window) return;
-      if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') ackReceived = true;
-      if (e.data?.source === 'gpago-extension' && e.data?.type === 'GPAGO_AUTO_ANALYZE') dataReceived = true;
-    };
-    window.addEventListener('message', ackListener);
     window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
-
-    // 1초 안에 ACK 받으면 확장 살아있음 → 최대 15초 추가 대기 (네이버 캡처 시간)
+    // 1초 대기 — 확장 ACK 확인
     await new Promise(r => setTimeout(r, 1000));
-    if (ackReceived) {
-      if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">📦 확장프로그램 응답 — 네이버 팝업에서 캡처 진행 중... (최대 15초)</div>';
-      for (let i = 0; i < 30 && !dataReceived; i++) {
-        await new Promise(r => setTimeout(r, 500));
-      }
-      window.removeEventListener('message', ackListener);
-      if (dataReceived) {
-        // _processExtensionPayload 가 자동으로 처리 (parseShopJson 호출됨)
-        if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
-        return;
-      }
-      // ACK 만 받고 데이터 못 받음 — 캡처 실패, 폴백으로 진행
-      console.warn('[extractFromKeyword] 확장 ACK 후 데이터 미수신, 폴백 시도');
-    } else {
-      window.removeEventListener('message', ackListener);
-      console.log('[extractFromKeyword] 확장프로그램 미설치 또는 무응답, 폴백 시도');
+    if (!ackReceived) {
+      if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 확장프로그램이 응답하지 않습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO Chrome 확장프로그램이 설치·활성화되어 있는지 확인해 주세요.</span></div>`;
+      if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">확장 무응답</span>';
+      if (totalEl) totalEl.textContent = '0';
+      return;
     }
-  } catch (e) {
-    console.warn('[extractFromKeyword] 확장 트리거 오류:', e);
-  }
-
-  // 1차 폴백: 서버 스크래핑 시도 (대부분 봇 차단으로 실패하지만 일단 시도)
-  try {
-    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 서버 스크래핑 시도 중...</div>';
-    const r = await fetch(`/api/naver-shop-scrape?query=${encodeURIComponent(kw)}`);
-    if (r.ok) {
-      const data = await r.json();
-      if (data.products && data.products.length) {
-        const fakeJson = JSON.stringify({
-          query: data.query || kw,
-          products: data.products,
-          terms: data.terms || [],
-          nluTerms: data.nluTerms || [],
-        });
-        document.getElementById('tool-json-input').value = fakeJson;
-        parseShopJson();
-        toast(`✅ "${kw}" 추출 완료 — ${data.products.length}개 상품 (${data.source || ''})`);
-        if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
-        return;
-      }
+    // 확장 살아있음 — 캡처 데이터 대기 (최대 20초)
+    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">📦 확장프로그램 응답 — 네이버 팝업에서 80개 상품 캡처 중... (최대 20초)</div>';
+    for (let i = 0; i < 40 && !dataReceived; i++) {
+      await new Promise(r => setTimeout(r, 500));
     }
-    console.warn('[extractFromKeyword] 스크래핑 실패, Open API 폴백 시도');
-  } catch (e) {
-    console.warn('[extractFromKeyword] 스크래핑 오류:', e);
-  }
-
-  // 2차 폴백: Open API + 상품 제목에서 태그 추출 (manuTag 는 못 얻지만 빈도 기반 태그 산출)
-  try {
-    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 차단 — Open API 폴백 모드로 전환 중...</div>';
-    // API 키를 두 곳에서 모두 시도: 분석페이지 설정(_getApi) + 키워드 순위 설정(_loadNaverApi)
-    let cid = '', csec = '';
-    try { const a1 = (typeof _getApi === 'function') ? _getApi() : {}; if (a1.id) cid = a1.id; if (a1.secret) csec = a1.secret; } catch(_) {}
-    if (!cid || !csec) {
-      try { const a2 = (typeof _loadNaverApi === 'function') ? _loadNaverApi() : {}; if (a2.clientId) cid = a2.clientId; if (a2.clientSecret) csec = a2.clientSecret; } catch(_) {}
+    if (!dataReceived) {
+      if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 캡처 시간 초과 (20초)<br><span class="text-brand-gray mt-2 inline-block">네이버 페이지 로딩이 늦거나 캡처에 실패했어요. 다시 시도해 주세요.</span></div>`;
     }
-    if (!cid || !csec) {
-      throw new Error('네이버 차단 + Open API 미설정 — 우상단 "API 설정" 또는 "키워드 순위 → 설정"에 Client ID/Secret 등록 필요');
-    }
-    const apiR = await fetch(`/api/naver-shop?query=${encodeURIComponent(kw)}&display=80&sort=sim`, {
-      headers: { 'x-client-id': cid, 'x-client-secret': csec }
-    });
-    if (!apiR.ok) throw new Error('Open API 호출 실패: HTTP ' + apiR.status);
-    const apiData = await apiR.json();
-    const items = apiData.items || [];
-    if (!items.length) throw new Error('Open API 검색 결과 없음');
-
-    // 제목에서 한글 단어 추출 → 빈도 집계
-    const titleFreq = new Map();
-    for (const it of items) {
-      const title = String(it.title || '').replace(/<[^>]+>/g, '');
-      const words = title.split(/[\s,/\-_()[\]【】|·\.+]+/).filter(w => w.length >= 2 && w.length <= 12 && /[가-힣A-Za-z0-9]/.test(w));
-      const local = new Set();
-      for (const w of words) {
-        if (local.has(w)) continue;
-        local.add(w);
-        titleFreq.set(w, (titleFreq.get(w) || 0) + 1);
-      }
-    }
-    // 상위 40개 정렬
-    const sorted = [...titleFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
-    const totalProducts = items.length;
-
-    // 결과 UI 채우기 (parseShopJson 비슷한 형식으로)
-    if (kwBox) { kwBox.textContent = kw; kwBox.classList.remove('text-brand-gray'); kwBox.classList.add('text-brand-black','font-bold'); }
-    if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray text-[11px]">Open API 폴백 모드 (Terms 미지원)</span>';
-    if (totalEl) totalEl.textContent = sorted.length.toLocaleString('ko-KR');
-    if (resultListBox) {
-      const resultList = sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',');
-      resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${resultList}</span>`;
-    }
-    if (tagsBox) {
-      const html = sorted.map(([t, c]) => {
-        const pct = Math.round(c / totalProducts * 100);
-        return `<div class="flex items-center gap-2 py-1.5 text-xs">
-          <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
-          <span class="text-brand-blue font-black w-8 text-right shrink-0">${pct}%</span>
-          <span class="w-1.5 h-1.5 rounded-full bg-brand-orange shrink-0"></span>
-          <span class="font-semibold text-brand-black truncate" title="${escapeHtml(t)}">${escapeHtml(t)}</span>
-        </div>`;
-      }).join('');
-      tagsBox.innerHTML = `
-        <div class="bg-brand-orange-light/40 text-brand-orange text-[11px] font-semibold px-3 py-2 rounded-xl mb-3 leading-relaxed">
-          ⚠ 네이버 쇼핑 페이지 차단 — Open API 폴백 모드 사용 중<br>
-          <span class="font-normal">상품 제목에서 빈도 분석한 후보 태그입니다 (실제 마누태그가 아님). 정확한 마누태그는 "고급 옵션의 직접 JSON 붙여넣기"로 얻을 수 있어요.</span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">${html}</div>`;
-    }
-    toast(`⚠ "${kw}" 폴백 추출 — 제목 기반 태그 ${sorted.length}개 (마누태그 아님)`);
-  } catch (e) {
-    if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 추출 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-brand-gray mt-2 inline-block">"(고급) 직접 JSON 붙여넣기" 옵션을 사용해 보세요</span></div>`;
-    if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">실패</span>';
-    if (totalEl) totalEl.textContent = '0';
-    console.error('[extractFromKeyword] 폴백 실패:', e);
+    // dataReceived 인 경우 _processExtensionPayload 가 자동으로 결과 채움
   } finally {
+    window.removeEventListener('message', ackListener);
     if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
   }
 }
@@ -4005,15 +3904,28 @@ function parseShopJson() {
   // 좌측 RESULT — 쉼표 구분 태그 목록 (상위 12개)
   const resultList = sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',');
   resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${resultList}</span>`;
-  // 우측 TAG STATS — ROPAGO 스타일 4컬럼 그리드
-  const top = sorted.slice(0, 40);
+  // 우측 TAG STATS — ROPAGO 스타일 4컬럼 그리드 + 빈도별 색깔/도형 차등화
+  // 도형 + 색상으로 빈도를 시각적으로 즉시 구분
+  //  >= 30% : 빨강 채워진 사각형 (핵심)
+  //  >= 15% : 주황 채워진 동그라미 (주요)
+  //  >= 7%  : 파랑 동그라미 (보통)
+  //  < 7%   : 회색 동그라미 (참고)
+  const top = sorted.slice(0, 60);
+  const tierStyle = (pct) => {
+    if (pct >= 30) return { shape: 'rounded-sm', color: 'bg-brand-pink', label: 'text-brand-pink', count: 'text-brand-pink' };
+    if (pct >= 15) return { shape: 'rounded-full', color: 'bg-brand-orange', label: 'text-brand-orange', count: 'text-brand-orange' };
+    if (pct >= 7)  return { shape: 'rounded-full', color: 'bg-brand-blue', label: 'text-brand-blue', count: 'text-brand-blue' };
+    return { shape: 'rounded-full', color: 'bg-brand-gray/60', label: 'text-brand-gray', count: 'text-brand-gray' };
+  };
   const html = top.map(([t, c]) => {
     const pct = Math.round(c / totalProducts * 100);
+    const ts = tierStyle(pct);
+    const dotSize = pct >= 30 ? 'w-2 h-2' : 'w-1.5 h-1.5';
     return `<div class="flex items-center gap-2 py-1.5 text-xs">
       <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
-      <span class="text-brand-blue font-black w-8 text-right shrink-0">${pct}%</span>
-      <span class="w-1.5 h-1.5 rounded-full bg-brand-orange shrink-0"></span>
-      <span class="font-semibold text-brand-black truncate" title="${escapeHtml(t)}">${escapeHtml(t)}</span>
+      <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
+      <span class="${dotSize} ${ts.shape} ${ts.color} shrink-0"></span>
+      <span class="font-semibold ${ts.label} truncate" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
