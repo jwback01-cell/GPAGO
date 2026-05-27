@@ -144,6 +144,8 @@
   .pill-btn-light:hover { background: #F9F9FB; }
   .pill-btn-blue { background: #E3F2FD; color: #2196F3; }
   .pill-btn-blue:hover { background: #2196F3; color: #fff; }
+  .pill-btn-purple { background: #7C3AED; color: #fff; }
+  .pill-btn-purple:hover { background: #6D28D9; }
   .pill-btn-pink { background: #FCE4EC; color: #E91E63; }
   .pill-btn-pink:hover { background: #E91E63; color: #fff; }
   .pill-btn-green { background: #E8F5E9; color: #00C853; }
@@ -670,6 +672,29 @@
         <div class="mt-4 text-[11px] text-brand-gray bg-brand-bg rounded-xl px-3 py-2 leading-relaxed">
           💡 추출 결과는 <b>키워드 분석</b> 페이지의 결과 테이블에도 자동 매칭됩니다 (productId / 상품명 기준).
         </div>
+      </section>
+
+      <!-- 상품명 텀즈 마스터 -->
+      <section class="bg-white rounded-4xl panel p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 rounded-xl bg-brand-purple-light flex items-center justify-center">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-[15px]">상품명 텀즈 마스터</div>
+            <div class="text-xs text-brand-gray mt-0.5">상품명을 단어(Terms) 단위로 분해하고 중복 사용을 즉시 확인합니다</div>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-2">
+          <input id="tool-terms-input" class="pill-input flex-1" placeholder="상품명 입력 (예: 빅픽 갤럭시 버즈4 프로 케이스 갤럭시 버즈4 케이스 ...)" onkeydown="if(event.key==='Enter'){event.preventDefault();analyzeTerms();}">
+          <button id="tool-terms-analyze-btn" class="pill-btn pill-btn-purple" onclick="analyzeTerms()">분석</button>
+        </div>
+        <div class="text-[11px] text-brand-gray mb-4">실제 등록된 상품의 상품명을 입력하면 상품명의 단어(Terms) 단위로 분석해 줍니다.</div>
+        <!-- 최근 분석 -->
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[11px] font-black text-brand-gray tracking-wider">RECENT · 최근 분석 <b id="tool-terms-recent-count" class="text-brand-purple">0</b><span class="text-brand-gray">/10</span></div>
+        </div>
+        <div id="tool-terms-result" class="space-y-3"></div>
       </section>
     </section>
 
@@ -3696,66 +3721,140 @@ async function extractTags() {
   }
 }
 
-// 2) 상품명 텀즈 마스터 — 네이버 API의 terms 분해 결과 활용
+// 2) 상품명 텀즈 마스터 — 확장프로그램으로 네이버 검색의 정확한 terms 분해 가져오기
+//    (Naver Open API 는 terms 미반환 — shoppingResult JSON 만 terms/nluTerms 포함)
+let _termsAnalysisPending = false;
+let _termsAnalysisInputName = '';
+
 async function analyzeTerms() {
   const name = (document.getElementById('tool-terms-input').value || '').trim();
   if (!name) { toast('상품명을 입력해 주세요'); return; }
+  const btn = document.getElementById('tool-terms-analyze-btn');
   const result = document.getElementById('tool-terms-result');
-  result.classList.remove('text-center', 'items-center', 'justify-center');
-  result.classList.add('text-left');
-  result.innerHTML = '<span class="text-brand-gray text-xs animate-pulse">🔍 네이버 검색에 분해 요청 중...</span>';
-  const api = _getApi();
-  let terms = [];
-  let sourceLabel = '';
-  if (api.id && api.secret) {
-    try {
-      // 네이버 검색 백엔드가 분해한 terms 시도
-      const r = await fetch(`/api/naver-shop?query=${encodeURIComponent(name)}&display=1&sort=sim`, {
-        headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
-      });
-      if (r.ok) {
-        const data = await r.json();
-        if (Array.isArray(data.terms) && data.terms.length) {
-          terms = data.terms.filter(t => typeof t === 'string' && t.trim());
-          sourceLabel = '네이버 검색 분해';
-        }
-      }
-    } catch(_) {}
+  const origBtn = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '분석 중...'; }
+
+  _termsAnalysisPending = true;
+  _termsAnalysisInputName = name;
+  // 확장이 kw-naver 를 읽으므로 동기화
+  const nInput = document.getElementById('kw-naver');
+  if (nInput) nInput.value = name;
+
+  // 진행 상태 카드 (recent 최상단)
+  _renderTermsRecent({ inProgress: true, name });
+
+  let ackReceived = false;
+  const ackListener = (e) => {
+    if (e.source !== window) return;
+    if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') ackReceived = true;
+  };
+  window.addEventListener('message', ackListener);
+  try {
+    window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: name }, window.location.origin);
+    await new Promise(r => setTimeout(r, 1000));
+    if (!ackReceived) {
+      // 확장 미설치 — 간단 분해로 폴백
+      const terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+      _termsAnalysisPending = false;
+      _saveTermsRecent(name, terms, '간단 분해 (확장 미설치)');
+      _renderTermsRecent({});
+      toast('⚠ 확장프로그램 미설치 — 간단 분해로 표시');
+      return;
+    }
+    // 확장 살아있음 — 데이터 수신 대기 (최대 20초)
+    // 실제 수신은 _processExtensionPayload 의 terms 모드 분기에서 처리
+    const startedAt = Date.now();
+    while (_termsAnalysisPending && Date.now() - startedAt < 20000) {
+      await new Promise(r => setTimeout(r, 300));
+    }
+    if (_termsAnalysisPending) {
+      _termsAnalysisPending = false;
+      const terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+      _saveTermsRecent(name, terms, '간단 분해 (캡처 시간 초과)');
+      _renderTermsRecent({});
+      toast('⚠ 캡처 시간 초과 — 간단 분해로 표시');
+    }
+  } finally {
+    window.removeEventListener('message', ackListener);
+    if (btn) { btn.disabled = false; btn.innerHTML = origBtn; }
   }
-  // 폴백 — 공백/특수문자 기준 분해
-  if (!terms.length) {
-    terms = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
-    sourceLabel = '간단 분해 (공백 기준)';
-  }
-  const charLen = name.replace(/\s+/g, '').length;
-  const counts = {};
-  terms.forEach(t => counts[t] = (counts[t] || 0) + 1);
-  const dupCount = Object.values(counts).filter(c => c > 1).length;
-  const chipsHtml = Object.entries(counts).map(([t, c], i) =>
-    `<span class="inline-block px-3 py-1.5 rounded-full text-xs font-bold m-1 ${c > 1 ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black'}">
-      <span class="text-brand-gray font-black mr-1">${i + 1}</span>${escapeHtml(t)}${c > 1 ? ' <span class="text-brand-pink">×' + c + '</span>' : ''}
-    </span>`
-  ).join('');
-  result.innerHTML = `
-    <div class="flex items-center gap-3 mb-3 flex-wrap">
-      <span class="text-xs font-bold text-brand-gray">글자 수</span>
-      <span class="font-black text-base text-brand-black">${charLen}</span>
-      <span class="text-brand-border">|</span>
-      <span class="text-xs font-bold text-brand-gray">Terms</span>
-      <span class="font-black text-base text-brand-blue">${terms.length}</span>
-      <span class="text-brand-border">|</span>
-      <span class="text-xs font-bold text-brand-gray">중복</span>
-      <span class="font-black text-base ${dupCount > 0 ? 'text-brand-pink' : 'text-brand-green'}">${dupCount}</span>
-      <span class="text-[10px] text-brand-gray ml-auto">${sourceLabel}</span>
-    </div>
-    <div>${chipsHtml}</div>`;
+}
+
+function _saveTermsRecent(name, terms, sourceLabel) {
   try {
     const recent = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]');
-    recent.unshift({ name, terms, at: new Date().toISOString() });
+    recent.unshift({ name, terms, sourceLabel: sourceLabel || '', at: new Date().toISOString() });
     localStorage.setItem('gpago_terms_recent', JSON.stringify(recent.slice(0, 10)));
-    document.getElementById('tool-terms-count').textContent = Math.min(recent.length, 10);
   } catch(_) {}
 }
+
+function _renderTermsRecent(opts) {
+  opts = opts || {};
+  const wrap = document.getElementById('tool-terms-result');
+  const cntEl = document.getElementById('tool-terms-recent-count');
+  if (!wrap) return;
+  let recent = [];
+  try { recent = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]'); } catch(_) {}
+  if (cntEl) cntEl.textContent = Math.min(recent.length, 10);
+
+  let cards = '';
+  if (opts.inProgress) {
+    cards += `<div class="border border-brand-border rounded-2xl p-4 bg-brand-bg">
+      <div class="text-xs text-brand-gray animate-pulse">📦 "${escapeHtml(opts.name)}" — 네이버 캡처 중...</div>
+    </div>`;
+  }
+  if (!recent.length && !opts.inProgress) {
+    wrap.innerHTML = `<div class="border border-dashed border-brand-border rounded-2xl p-6 text-center text-xs text-brand-gray">분석 결과가 없습니다. 상품명을 입력하고 분석을 눌러 보세요</div>`;
+    return;
+  }
+  recent.forEach(it => {
+    const name = it.name || '';
+    const terms = Array.isArray(it.terms) ? it.terms : [];
+    const charLen = name.replace(/\s+/g, '').length;
+    const counts = {};
+    terms.forEach(t => { counts[t] = (counts[t] || 0) + 1; });
+    const dupTags = Object.entries(counts).filter(([_, c]) => c > 1);
+    const dupCount = dupTags.length;
+    const dupSummary = dupTags.length
+      ? dupTags.map(([t, c]) => `<b class="text-brand-pink">${escapeHtml(t)}</b> (${c-1}회 중복 · 총 ${c}회 사용)`).join(' · ')
+      : '';
+    const chips = terms.map((t, i) => {
+      const isDup = counts[t] > 1;
+      const cls = isDup ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black border border-brand-border';
+      return `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold m-0.5 ${cls}">
+        <span class="text-brand-gray font-black">${i + 1}</span>${escapeHtml(t)}
+      </span>`;
+    }).join('');
+    const at = it.at ? new Date(it.at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const sourceBadge = it.sourceLabel ? `<span class="text-[10px] text-brand-gray ml-2">${escapeHtml(it.sourceLabel)}</span>` : '';
+    cards += `<div class="border border-brand-border rounded-2xl p-4">
+      <div class="flex items-start justify-between gap-3 mb-2 flex-wrap">
+        <div class="flex items-center gap-3 flex-wrap min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-brand-bg flex items-center justify-center shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <div class="font-semibold text-sm break-all">${escapeHtml(name)}</div>
+        </div>
+        <span class="text-[10px] text-brand-gray shrink-0">${at}${sourceBadge}</span>
+      </div>
+      <div class="flex items-center gap-3 mb-2 flex-wrap pl-12">
+        <span class="font-black text-base text-brand-black">${charLen}</span><span class="text-[11px] text-brand-gray font-bold">글자수</span>
+        <span class="text-brand-border">|</span>
+        <span class="font-black text-base text-brand-purple">${terms.length}</span><span class="text-[11px] text-brand-gray font-bold">Terms</span>
+        <span class="text-brand-border">|</span>
+        <span class="font-black text-base ${dupCount > 0 ? 'text-brand-pink' : 'text-brand-green'}">${dupCount}</span><span class="text-[11px] text-brand-gray font-bold">중복</span>
+      </div>
+      <div class="pl-12">${chips}</div>
+      ${dupSummary ? `<div class="pl-12 mt-2 text-[11px] text-brand-gray">· ${dupSummary}</div>` : ''}
+    </div>`;
+  });
+  wrap.innerHTML = cards;
+}
+
+// 페이지 진입 시 기존 recent 표시
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('tool-terms-result')) _renderTermsRecent({});
+});
 
 // 3-1) 키워드 → 확장프로그램으로 네이버 쇼핑 캡처 (마누태그 추출)
 //      확장이 없거나 응답 없을 시 안내 메시지만 표시 (서버 스크래핑/Open API 폴백 없음)
@@ -3990,6 +4089,28 @@ window._extensionTabPayloads = null; // { '전체': {...payload}, '네이버페�
 async function _processExtensionPayload(payload, tabsMap) {
   if (!payload || typeof payload !== 'object') return;
   console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query, ' tabs:', tabsMap ? Object.keys(tabsMap).join(',') : 'none');
+
+  // 텀즈 분석 모드 — 마누태그 흐름 대신 텀즈 마스터 UI 로만 라우팅
+  if (typeof _termsAnalysisPending !== 'undefined' && _termsAnalysisPending) {
+    try {
+      const terms = Array.isArray(payload.terms) ? payload.terms.filter(t => typeof t === 'string' && t.trim()) : [];
+      if (terms.length) {
+        _saveTermsRecent(_termsAnalysisInputName || payload.query || '', terms, '네이버 분해');
+      } else {
+        // terms 가 없으면 간단 분해로 폴백
+        const name = _termsAnalysisInputName || payload.query || '';
+        const simple = name.split(/[\s,/\-_()[\]]+/).filter(Boolean);
+        _saveTermsRecent(name, simple, '간단 분해 (terms 미수신)');
+      }
+      _termsAnalysisPending = false;
+      if (typeof goPage === 'function') goPage('tools');
+      _renderTermsRecent({});
+      try { toast && toast('✅ 텀즈 분석 완료'); } catch(_) {}
+    } catch (e) {
+      console.error('[GPAGO ext terms]', e);
+    }
+    return;
+  }
   try {
     // 탭별 데이터를 전역에 저장 (필터 버튼이 사용)
     if (tabsMap && typeof tabsMap === 'object' && Object.keys(tabsMap).length > 0) {
