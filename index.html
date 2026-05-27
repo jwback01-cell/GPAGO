@@ -630,17 +630,8 @@
           </div>
           <div class="text-[11px] text-brand-gray mt-2">키워드를 입력하면 네이버 쇼핑에서 상위 노출 상품을 가져와 마누태그를 자동 추출합니다</div>
         </div>
-        <!-- (고급) JSON 직접 붙여넣기 -->
-        <details class="mb-5" id="tool-json-details">
-          <summary class="cursor-pointer text-xs font-bold text-brand-blue hover:underline mb-2 inline-block">📋 (고급) 직접 JSON 붙여넣기</summary>
-          <div class="flex flex-col gap-2 mt-2">
-            <textarea id="tool-json-input" placeholder='네이버 쇼핑 검색 페이지 → F12 → Network 탭 → "all" 또는 "search" 요청 → Response 탭에서 전체 JSON 복사 후 여기에 붙여넣기' class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:border-brand-black resize-y h-32"></textarea>
-            <div class="flex gap-2">
-              <button class="pill-btn pill-btn-dark flex-1" onclick="parseShopJson()">JSON 분석 →</button>
-              <button class="pill-btn pill-btn-light" onclick="document.getElementById('tool-json-input').value=''">초기화</button>
-            </div>
-          </div>
-        </details>
+        <!-- 내부 버퍼 — extractFromKeyword 가 캡처 데이터를 여기에 넣고 parseShopJson 이 읽음 (사용자에게 안 보임) -->
+        <textarea id="tool-json-input" class="hidden"></textarea>
         <!-- ROPAGO 스타일 결과: 좌측(KEY WORD + RESULT) + 우측(TAG STATS) -->
         <div class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
           <div class="flex flex-col gap-3">
@@ -4154,28 +4145,31 @@ function parseShopJson() {
   // 좌측 RESULT — 쉼표 구분 태그 목록 (상위 12개)
   const resultList = sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',');
   resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${resultList}</span>`;
-  // 우측 TAG STATS — ROPAGO 스타일 4컬럼 그리드 + 빈도별 색깔/도형 차등화
-  // 도형 + 색상으로 빈도를 시각적으로 즉시 구분
-  //  >= 30% : 빨강 채워진 사각형 (핵심)
-  //  >= 15% : 주황 채워진 동그라미 (주요)
-  //  >= 7%  : 파랑 동그라미 (보통)
-  //  < 7%   : 회색 동그라미 (참고)
+  // 우측 TAG STATS — ROPAGO 스타일 막대그래프 (빈도 % 만큼 배경 채움)
+  //  >= 30% : 분홍 (핵심)
+  //  >= 15% : 주황 (주요)
+  //  >= 7%  : 파랑 (보통)
+  //  < 7%   : 회색 (참고)
   const top = sorted.slice(0, 60);
+  const maxPct = Math.max(1, Math.round((top[0]?.[1] || 1) / totalProducts * 100));
   const tierStyle = (pct) => {
-    if (pct >= 30) return { shape: 'rounded-sm', color: 'bg-brand-pink', label: 'text-brand-pink', count: 'text-brand-pink' };
-    if (pct >= 15) return { shape: 'rounded-full', color: 'bg-brand-orange', label: 'text-brand-orange', count: 'text-brand-orange' };
-    if (pct >= 7)  return { shape: 'rounded-full', color: 'bg-brand-blue', label: 'text-brand-blue', count: 'text-brand-blue' };
-    return { shape: 'rounded-full', color: 'bg-brand-gray/60', label: 'text-brand-gray', count: 'text-brand-gray' };
+    if (pct >= 30) return { fill: 'bg-brand-pink/25', count: 'text-brand-pink', text: 'text-brand-pink' };
+    if (pct >= 15) return { fill: 'bg-brand-orange/25', count: 'text-brand-orange', text: 'text-brand-orange' };
+    if (pct >= 7)  return { fill: 'bg-brand-blue/20', count: 'text-brand-blue', text: 'text-brand-black' };
+    return { fill: 'bg-brand-gray/15', count: 'text-brand-gray', text: 'text-brand-black' };
   };
   const html = top.map(([t, c]) => {
     const pct = Math.round(c / totalProducts * 100);
     const ts = tierStyle(pct);
-    const dotSize = pct >= 30 ? 'w-2 h-2' : 'w-1.5 h-1.5';
-    return `<div class="flex items-center gap-2 py-1.5 text-xs">
-      <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
-      <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
-      <span class="${dotSize} ${ts.shape} ${ts.color} shrink-0"></span>
-      <span class="font-semibold ${ts.label} truncate" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
+    // 막대 폭: 가장 큰 % 를 100% 로 정규화 (시각 차이 강조)
+    const barWidth = Math.max(4, Math.min(100, Math.round((pct / maxPct) * 100)));
+    return `<div class="relative overflow-hidden rounded-md my-0.5">
+      <div class="absolute inset-y-0 left-0 ${ts.fill} transition-all" style="width:${barWidth}%"></div>
+      <div class="relative flex items-center gap-2 px-2 py-1.5 text-xs">
+        <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
+        <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
+        <span class="font-semibold ${ts.text} truncate" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
+      </div>
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
