@@ -3745,6 +3745,7 @@ async function analyzeTerms() {
 }
 
 // 3-1) 키워드 → 네이버 쇼핑 자동 스크래핑 → parseShopJson 로직 재사용 (ROPAGO 방식)
+// 스크래핑 실패 시 자동으로 Open API + 제목 기반 태그 추출로 폴백
 async function extractFromKeyword() {
   const kw = (document.getElementById('tool-json-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
@@ -3759,31 +3760,93 @@ async function extractFromKeyword() {
   if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 쇼핑 페이지에서 상품/태그 가져오는 중...</div>';
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
+
+  // 1차: 서버 스크래핑 시도 (마누태그 정확 추출)
   try {
     const r = await fetch(`/api/naver-shop-scrape?query=${encodeURIComponent(kw)}`);
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.error || ('HTTP ' + r.status));
+    if (r.ok) {
+      const data = await r.json();
+      if (data.products && data.products.length) {
+        const fakeJson = JSON.stringify({
+          query: data.query || kw,
+          products: data.products,
+          terms: data.terms || [],
+          nluTerms: data.nluTerms || [],
+        });
+        document.getElementById('tool-json-input').value = fakeJson;
+        parseShopJson();
+        toast(`✅ "${kw}" 추출 완료 — ${data.products.length}개 상품 (${data.source || ''})`);
+        if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
+        return;
+      }
     }
-    const data = await r.json();
-    if (!data.products || !data.products.length) {
-      throw new Error('상품 데이터를 가져오지 못했습니다');
-    }
-    // parseShopJson 이 textarea 의 JSON 을 읽으므로, textarea 에 fake JSON 채워 넣고 호출
-    const fakeJson = JSON.stringify({
-      query: data.query || kw,
-      products: data.products,
-      terms: data.terms || [],
-      nluTerms: data.nluTerms || [],
-    });
-    document.getElementById('tool-json-input').value = fakeJson;
-    parseShopJson();
-    toast(`✅ "${kw}" 추출 완료 — ${data.products.length}개 상품 (${data.source || ''})`);
+    console.warn('[extractFromKeyword] 스크래핑 실패, 폴백 시도');
   } catch (e) {
-    if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 추출 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-brand-gray mt-2 inline-block">고급 옵션의 JSON 붙여넣기로 시도해 보세요</span></div>`;
+    console.warn('[extractFromKeyword] 스크래핑 오류:', e);
+  }
+
+  // 2차 폴백: Open API + 상품 제목에서 태그 추출 (manuTag 는 못 얻지만 빈도 기반 태그 산출)
+  try {
+    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 차단 — Open API 폴백 모드로 전환 중...</div>';
+    const api = _getApi();
+    if (!api.id || !api.secret) {
+      throw new Error('네이버 차단 + Open API 미설정 — 우상단 "API 설정" 에 Client ID/Secret 등록 필요');
+    }
+    const apiR = await fetch(`/api/naver-shop?query=${encodeURIComponent(kw)}&display=80&sort=sim`, {
+      headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+    });
+    if (!apiR.ok) throw new Error('Open API 호출 실패: HTTP ' + apiR.status);
+    const apiData = await apiR.json();
+    const items = apiData.items || [];
+    if (!items.length) throw new Error('Open API 검색 결과 없음');
+
+    // 제목에서 한글 단어 추출 → 빈도 집계
+    const titleFreq = new Map();
+    for (const it of items) {
+      const title = String(it.title || '').replace(/<[^>]+>/g, '');
+      const words = title.split(/[\s,/\-_()[\]【】|·\.+]+/).filter(w => w.length >= 2 && w.length <= 12 && /[가-힣A-Za-z0-9]/.test(w));
+      const local = new Set();
+      for (const w of words) {
+        if (local.has(w)) continue;
+        local.add(w);
+        titleFreq.set(w, (titleFreq.get(w) || 0) + 1);
+      }
+    }
+    // 상위 40개 정렬
+    const sorted = [...titleFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
+    const totalProducts = items.length;
+
+    // 결과 UI 채우기 (parseShopJson 비슷한 형식으로)
+    if (kwBox) { kwBox.textContent = kw; kwBox.classList.remove('text-brand-gray'); kwBox.classList.add('text-brand-black','font-bold'); }
+    if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray text-[11px]">Open API 폴백 모드 (Terms 미지원)</span>';
+    if (totalEl) totalEl.textContent = sorted.length.toLocaleString('ko-KR');
+    if (resultListBox) {
+      const resultList = sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',');
+      resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${resultList}</span>`;
+    }
+    if (tagsBox) {
+      const html = sorted.map(([t, c]) => {
+        const pct = Math.round(c / totalProducts * 100);
+        return `<div class="flex items-center gap-2 py-1.5 text-xs">
+          <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
+          <span class="text-brand-blue font-black w-8 text-right shrink-0">${pct}%</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-brand-orange shrink-0"></span>
+          <span class="font-semibold text-brand-black truncate" title="${escapeHtml(t)}">${escapeHtml(t)}</span>
+        </div>`;
+      }).join('');
+      tagsBox.innerHTML = `
+        <div class="bg-brand-orange-light/40 text-brand-orange text-[11px] font-semibold px-3 py-2 rounded-xl mb-3 leading-relaxed">
+          ⚠ 네이버 쇼핑 페이지 차단 — Open API 폴백 모드 사용 중<br>
+          <span class="font-normal">상품 제목에서 빈도 분석한 후보 태그입니다 (실제 마누태그가 아님). 정확한 마누태그는 "고급 옵션의 직접 JSON 붙여넣기"로 얻을 수 있어요.</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">${html}</div>`;
+    }
+    toast(`⚠ "${kw}" 폴백 추출 — 제목 기반 태그 ${sorted.length}개 (마누태그 아님)`);
+  } catch (e) {
+    if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 추출 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-brand-gray mt-2 inline-block">"(고급) 직접 JSON 붙여넣기" 옵션을 사용해 보세요</span></div>`;
     if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">실패</span>';
     if (totalEl) totalEl.textContent = '0';
-    console.error('[extractFromKeyword] 실패:', e);
+    console.error('[extractFromKeyword] 폴백 실패:', e);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
   }
