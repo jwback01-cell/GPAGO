@@ -3912,7 +3912,7 @@ function _renderTermsRecent(opts) {
       <div class="flex items-center gap-3 mb-2 flex-wrap pl-12">
         <span class="font-black text-base text-brand-black">${charLen}</span><span class="text-[11px] text-brand-gray font-bold">글자수</span>
         <span class="text-brand-border">|</span>
-        <span class="font-black text-base text-brand-purple">${terms.length}</span><span class="text-[11px] text-brand-gray font-bold">Terms</span>
+        <span class="font-black text-base text-brand-purple">${Object.keys(counts).length}</span><span class="text-[11px] text-brand-gray font-bold">Terms</span>
         <span class="text-brand-border">|</span>
         <span class="font-black text-base ${dupCount > 0 ? 'text-brand-pink' : 'text-brand-green'}">${dupCount}</span><span class="text-[11px] text-brand-gray font-bold">중복</span>
       </div>
