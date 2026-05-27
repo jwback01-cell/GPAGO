@@ -3736,6 +3736,18 @@ async function analyzeTerms() {
 
   _termsAnalysisPending = true;
   _termsAnalysisInputName = name;
+  // 마누태그 UI 정리 (텀즈 분석 결과가 마누태그 자리에 잘못 표시되는 것 방지)
+  const mtKw = document.getElementById('tool-json-keyword');
+  const mtTags = document.getElementById('tool-json-tags');
+  const mtRes = document.getElementById('tool-json-result-list');
+  const mtTotal = document.getElementById('tool-json-tag-total');
+  const mtTerms = document.getElementById('tool-json-terms');
+  if (mtKw) { mtKw.textContent = '분석 대기'; mtKw.classList.add('text-brand-gray'); mtKw.classList.remove('text-brand-black','font-bold'); }
+  if (mtTags) mtTags.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray">텀즈 분석 모드 — 마누태그는 + 추출 버튼으로 분석하세요</div>';
+  if (mtRes) mtRes.innerHTML = '<span class="text-brand-gray">키워드를 입력하고 추출을 실행하세요</span>';
+  if (mtTotal) mtTotal.textContent = '0';
+  if (mtTerms) mtTerms.innerHTML = '<span class="text-brand-gray">-</span>';
+
   // 확장이 kw-naver 를 읽으므로 동기화
   const nInput = document.getElementById('kw-naver');
   if (nInput) nInput.value = name;
@@ -4051,17 +4063,10 @@ function parseShopJson() {
 // 유틸
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-// 초기화
+// 초기화 — 새로고침 시 항상 대시보드로 (사용자 요청: dashboard 가 홈)
 document.addEventListener('DOMContentLoaded', () => {
-  let last = null;
-  try { last = localStorage.getItem('gpago_last_page'); } catch(_) {}
-  goPage(PAGES.includes(last) ? last : 'analysis');
+  goPage('dashboard');
   renderSynonyms();
-  try {
-    const r = JSON.parse(localStorage.getItem('gpago_terms_recent') || '[]');
-    const el = document.getElementById('tool-terms-count');
-    if (el) el.textContent = Math.min(r.length, 10);
-  } catch(_) {}
 });
 
 // ════════════════════════════════════════
