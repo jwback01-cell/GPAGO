@@ -3860,6 +3860,41 @@ function clearAllTermsRecent() {
   } catch(_) {}
 }
 
+// 동의어 저장소(syn 탭) 에서 동의어 쌍을 읽어 Union-Find 그룹 빌드
+// 같은 그룹의 단어들은 텀즈 마스터 중복 판정에서 같은 단어로 취급
+function _buildSynonymGroups() {
+  const norm = (s) => String(s || '').toLowerCase().trim();
+  const parent = {}; // key → canonical key
+  function find(x) {
+    let cur = x;
+    while (parent[cur] && parent[cur] !== cur) cur = parent[cur];
+    // path compression
+    while (parent[x] && parent[x] !== cur) { const next = parent[x]; parent[x] = cur; x = next; }
+    return cur;
+  }
+  function union(a, b) {
+    if (!parent[a]) parent[a] = a;
+    if (!parent[b]) parent[b] = b;
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  }
+  try {
+    const list = (typeof _synGetList === 'function') ? _synGetList('syn') : [];
+    list.forEach(pair => {
+      if (!pair) return;
+      const a = norm(pair.a), b = norm(pair.b);
+      if (a && b && a !== b) union(a, b);
+    });
+  } catch (_) {}
+  return {
+    canon: (term) => {
+      const k = norm(term);
+      if (!parent[k]) return k;
+      return find(k);
+    },
+  };
+}
+
 function _renderTermsRecent(opts) {
   opts = opts || {};
   const wrap = document.getElementById('tool-terms-result');
@@ -3879,22 +3914,49 @@ function _renderTermsRecent(opts) {
     wrap.innerHTML = `<div class="border border-dashed border-brand-border rounded-2xl p-6 text-center text-xs text-brand-gray">분석 결과가 없습니다. 상품명을 입력하고 분석을 눌러 보세요</div>`;
     return;
   }
+  // 동의어 그룹 빌드 — 같은 동의어 그룹에 있는 단어들도 중복으로 취급
+  const synG = _buildSynonymGroups();
   recent.forEach(it => {
     const name = it.name || '';
     const terms = Array.isArray(it.terms) ? it.terms : [];
     const charLen = name.replace(/\s+/g, '').length;
+    // 정확 일치 카운트
     const counts = {};
     terms.forEach(t => { counts[t] = (counts[t] || 0) + 1; });
-    const dupTags = Object.entries(counts).filter(([_, c]) => c > 1);
-    const dupCount = dupTags.length;
-    const dupSummary = dupTags.length
-      ? dupTags.map(([t, c]) => `<b class="text-brand-pink">${escapeHtml(t)}</b> (${c-1}회 중복 · 총 ${c}회 사용)`).join(' · ')
+    // 동의어 그룹 카운트 (canonical key → count + 실제 사용된 원본 단어들)
+    const groupCounts = {};
+    const groupMembers = {}; // canonKey → Set<원본 단어>
+    const groupHasSynonymMix = {}; // canonKey → boolean (다른 표기 섞여있나)
+    terms.forEach(t => {
+      const c = synG.canon(t);
+      groupCounts[c] = (groupCounts[c] || 0) + 1;
+      if (!groupMembers[c]) groupMembers[c] = new Set();
+      groupMembers[c].add(t);
+    });
+    Object.keys(groupMembers).forEach(c => {
+      groupHasSynonymMix[c] = groupMembers[c].size > 1; // 여러 표기가 섞임 = 동의어 중복
+    });
+    const dupEntries = Object.entries(groupCounts).filter(([_, c]) => c > 1);
+    const dupCount = dupEntries.length;
+    const dupSummary = dupEntries.length
+      ? dupEntries.map(([k, c]) => {
+          const members = Array.from(groupMembers[k]);
+          const label = members.join(' / ');
+          const synBadge = members.length > 1 ? ' <span class="text-[10px] font-bold text-brand-purple bg-brand-purple-light px-1.5 py-0.5 rounded ml-1">동의어</span>' : '';
+          return `<b class="text-brand-pink">${escapeHtml(label)}</b>${synBadge} (${c-1}회 중복 · 총 ${c}회 사용)`;
+        }).join(' · ')
       : '';
     const chips = terms.map((t, i) => {
-      const isDup = counts[t] > 1;
-      const cls = isDup ? 'bg-brand-pink-light text-brand-pink' : 'bg-brand-bg text-brand-black border border-brand-border';
+      const ckey = synG.canon(t);
+      const isDup = groupCounts[ckey] > 1;
+      const isSynDup = isDup && groupHasSynonymMix[ckey];
+      // 정확 중복은 분홍, 동의어 중복은 보라 (시각 구분)
+      const cls = !isDup
+        ? 'bg-brand-bg text-brand-black border border-brand-border'
+        : isSynDup ? 'bg-brand-purple-light text-brand-purple' : 'bg-brand-pink-light text-brand-pink';
+      const synMark = isSynDup ? '<span class="ml-0.5 text-[9px]" title="동의어 저장소 기반 중복">⇄</span>' : '';
       return `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold m-0.5 ${cls}">
-        <span class="text-brand-gray font-black">${i + 1}</span>${escapeHtml(t)}
+        <span class="text-brand-gray font-black">${i + 1}</span>${escapeHtml(t)}${synMark}
       </span>`;
     }).join('');
     const at = it.at ? new Date(it.at).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -3916,7 +3978,7 @@ function _renderTermsRecent(opts) {
       <div class="flex items-center gap-3 mb-2 flex-wrap pl-12">
         <span class="font-black text-base text-brand-black">${charLen}</span><span class="text-[11px] text-brand-gray font-bold">글자수</span>
         <span class="text-brand-border">|</span>
-        <span class="font-black text-base text-brand-purple">${Object.keys(counts).length}</span><span class="text-[11px] text-brand-gray font-bold">Terms</span>
+        <span class="font-black text-base text-brand-purple">${Object.keys(groupCounts).length}</span><span class="text-[11px] text-brand-gray font-bold">Terms</span>
         <span class="text-brand-border">|</span>
         <span class="font-black text-base ${dupCount > 0 ? 'text-brand-pink' : 'text-brand-green'}">${dupCount}</span><span class="text-[11px] text-brand-gray font-bold">중복</span>
       </div>
