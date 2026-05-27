@@ -6238,11 +6238,14 @@ function _renderKwDetailTable() {
 
   // 동일 id를 가진 항목들은 같은 manage 항목에서 나온 것이므로 dedupe
   const uniqueIds = [...new Set(items.map(it => it.id))];
-  // 날짜/시각 컬럼 너비 통일 — 같은 min-w 적용으로 펼침/접힘 무관하게 동일 크기 유지
-  const COL_W = 'min-w-[150px]';
+  // 컬럼 너비 고정 (px) — table-layout: fixed 와 함께 사용해 펼침/접힘 무관하게 동일 크기 유지
+  const W_KW = 220;
+  const W_VOL = 120;
+  const W_DATE = 150;
+  const COL_STYLE = `style="width:${W_DATE}px;min-width:${W_DATE}px;max-width:${W_DATE}px"`;
   const headerCells = columns.map(c => {
     if (c.type === 'date') {
-      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다" class="font-semibold p-3 text-left whitespace-nowrap ${COL_W} cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
+      return `<th ${COL_STYLE} onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다" class="font-semibold p-3 text-left whitespace-nowrap cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
         <span>${c.label}</span>
         <svg class="inline-block ml-1 text-brand-gray" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </th>`;
@@ -6253,7 +6256,7 @@ function _renderKwDetailTable() {
       const collapseIcon = c.isFirstOfDay
         ? `<svg class="inline-block ml-1 text-brand-blue" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>`
         : '';
-      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 날짜별 보기로 돌아갑니다" class="font-semibold p-3 text-left whitespace-nowrap ${COL_W} cursor-pointer hover:bg-brand-blue-light/40 transition-colors bg-brand-blue-light/20 select-none">
+      return `<th ${COL_STYLE} onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 날짜별 보기로 돌아갑니다" class="font-semibold p-3 text-left whitespace-nowrap cursor-pointer hover:bg-brand-blue-light/40 transition-colors bg-brand-blue-light/20 select-none">
         ${dateLabelHtml}
         <span class="text-brand-blue font-bold">${c.label}${collapseIcon}</span>
       </th>`;
@@ -6306,26 +6309,27 @@ function _renderKwDetailTable() {
       : `<span class="inline-block w-3.5"></span>`;
     const rowDraggable = isFirstRowOfId ? 'draggable="true"' : '';
     return `<tr ${rowDraggable} data-kw-id="${item.id}" data-kw-pos="${myIdxInUnique}" ondragstart="_kwRowDragStart(event)" ondragover="_kwRowDragOver(event)" ondragleave="_kwRowDragLeave(event)" ondrop="_kwRowDrop(event)" ondragend="_kwRowDragEnd(event)" class="border-b border-brand-border last:border-b-0 hover:bg-gray-50/50 transition-colors">
-      <td class="p-3 pl-4 sticky left-0 bg-white z-10 border-r border-brand-border">
+      <td style="width:${W_KW}px;min-width:${W_KW}px;max-width:${W_KW}px;left:0" class="p-3 pl-4 sticky bg-white z-10 border-r border-brand-border whitespace-nowrap overflow-hidden">
         <div class="flex items-center gap-2">
           ${dragHandle}
           ${posSelect}
-          <span class="font-semibold text-sm text-brand-black whitespace-nowrap">${_escapeHtml(item.keyword)}</span>
+          <span class="font-semibold text-sm text-brand-black truncate" title="${_escapeHtml(item.keyword)}">${_escapeHtml(item.keyword)}</span>
           ${typeBadge}
         </div>
       </td>
-      <td class="p-3 sticky left-[200px] bg-white z-10 border-r border-brand-border whitespace-nowrap">
+      <td style="width:${W_VOL}px;min-width:${W_VOL}px;max-width:${W_VOL}px;left:${W_KW}px" class="p-3 sticky bg-white z-10 border-r border-brand-border whitespace-nowrap">
         <span data-vol-kw="${_escapeHtml(item.keyword)}" class="font-bold text-brand-black text-sm">—</span>
       </td>
       ${cells}
     </tr>`;
   }).join('');
 
-  canvas.innerHTML = `<table class="text-left border-collapse text-[0.95rem]">
+  // table-layout: fixed → 컬럼 너비는 첫 행의 width 로 결정 (셀 내용에 의한 늘어짐 방지)
+  canvas.innerHTML = `<table class="text-left border-collapse text-[0.95rem]" style="table-layout:fixed;width:auto">
     <thead class="sticky top-0 bg-brand-bg z-20 shadow-sm">
       <tr class="text-brand-gray text-[0.8rem]">
-        <th class="font-semibold p-3 pl-4 whitespace-nowrap sticky left-0 bg-brand-bg z-30 border-r border-brand-border min-w-[200px]">키워드</th>
-        <th class="font-semibold p-3 whitespace-nowrap sticky left-[200px] bg-brand-bg z-30 border-r border-brand-border min-w-[100px]">월 검색량</th>
+        <th style="width:${W_KW}px;min-width:${W_KW}px;max-width:${W_KW}px;left:0" class="font-semibold p-3 pl-4 whitespace-nowrap sticky bg-brand-bg z-30 border-r border-brand-border">키워드</th>
+        <th style="width:${W_VOL}px;min-width:${W_VOL}px;max-width:${W_VOL}px;left:${W_KW}px" class="font-semibold p-3 whitespace-nowrap sticky bg-brand-bg z-30 border-r border-brand-border">월 검색량</th>
         ${headerCells}
       </tr>
     </thead>
