@@ -934,6 +934,10 @@
                 <button data-days="30" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">30일</button>
                 <button data-days="all" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">전체</button>
               </div>
+              <button id="kw-detail-collapse-all-btn" onclick="collapseAllKwDetailDays()" class="hidden text-xs font-bold text-brand-blue hover:underline items-center gap-1 px-3 py-1.5 rounded-full bg-brand-blue-light/40">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                전체 날짜 보기
+              </button>
               <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨 · 매일 오전 7시 자동 추적 + 수동 조회 누적</span>
             </div>
             <!-- 표 -->
@@ -6097,6 +6101,10 @@ function toggleKwDetailDay(dayKey) {
   else _kwExpandedDays.add(dayKey);
   if (typeof _renderKwDetailTable === 'function') _renderKwDetailTable();
 }
+function collapseAllKwDetailDays() {
+  _kwExpandedDays.clear();
+  if (typeof _renderKwDetailTable === 'function') _renderKwDetailTable();
+}
 
 function _renderKwDetailTable() {
   const canvas = document.getElementById('kw-detail-canvas');
@@ -6178,6 +6186,8 @@ function _renderKwDetailTable() {
   }
 
   // 최종 컬럼 배열 — 펼친 날짜는 시각 컬럼 N개로 치환
+  // 펼친 날짜가 하나라도 있으면 그 날짜만 표시 (다른 날짜는 숨김)
+  const hasExpanded = dateCols.some(c => _kwExpandedDays.has(c.key));
   const columns = []; // {type:'date'|'time', dateKey, timeKey?, label, dateLabel?, isFirstOfDay?}
   dateCols.forEach(c => {
     if (_kwExpandedDays.has(c.key)) {
@@ -6197,9 +6207,11 @@ function _renderKwDetailTable() {
         // 기록이 없으면 일반 날짜 컬럼으로 표시
         columns.push({ type: 'date', dateKey: c.key, label: c.label });
       }
-    } else {
+    } else if (!hasExpanded) {
+      // 펼친 날짜가 없을 때만 다른 날짜 표시
       columns.push({ type: 'date', dateKey: c.key, label: c.label });
     }
+    // else: 펼친 다른 날짜가 있고 이 날짜는 펼쳐있지 않음 → 숨김
   });
 
   function _dayRank(histKey, dayKey, legacyKey) {
@@ -6226,9 +6238,11 @@ function _renderKwDetailTable() {
 
   // 동일 id를 가진 항목들은 같은 manage 항목에서 나온 것이므로 dedupe
   const uniqueIds = [...new Set(items.map(it => it.id))];
+  // 날짜/시각 컬럼 너비 통일 — 같은 min-w 적용으로 펼침/접힘 무관하게 동일 크기 유지
+  const COL_W = 'min-w-[150px]';
   const headerCells = columns.map(c => {
     if (c.type === 'date') {
-      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다" class="font-semibold p-3 text-left whitespace-nowrap min-w-[130px] cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
+      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 이 날짜의 추적 시각별 순위가 펼쳐집니다" class="font-semibold p-3 text-left whitespace-nowrap ${COL_W} cursor-pointer hover:bg-brand-border/40 transition-colors select-none">
         <span>${c.label}</span>
         <svg class="inline-block ml-1 text-brand-gray" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </th>`;
@@ -6239,7 +6253,7 @@ function _renderKwDetailTable() {
       const collapseIcon = c.isFirstOfDay
         ? `<svg class="inline-block ml-1 text-brand-blue" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>`
         : '';
-      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 날짜별 보기로 돌아갑니다" class="font-semibold p-3 text-left whitespace-nowrap min-w-[100px] cursor-pointer hover:bg-brand-blue-light/40 transition-colors bg-brand-blue-light/20 select-none">
+      return `<th onclick="toggleKwDetailDay('${c.dateKey}')" title="클릭하면 날짜별 보기로 돌아갑니다" class="font-semibold p-3 text-left whitespace-nowrap ${COL_W} cursor-pointer hover:bg-brand-blue-light/40 transition-colors bg-brand-blue-light/20 select-none">
         ${dateLabelHtml}
         <span class="text-brand-blue font-bold">${c.label}${collapseIcon}</span>
       </th>`;
@@ -6307,7 +6321,7 @@ function _renderKwDetailTable() {
     </tr>`;
   }).join('');
 
-  canvas.innerHTML = `<table class="w-full text-left border-collapse text-[0.95rem]">
+  canvas.innerHTML = `<table class="text-left border-collapse text-[0.95rem]">
     <thead class="sticky top-0 bg-brand-bg z-20 shadow-sm">
       <tr class="text-brand-gray text-[0.8rem]">
         <th class="font-semibold p-3 pl-4 whitespace-nowrap sticky left-0 bg-brand-bg z-30 border-r border-brand-border min-w-[200px]">키워드</th>
@@ -6317,6 +6331,13 @@ function _renderKwDetailTable() {
     </thead>
     <tbody>${rowsHtml}</tbody>
   </table>`;
+
+  // "전체 날짜 보기" 버튼 표시/숨김
+  const collapseBtn = document.getElementById('kw-detail-collapse-all-btn');
+  if (collapseBtn) {
+    if (hasExpanded) collapseBtn.classList.remove('hidden'), collapseBtn.classList.add('inline-flex');
+    else collapseBtn.classList.add('hidden'), collapseBtn.classList.remove('inline-flex');
+  }
 
   // 검색량 비동기 갱신 (캐시 즉시 표시 → 만료된 키워드만 백그라운드 fetch)
   if (typeof _refreshKwVolumesForRendered === 'function') _refreshKwVolumesForRendered();
