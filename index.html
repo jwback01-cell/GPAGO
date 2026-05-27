@@ -280,8 +280,8 @@
   <!-- 메인 -->
   <main class="flex-1 overflow-y-auto pr-0 md:pr-2 pb-10 flex flex-col gap-5 md:gap-6">
 
-    <!-- ─── 키워드 분석 (Default) ─── -->
-    <section id="page-analysis" class="page active gap-4 md:gap-5">
+    <!-- ─── 키워드 분석 ─── -->
+    <section id="page-analysis" class="page gap-4 md:gap-5">
       <section class="mt-2 pl-1 md:pl-2 flex items-end justify-between flex-wrap gap-2">
         <div class="flex items-center gap-2">
           <div class="w-1.5 h-7 bg-brand-blue rounded-full"></div>
@@ -699,7 +699,7 @@
     </section>
 
     <!-- ─── 나머지 페이지 스텁 ─── -->
-    <section id="page-dashboard" class="page gap-5">
+    <section id="page-dashboard" class="page active gap-5">
       <section class="mt-2 pl-1 md:pl-2">
         <h1 class="text-[1.8rem] md:text-[2.25rem] font-bold tracking-tight mb-2">대시보드 👋</h1>
         <p class="text-brand-gray text-[1.05rem]">키워드 분석 현황을 한눈에 확인하세요.</p>
@@ -3736,6 +3736,8 @@ async function analyzeTerms() {
 
   _termsAnalysisPending = true;
   _termsAnalysisInputName = name;
+  // 예기치 못한 리로드를 대비한 sessionStorage 백업 (확장 v1.4.8+ 에서는 리로드 안 일어남)
+  try { sessionStorage.setItem('_gpago_terms_pending', name); } catch(_) {}
   // 마누태그 UI 정리 (텀즈 분석 결과가 마누태그 자리에 잘못 표시되는 것 방지)
   const mtKw = document.getElementById('tool-json-keyword');
   const mtTags = document.getElementById('tool-json-tags');
@@ -4095,6 +4097,14 @@ async function _processExtensionPayload(payload, tabsMap) {
   if (!payload || typeof payload !== 'object') return;
   console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query, ' tabs:', tabsMap ? Object.keys(tabsMap).join(',') : 'none');
 
+  // sessionStorage 에 텀즈 분석 진행 흔적이 있으면 복원 (리로드 후에도 텀즈 모드 유지)
+  let _pendingName = '';
+  try { _pendingName = sessionStorage.getItem('_gpago_terms_pending') || ''; } catch(_) {}
+  if (_pendingName) {
+    _termsAnalysisPending = true;
+    _termsAnalysisInputName = _pendingName;
+    try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
+  }
   // 텀즈 분석 모드 — 마누태그 흐름 대신 텀즈 마스터 UI 로만 라우팅
   if (typeof _termsAnalysisPending !== 'undefined' && _termsAnalysisPending) {
     try {
@@ -4108,6 +4118,7 @@ async function _processExtensionPayload(payload, tabsMap) {
         _saveTermsRecent(name, simple, '간단 분해 (terms 미수신)');
       }
       _termsAnalysisPending = false;
+      try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
       if (typeof goPage === 'function') goPage('tools');
       _renderTermsRecent({});
       try { toast && toast('✅ 텀즈 분석 완료'); } catch(_) {}
