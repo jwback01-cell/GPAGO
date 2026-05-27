@@ -4168,11 +4168,16 @@ function parseShopJson() {
       <div class="relative flex items-center gap-2 px-2 py-1.5 text-xs">
         <span class="text-brand-gray w-7 text-right shrink-0">${c}회</span>
         <span class="font-black w-8 text-right shrink-0 ${ts.count}">${pct}%</span>
-        <span class="font-semibold ${ts.text} truncate" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
+        <span class="font-semibold ${ts.text} truncate flex-1" title="${escapeHtml(t)} (${pct}%)">${escapeHtml(t)}</span>
+        <span data-vol-kw="${escapeHtml(t)}" class="text-[10px] text-brand-gray shrink-0 whitespace-nowrap">—</span>
       </div>
     </div>`;
   }).join('');
   tagsBox.innerHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6">' + html + '</div>';
+  // 월간 검색량 비동기 조회 (캐시 즉시 표시 → 만료된 키워드만 백그라운드 fetch)
+  if (typeof _refreshKwVolumesForRendered === 'function') {
+    try { _refreshKwVolumesForRendered(); } catch(_) {}
+  }
   // 분석 후 JSON 입력 영역 자동 접기 (UX 개선)
   const details = document.getElementById('tool-json-details');
   if (details) details.open = false;
