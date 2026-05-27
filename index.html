@@ -3744,8 +3744,7 @@ async function analyzeTerms() {
   } catch(_) {}
 }
 
-// 3-1) 키워드 → 네이버 쇼핑 자동 스크래핑 → parseShopJson 로직 재사용 (ROPAGO 방식)
-// 스크래핑 실패 시 자동으로 Open API + 제목 기반 태그 추출로 폴백
+// 3-1) 키워드 → 확장프로그램 우선 → 서버 스크래핑 → Open API 폴백 (ROPAGO 방식)
 async function extractFromKeyword() {
   const kw = (document.getElementById('tool-json-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
@@ -3757,12 +3756,53 @@ async function extractFromKeyword() {
   const termsBox = document.getElementById('tool-json-terms');
   const origBtnText = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '추출 중...'; }
-  if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 쇼핑 페이지에서 상품/태그 가져오는 중...</div>';
+  if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 확장프로그램으로 네이버 쇼핑 캡처 중...</div>';
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
 
-  // 1차: 서버 스크래핑 시도 (마누태그 정확 추출)
+  // 0차: 확장프로그램으로 자동 캡처 시도 (가장 정확한 마누태그 결과)
+  //     - 확장이 N 입력란(kw-naver)을 읽으므로 거기에 키워드 미리 채워줌
+  //     - GPAGO_REQUEST_TRIGGER 메시지 보내면 확장이 새 팝업 윈도우 열고 캡처
+  //     - 확장이 GPAGO_AUTO_ANALYZE 로 데이터 반환 → _processExtensionPayload 가 parseShopJson 호출
   try {
+    const nInput = document.getElementById('kw-naver');
+    if (nInput) nInput.value = kw;
+    let ackReceived = false;
+    let dataReceived = false;
+    const ackListener = (e) => {
+      if (e.source !== window) return;
+      if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') ackReceived = true;
+      if (e.data?.source === 'gpago-extension' && e.data?.type === 'GPAGO_AUTO_ANALYZE') dataReceived = true;
+    };
+    window.addEventListener('message', ackListener);
+    window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
+
+    // 1초 안에 ACK 받으면 확장 살아있음 → 최대 15초 추가 대기 (네이버 캡처 시간)
+    await new Promise(r => setTimeout(r, 1000));
+    if (ackReceived) {
+      if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">📦 확장프로그램 응답 — 네이버 팝업에서 캡처 진행 중... (최대 15초)</div>';
+      for (let i = 0; i < 30 && !dataReceived; i++) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+      window.removeEventListener('message', ackListener);
+      if (dataReceived) {
+        // _processExtensionPayload 가 자동으로 처리 (parseShopJson 호출됨)
+        if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
+        return;
+      }
+      // ACK 만 받고 데이터 못 받음 — 캡처 실패, 폴백으로 진행
+      console.warn('[extractFromKeyword] 확장 ACK 후 데이터 미수신, 폴백 시도');
+    } else {
+      window.removeEventListener('message', ackListener);
+      console.log('[extractFromKeyword] 확장프로그램 미설치 또는 무응답, 폴백 시도');
+    }
+  } catch (e) {
+    console.warn('[extractFromKeyword] 확장 트리거 오류:', e);
+  }
+
+  // 1차 폴백: 서버 스크래핑 시도 (대부분 봇 차단으로 실패하지만 일단 시도)
+  try {
+    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 서버 스크래핑 시도 중...</div>';
     const r = await fetch(`/api/naver-shop-scrape?query=${encodeURIComponent(kw)}`);
     if (r.ok) {
       const data = await r.json();
@@ -3780,7 +3820,7 @@ async function extractFromKeyword() {
         return;
       }
     }
-    console.warn('[extractFromKeyword] 스크래핑 실패, 폴백 시도');
+    console.warn('[extractFromKeyword] 스크래핑 실패, Open API 폴백 시도');
   } catch (e) {
     console.warn('[extractFromKeyword] 스크래핑 오류:', e);
   }
@@ -4034,7 +4074,8 @@ async function _processExtensionPayload(payload, tabsMap) {
       window._extensionTabPayloads = { '전체': payload };
     }
 
-    if (typeof goPage === 'function') goPage('analysis');
+    // 마누태그 추출 UI(tool-json-*)는 "키워드 도구" 페이지로 이동됨 → 거기로 네비게이션
+    if (typeof goPage === 'function') goPage('tools');
     const ta = await _waitForElement('tool-json-input', 3000);
     if (!ta) {
       console.warn('[GPAGO ext] tool-json-input 못 찾음');
@@ -4042,8 +4083,11 @@ async function _processExtensionPayload(payload, tabsMap) {
       return;
     }
     ta.value = JSON.stringify(payload, null, 2);
+    // "+ 추출" 버튼 옆 키워드 칸에도 자동 채워주기 (검색어 visual 동기화)
+    const kwBox = document.getElementById('tool-json-kw');
+    if (kwBox && payload.query) kwBox.value = payload.query;
     const details = document.getElementById('tool-json-details');
-    if (details) details.open = true;
+    if (details) details.open = false; // 추출 모드일 땐 JSON 영역은 접어둠
 
     // parseShopJson — payload 기준 (보통 가장 최근 캡처 = 네이버페이)
     if (typeof parseShopJson === 'function') {
