@@ -6324,8 +6324,9 @@ function _renderKwDetailTable() {
     </tr>`;
   }).join('');
 
-  // table-layout: fixed → 컬럼 너비는 첫 행의 width 로 결정 (셀 내용에 의한 늘어짐 방지)
-  canvas.innerHTML = `<table class="text-left border-collapse text-[0.95rem]" style="table-layout:fixed;width:auto">
+  // 표 전체 너비를 컬럼 합으로 명시 → 컨테이너에 의해 늘어나지 않음 (셀 크기 일정 유지)
+  const tableW = W_KW + W_VOL + (columns.length * W_DATE);
+  canvas.innerHTML = `<table class="text-left border-collapse text-[0.95rem]" style="table-layout:fixed;width:${tableW}px">
     <thead class="sticky top-0 bg-brand-bg z-20 shadow-sm">
       <tr class="text-brand-gray text-[0.8rem]">
         <th style="width:${W_KW}px;min-width:${W_KW}px;max-width:${W_KW}px;left:0" class="font-semibold p-3 pl-4 whitespace-nowrap sticky bg-brand-bg z-30 border-r border-brand-border">키워드</th>
