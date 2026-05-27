@@ -2087,12 +2087,11 @@ async function gpagoCloudPullAll() {
       _gpagoCloudPushKey(k);
     }
     _gpagoLocalChangesBeforePull.clear();
-    // 자동 새로고침: cloud 가 로컬보다 새롭고, 보호된 키 없을 때만 (사용자 데이터 덮어쓰기 방지)
-    if (changed > 0 && protectedCnt === 0 && !window._gpagoPullRefreshed && !window._gpagoSkipAutoRefresh) {
-      window._gpagoPullRefreshed = true;
-      console.log('[cloud-sync] 다른 PC에서 변경된 데이터', changed, '개 발견 → 화면 새로고침');
-      if (typeof toast === 'function') toast('☁ 다른 PC 데이터 ' + changed + '개 동기화 — 새로고침합니다');
-      setTimeout(() => location.reload(), 600);
+    // 자동 새로고침 제거됨 — 매번 새로고침마다 화면이 잠깐 멈추는 현상 해결
+    // 다른 PC 변경분이 있어도 토스트만 띄우고, 새로고침은 사용자가 필요할 때 수동으로
+    if (changed > 0 && protectedCnt === 0) {
+      console.log('[cloud-sync] 다른 PC 변경분', changed, '개 동기화 (자동 reload 비활성)');
+      if (typeof toast === 'function') toast('☁ 다른 PC 데이터 ' + changed + '개 동기화 완료 — 새로 보려면 새로고침');
     } else if (protectedCnt > 0) {
       if (typeof toast === 'function') toast('☁ 로컬 변경 ' + protectedCnt + '개 보호 — 클라우드로 업로드 중');
     }
