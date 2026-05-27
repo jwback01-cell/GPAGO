@@ -523,13 +523,13 @@
               <button id="sp-gen-btn" class="pill-btn pill-btn-dark" onclick="generateSynonyms()">+ 생성</button>
             </div>
             <div class="flex items-center justify-between mt-4 mb-2">
-              <label class="block text-xs font-bold text-brand-gray">유의어 후보 (네이버 결과 겹침 검증)</label>
+              <label class="block text-xs font-bold text-brand-gray">유의어 후보 (네이버 전체 결과 수 일치 검증)</label>
               <span id="sp-syn-status" class="text-[11px] text-brand-gray"></span>
             </div>
             <div id="sp-syn-results" class="bg-brand-bg rounded-2xl p-2 min-h-[140px] max-h-[260px] overflow-auto">
               <div class="text-xs text-brand-gray text-center py-10">키워드를 입력하고 "생성"을 누르세요</div>
             </div>
-            <div class="text-[11px] text-brand-gray mt-1.5">네이버 자동완성에서 후보를 찾고, 쇼핑 검색 결과 상품이 얼마나 겹치는지 비교해 진짜 유의어만 보여줍니다 (겹침 50% 이상)</div>
+            <div class="text-[11px] text-brand-gray mt-1.5">네이버 쇼핑에서 두 키워드를 검색했을 때 <b>전체 결과 수가 정확히 같으면</b> 네이버가 동일 검색어로 취급하는 진짜 유의어입니다 (예: 달걀=계란, 둘 다 1,931,193건)</div>
           </div>
           <div>
             <label class="block text-xs font-bold text-brand-gray mb-1.5">카테고리 선택</label>
@@ -3307,79 +3307,107 @@ async function generateSynonyms() {
       candidates.push(t);
       if (candidates.length >= 12) break;
     }
+    // 2) 원본 키워드의 전체 결과 수(total) + 상위 40개 상품 제목 조회
+    //    제목에 자주 등장하는 단어도 후보로 추가 — 자동완성이 못 잡는 진짜 유의어 발굴 (예: 달걀 → 계란)
+    setLoading('원본 키워드 네이버 쇼핑 결과 조회 중...');
+    let origResp;
+    try { origResp = await _naverShopSearch(kw, 1, 40, api.clientId, api.clientSecret); }
+    catch (e) { throw new Error('원본 검색 실패: ' + (e.message || e)); }
+    const origTotal = Number(origResp.total || 0);
+    if (origTotal === 0) {
+      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">"${_escapeHtml(kw)}"의 네이버 쇼핑 결과가 없습니다.</div>`;
+      return;
+    }
+
+    // 상품 제목에서 자주 등장하는 한글 단어 추출
+    const origItems = Array.isArray(origResp.items) ? origResp.items : [];
+    const titleFreq = new Map();
+    for (const it of origItems) {
+      const title = String(it.title || '').replace(/<[^>]+>/g, '');
+      const matches = title.match(/[가-힣]{2,6}/g) || [];
+      const local = new Set(); // 한 상품 안에서 같은 단어는 1번만 카운트
+      for (const m of matches) {
+        if (m === kw) continue;
+        if (local.has(m)) continue;
+        local.add(m);
+        titleFreq.set(m, (titleFreq.get(m) || 0) + 1);
+      }
+    }
+    // 빈도가 30% 이상인 단어 (40개 중 12개 이상)를 후보로 추가 — 진짜 동의어일 가능성 높음
+    const titleCandidates = Array.from(titleFreq.entries())
+      .filter(([_, n]) => n >= Math.max(3, Math.ceil(origItems.length * 0.3)))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([w]) => w);
+    for (const t of titleCandidates) {
+      if (!seenKw.has(t.toLowerCase())) {
+        seenKw.add(t.toLowerCase());
+        candidates.push(t);
+      }
+    }
+
     if (!candidates.length) {
       resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">
-        네이버 자동완성에서 단어형 후보가 발견되지 않았습니다.<br>
-        <span class="text-[11px]">(다단어 추천어만 있거나 자동완성 결과 없음)</span>
+        후보 키워드가 발견되지 않았습니다.<br>
+        <span class="text-[11px]">"${_escapeHtml(kw)}"의 자동완성/상품 제목에서 단일 후보를 찾지 못함</span>
       </div>`;
       return;
     }
     if (statusEl) statusEl.textContent = `후보 ${candidates.length}개 검증 중`;
 
-    // 2) 원본 키워드 상위 40개 product ID 수집
-    setLoading('원본 키워드 네이버 쇼핑 결과 조회 중...');
-    let origResp;
-    try { origResp = await _naverShopSearch(kw, 1, 40, api.clientId, api.clientSecret); }
-    catch (e) { throw new Error('원본 검색 실패: ' + (e.message || e)); }
-    const origItems = (origResp.items || []).filter(it => it && it.productId);
-    const origIds = new Set(origItems.map(it => String(it.productId)));
-    if (origIds.size === 0) {
-      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">"${_escapeHtml(kw)}"의 네이버 쇼핑 결과가 없습니다.</div>`;
-      return;
-    }
-
-    // 3) 각 후보의 결과와 겹침 계산
+    // 3) 각 후보의 total 과 비교 — 정확히 일치하면 네이버가 같은 검색어로 판단한 진짜 유의어
     const results = [];
     for (let i = 0; i < candidates.length; i++) {
       const cand = candidates[i];
       setLoading(`후보 검증 중... (${i + 1}/${candidates.length}) — ${_escapeHtml(cand)}`);
       try {
-        const r = await _naverShopSearch(cand, 1, 40, api.clientId, api.clientSecret);
-        const items = (r.items || []).filter(it => it && it.productId);
-        const ids = new Set(items.map(it => String(it.productId)));
-        if (ids.size === 0) continue;
-        let inter = 0;
-        ids.forEach(id => { if (origIds.has(id)) inter++; });
-        const denom = Math.min(origIds.size, ids.size);
-        const overlap = denom ? (inter / denom) : 0;
-        results.push({ candidate: cand, overlap, intersect: inter, origSize: origIds.size, candSize: ids.size });
+        const r = await _naverShopSearch(cand, 1, 1, api.clientId, api.clientSecret);
+        const candTotal = Number(r.total || 0);
+        if (candTotal === 0) continue;
+        const diff = Math.abs(candTotal - origTotal);
+        const diffRatio = diff / Math.max(origTotal, 1);
+        results.push({ candidate: cand, candTotal, origTotal, diff, diffRatio });
       } catch (e) {
         console.warn('[유의어 검증] 후보 실패:', cand, e);
       }
     }
-    // 겹침 50% 이상만, 큰 순서로
-    const verified = results.filter(r => r.overlap >= 0.5).sort((a, b) => b.overlap - a.overlap);
-    _spSynLast = verified.map(r => ({ base: kw, candidate: r.candidate, overlap: r.overlap, intersect: r.intersect, origSize: r.origSize, candSize: r.candSize }));
+    // total 이 정확히 같은 것만 — 네이버가 동일 검색어로 판단한 진짜 유의어
+    // (네이버가 동일 검색어로 취급하면 total 이 완전히 일치, 그렇지 않으면 다름)
+    const verified = results
+      .filter(r => r.diff === 0 || r.diffRatio < 0.001) // 0.1% 이내 (캐싱 갱신 차이 정도까지 허용)
+      .sort((a, b) => a.diff - b.diff);
+    _spSynLast = verified.map(r => ({ base: kw, candidate: r.candidate, candTotal: r.candTotal, origTotal: r.origTotal }));
 
     if (!verified.length) {
-      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">
-        유의어 후보가 발견되지 않았습니다.<br>
-        <span class="text-[11px]">${candidates.length}개 후보 검증 — 모두 겹침 50% 미만</span>
+      const closeOnes = results.filter(r => r.diffRatio < 0.05).sort((a, b) => a.diff - b.diff).slice(0, 3);
+      const closeHint = closeOnes.length
+        ? `<br><span class="text-[11px] text-brand-gray mt-2 inline-block">근접 후보: ${closeOnes.map(r => `${_escapeHtml(r.candidate)}(${r.candTotal.toLocaleString('ko-KR')})`).join(', ')}</span>`
+        : '';
+      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-8">
+        네이버가 동일 검색어로 판단한 유의어가 발견되지 않았습니다.<br>
+        <span class="text-[11px]">"${_escapeHtml(kw)}" 검색 결과 ${origTotal.toLocaleString('ko-KR')}건 · ${candidates.length}개 후보 검증</span>
+        ${closeHint}
+        <div class="text-[11px] text-brand-gray mt-3">직접 후보를 알고 있다면 아래 "키워드 검증"에서 정확히 비교해 보세요</div>
       </div>`;
       if (statusEl) statusEl.textContent = '0개';
       return;
     }
 
-    // 4) 렌더링
-    const tier = (p) => p >= 70 ? { c: 'bg-brand-green-light text-[#00C853]', label: '확실' }
-                       : p >= 60 ? { c: 'bg-brand-blue-light text-brand-blue', label: '높음' }
-                       : { c: 'bg-brand-orange-light/60 text-brand-orange', label: '보통' };
+    // 4) 렌더링 — total 일치 = 확실
     let html = '';
     verified.forEach((r, idx) => {
-      const pct = Math.round(r.overlap * 100);
-      const t = tier(pct);
       html += `<div class="flex items-center justify-between gap-2 py-2 px-3 rounded-xl hover:bg-white transition-colors border-b border-brand-border last:border-b-0">
         <div class="flex items-center gap-2 min-w-0 flex-wrap">
           <span class="font-bold text-sm text-brand-black">${_escapeHtml(r.candidate)}</span>
-          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${t.c}">${pct}% · ${t.label}</span>
-          <span class="text-[10px] text-brand-gray">상품 ${r.intersect}개 겹침</span>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-green-light text-[#00C853]">✓ 네이버 동일</span>
+          <span class="text-[10px] text-brand-gray">${r.candTotal.toLocaleString('ko-KR')}건 = ${r.origTotal.toLocaleString('ko-KR')}건</span>
         </div>
         <button onclick="addSynonymFromVerify(${idx})" class="text-[11px] font-bold px-3 py-1 rounded-full bg-white border border-brand-border text-brand-black hover:bg-brand-black hover:text-white transition-colors shrink-0">+ 동의어 추가</button>
       </div>`;
     });
     resultsWrap.innerHTML = html;
     if (statusEl) statusEl.textContent = `${verified.length}개 발견`;
-    toast(`✅ 유의어 ${verified.length}개 발견`);
+    toast(`✅ 진짜 유의어 ${verified.length}개 발견`);
   } catch (e) {
     resultsWrap.innerHTML = `<div class="text-xs text-brand-pink text-center py-8">⚠ 오류: ${_escapeHtml(e.message || String(e))}</div>`;
     console.error('[유의어 생성 실패]', e);
@@ -3418,13 +3446,43 @@ function addSynonymFromVerify(idx) {
   renderSynonyms();
   toast(`✅ 동의어 추가: ${item.base} ⇄ ${item.candidate}`);
 }
-function verifyKeyword() {
+async function verifyKeyword() {
   const a = document.getElementById('sp-base').value.trim();
   const b = document.getElementById('sp-compare').value.trim();
+  const resultEl = document.getElementById('sp-result');
   if (!a || !b) { toast('기준/비교 키워드를 모두 입력해 주세요'); return; }
-  const same = a === b ? '동일 키워드' : (a.includes(b) || b.includes(a) ? '부분 일치' : '서로 다른 키워드');
-  document.getElementById('sp-result').value = `${same} (기준 ${a.length}자 / 비교 ${b.length}자)`;
-  toast('검증 완료');
+  if (a === b) { resultEl.value = '동일 키워드 (입력값 자체가 같음)'; return; }
+  const api = (typeof _loadNaverApi === 'function') ? _loadNaverApi() : {};
+  if (!api.clientId || !api.clientSecret) {
+    toast('⚠ 먼저 "키워드 순위 → 설정"에서 네이버 API 키를 등록해 주세요');
+    return;
+  }
+  resultEl.value = '검증 중...';
+  try {
+    const [ra, rb] = await Promise.all([
+      _naverShopSearch(a, 1, 1, api.clientId, api.clientSecret),
+      _naverShopSearch(b, 1, 1, api.clientId, api.clientSecret),
+    ]);
+    const ta = Number(ra.total || 0);
+    const tb = Number(rb.total || 0);
+    if (ta === 0 && tb === 0) {
+      resultEl.value = `둘 다 결과 없음 (기준 0건 / 비교 0건)`;
+      return;
+    }
+    const fmt = (n) => Number(n).toLocaleString('ko-KR');
+    if (ta === tb) {
+      resultEl.value = `✅ 진짜 유의어! 네이버가 동일 검색어로 취급 (둘 다 ${fmt(ta)}건)`;
+      toast('✅ 진짜 유의어 — 네이버 동일 판정');
+      // 빠른 동의어 추가용 캐시 등록
+      _spSynLast = [{ base: a, candidate: b, candTotal: tb, origTotal: ta }];
+    } else {
+      const diff = Math.abs(ta - tb);
+      const diffPct = ((diff / Math.max(ta, tb)) * 100).toFixed(2);
+      resultEl.value = `❌ 다른 키워드 (기준 ${fmt(ta)}건 / 비교 ${fmt(tb)}건, ${diffPct}% 차이)`;
+    }
+  } catch (e) {
+    resultEl.value = '오류: ' + (e.message || String(e));
+  }
 }
 
 // 동의어 저장소
