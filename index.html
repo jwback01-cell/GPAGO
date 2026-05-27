@@ -7024,23 +7024,31 @@ function _kwVolumeText(v) {
   return v.total.toLocaleString() + '회';
 }
 // 여러 키워드를 한 번의 API 호출로 조회 (최대 5개) — 네이버 검색광고 hintKeywords 는 콤마 구분 다중 키워드 지원
-async function _fetchAndCacheKwVolumeBatch(keywords) {
+// 429 (rate-limit) 응답 시 자동 백오프 재시도 (최대 3회)
+async function _fetchAndCacheKwVolumeBatch(keywords, retry) {
   if (!_kwHasSaKey()) return;
   const cache = _loadKwVolume();
   const now = Date.now();
-  // 공백 제거 (네이버 거부), 최대 5개
   const norm = s => String(s || '').replace(/\s+/g, '').toLowerCase();
   const batch = (keywords || []).filter(Boolean).slice(0, 5);
   const hints = batch.map(kw => kw.replace(/\s+/g, '')).filter(Boolean);
   if (!hints.length) return;
   const data = await _saFetchKeywords(hints.join(','));
+  // 429 rate-limit → 백오프 후 재시도
+  if (data && data.error && /429/.test(String(data.error))) {
+    retry = (retry || 0) + 1;
+    if (retry <= 3) {
+      const delay = 800 * retry; // 800ms, 1600ms, 2400ms
+      await new Promise(r => setTimeout(r, delay));
+      return _fetchAndCacheKwVolumeBatch(keywords, retry);
+    }
+  }
   if (!data || data.error || !Array.isArray(data.keywordList)) {
     const errMsg = (data && (data.error || data.detail)) || 'fetch_failed';
     batch.forEach(kw => { cache[kw] = { error: errMsg, ts: now }; });
     _saveKwVolume(cache);
     return;
   }
-  // 응답의 keywordList 에서 원본 키워드와 매칭되는 항목 찾기
   const idx = {};
   data.keywordList.forEach(k => { idx[norm(k.relKeyword)] = k; });
   batch.forEach(kw => {
@@ -7151,16 +7159,16 @@ async function _refreshKwVolumesForRendered() {
     });
   });
   try {
-    // 5개씩 묶어서 batch 호출 + 동시 3개 batch 까지 병렬 (전체적으로 약 10배 빠름)
+    // 5개씩 묶어서 순차 호출 (네이버 검색광고 API 429 rate-limit 회피)
+    // 60개 태그 = 12 배치 × 약 400ms = 약 5초 (이전 단일 호출 30초의 1/6)
     const batches = [];
     for (let i = 0; i < needFetch.length; i += 5) batches.push(needFetch.slice(i, i + 5));
-    const CONCURRENT = 3;
-    for (let i = 0; i < batches.length; i += CONCURRENT) {
-      const chunk = batches.slice(i, i + CONCURRENT);
-      await Promise.all(chunk.map(b => _fetchAndCacheKwVolumeBatch(b).catch(e => console.warn('[KW Volume] batch 예외:', e))));
+    for (let i = 0; i < batches.length; i++) {
+      try { await _fetchAndCacheKwVolumeBatch(batches[i]); }
+      catch(e) { console.warn('[KW Volume] batch 예외:', e); }
       _applyKwVolumesToCells();
-      // 다음 라운드까지 짧은 간격 (rate-limit 회피)
-      if (i + CONCURRENT < batches.length) await new Promise(r => setTimeout(r, 150));
+      // 다음 배치까지 충분한 간격 (rate-limit 회피)
+      if (i + 1 < batches.length) await new Promise(r => setTimeout(r, 350));
     }
   } finally {
     _kwVolumeFetchInFlight = false;
