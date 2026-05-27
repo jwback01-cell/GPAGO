@@ -519,12 +519,17 @@
           <div>
             <label class="block text-xs font-bold text-brand-gray mb-1.5">키워드 입력</label>
             <div class="flex gap-2">
-              <input id="sp-keyword" class="pill-input flex-1" placeholder="예) 계란, 나시, 원두">
-              <button class="pill-btn pill-btn-dark" onclick="generateSynonyms()">+ 생성</button>
+              <input id="sp-keyword" class="pill-input flex-1" placeholder="예) 케이스, 마스크, 청바지" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSynonyms();}">
+              <button id="sp-gen-btn" class="pill-btn pill-btn-dark" onclick="generateSynonyms()">+ 생성</button>
             </div>
-            <label class="block text-xs font-bold text-brand-gray mt-4 mb-1.5">유의어 키워드</label>
-            <input id="sp-synonyms" class="pill-input w-full" placeholder="자동 생성된 유의어가 여기에 표시됩니다" readonly>
-            <div class="text-[11px] text-brand-gray mt-1.5">AI 모델로 키워드를 분석하여 유의어를 자동 생성합니다</div>
+            <div class="flex items-center justify-between mt-4 mb-2">
+              <label class="block text-xs font-bold text-brand-gray">유의어 후보 (네이버 결과 겹침 검증)</label>
+              <span id="sp-syn-status" class="text-[11px] text-brand-gray"></span>
+            </div>
+            <div id="sp-syn-results" class="bg-brand-bg rounded-2xl p-2 min-h-[140px] max-h-[260px] overflow-auto">
+              <div class="text-xs text-brand-gray text-center py-10">키워드를 입력하고 "생성"을 누르세요</div>
+            </div>
+            <div class="text-[11px] text-brand-gray mt-1.5">네이버 자동완성에서 후보를 찾고, 쇼핑 검색 결과 상품이 얼마나 겹치는지 비교해 진짜 유의어만 보여줍니다 (겹침 50% 이상)</div>
           </div>
           <div>
             <label class="block text-xs font-bold text-brand-gray mb-1.5">카테고리 선택</label>
@@ -3253,13 +3258,166 @@ function _extractTagsFromTitle(item) {
 }
 
 // ═════════════ 특수 키워드 ═════════════
-function generateSynonyms() {
+// 검증 후보 결과 캐시 (동의어 추가 버튼이 인덱스로 참조)
+let _spSynLast = []; // [{base, candidate, overlap, intersect, origSize, candSize}, ...]
+
+async function generateSynonyms() {
   const kw = (document.getElementById('sp-keyword').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
-  const baseSyns = { '계란': '달걀, 알, 닭알', '나시': '민소매, 탱크탑, 슬리브리스', '원두': '커피콩, 빈, 로스팅원두' };
-  const out = baseSyns[kw] || `${kw} 관련어1, ${kw} 관련어2, ${kw} 유사어`;
-  document.getElementById('sp-synonyms').value = out;
-  toast('유의어 생성 완료');
+  const api = (typeof _loadNaverApi === 'function') ? _loadNaverApi() : {};
+  if (!api.clientId || !api.clientSecret) {
+    toast('⚠ 먼저 "키워드 순위 → 설정"에서 네이버 API 키를 등록해 주세요');
+    return;
+  }
+  const resultsWrap = document.getElementById('sp-syn-results');
+  const statusEl = document.getElementById('sp-syn-status');
+  const btn = document.getElementById('sp-gen-btn');
+  const setLoading = (text) => {
+    resultsWrap.innerHTML = `<div class="flex items-center justify-center py-8 gap-2">
+      <svg class="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3478F6" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke-linecap="round"/></svg>
+      <span class="text-sm text-brand-gray">${text}</span>
+    </div>`;
+  };
+  if (btn) { btn.disabled = true; btn.textContent = '처리 중...'; }
+  if (statusEl) statusEl.textContent = '';
+  _spSynLast = [];
+
+  try {
+    // 1) 자동완성에서 후보 수집
+    setLoading('네이버 자동완성에서 후보 수집 중...');
+    const sgR = await fetch(`/api/naver-suggest?query=${encodeURIComponent(kw)}`);
+    if (!sgR.ok) {
+      const err = await sgR.json().catch(() => ({}));
+      throw new Error('자동완성 호출 실패: ' + (err.error || sgR.status));
+    }
+    const sgData = await sgR.json();
+    const rawCandidates = Array.isArray(sgData.suggestions) ? sgData.suggestions : [];
+    // 정제: 원본 제거, 너무 긴 다단어 제외, 중복 제거
+    const seenKw = new Set([kw.toLowerCase()]);
+    const candidates = [];
+    for (const s of rawCandidates) {
+      const t = String(s).trim();
+      if (!t) continue;
+      const k = t.toLowerCase();
+      if (seenKw.has(k)) continue;
+      // 다단어 (공백 포함)는 후보에서 제외 — "케이스 추천", "케이스 비교" 같은 복합 검색어 차단
+      if (/\s/.test(t)) continue;
+      // 너무 긴 후보 차단 (원본 길이 * 3 초과)
+      if (t.length > Math.max(kw.length * 3, 8)) continue;
+      seenKw.add(k);
+      candidates.push(t);
+      if (candidates.length >= 12) break;
+    }
+    if (!candidates.length) {
+      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">
+        네이버 자동완성에서 단어형 후보가 발견되지 않았습니다.<br>
+        <span class="text-[11px]">(다단어 추천어만 있거나 자동완성 결과 없음)</span>
+      </div>`;
+      return;
+    }
+    if (statusEl) statusEl.textContent = `후보 ${candidates.length}개 검증 중`;
+
+    // 2) 원본 키워드 상위 40개 product ID 수집
+    setLoading('원본 키워드 네이버 쇼핑 결과 조회 중...');
+    let origResp;
+    try { origResp = await _naverShopSearch(kw, 1, 40, api.clientId, api.clientSecret); }
+    catch (e) { throw new Error('원본 검색 실패: ' + (e.message || e)); }
+    const origItems = (origResp.items || []).filter(it => it && it.productId);
+    const origIds = new Set(origItems.map(it => String(it.productId)));
+    if (origIds.size === 0) {
+      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">"${_escapeHtml(kw)}"의 네이버 쇼핑 결과가 없습니다.</div>`;
+      return;
+    }
+
+    // 3) 각 후보의 결과와 겹침 계산
+    const results = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const cand = candidates[i];
+      setLoading(`후보 검증 중... (${i + 1}/${candidates.length}) — ${_escapeHtml(cand)}`);
+      try {
+        const r = await _naverShopSearch(cand, 1, 40, api.clientId, api.clientSecret);
+        const items = (r.items || []).filter(it => it && it.productId);
+        const ids = new Set(items.map(it => String(it.productId)));
+        if (ids.size === 0) continue;
+        let inter = 0;
+        ids.forEach(id => { if (origIds.has(id)) inter++; });
+        const denom = Math.min(origIds.size, ids.size);
+        const overlap = denom ? (inter / denom) : 0;
+        results.push({ candidate: cand, overlap, intersect: inter, origSize: origIds.size, candSize: ids.size });
+      } catch (e) {
+        console.warn('[유의어 검증] 후보 실패:', cand, e);
+      }
+    }
+    // 겹침 50% 이상만, 큰 순서로
+    const verified = results.filter(r => r.overlap >= 0.5).sort((a, b) => b.overlap - a.overlap);
+    _spSynLast = verified.map(r => ({ base: kw, candidate: r.candidate, overlap: r.overlap, intersect: r.intersect, origSize: r.origSize, candSize: r.candSize }));
+
+    if (!verified.length) {
+      resultsWrap.innerHTML = `<div class="text-xs text-brand-gray text-center py-10">
+        유의어 후보가 발견되지 않았습니다.<br>
+        <span class="text-[11px]">${candidates.length}개 후보 검증 — 모두 겹침 50% 미만</span>
+      </div>`;
+      if (statusEl) statusEl.textContent = '0개';
+      return;
+    }
+
+    // 4) 렌더링
+    const tier = (p) => p >= 70 ? { c: 'bg-brand-green-light text-[#00C853]', label: '확실' }
+                       : p >= 60 ? { c: 'bg-brand-blue-light text-brand-blue', label: '높음' }
+                       : { c: 'bg-brand-orange-light/60 text-brand-orange', label: '보통' };
+    let html = '';
+    verified.forEach((r, idx) => {
+      const pct = Math.round(r.overlap * 100);
+      const t = tier(pct);
+      html += `<div class="flex items-center justify-between gap-2 py-2 px-3 rounded-xl hover:bg-white transition-colors border-b border-brand-border last:border-b-0">
+        <div class="flex items-center gap-2 min-w-0 flex-wrap">
+          <span class="font-bold text-sm text-brand-black">${_escapeHtml(r.candidate)}</span>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${t.c}">${pct}% · ${t.label}</span>
+          <span class="text-[10px] text-brand-gray">상품 ${r.intersect}개 겹침</span>
+        </div>
+        <button onclick="addSynonymFromVerify(${idx})" class="text-[11px] font-bold px-3 py-1 rounded-full bg-white border border-brand-border text-brand-black hover:bg-brand-black hover:text-white transition-colors shrink-0">+ 동의어 추가</button>
+      </div>`;
+    });
+    resultsWrap.innerHTML = html;
+    if (statusEl) statusEl.textContent = `${verified.length}개 발견`;
+    toast(`✅ 유의어 ${verified.length}개 발견`);
+  } catch (e) {
+    resultsWrap.innerHTML = `<div class="text-xs text-brand-pink text-center py-8">⚠ 오류: ${_escapeHtml(e.message || String(e))}</div>`;
+    console.error('[유의어 생성 실패]', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '+ 생성'; }
+  }
+}
+
+// 검증된 유의어 결과를 동의어 저장소(syn 탭)에 추가
+function addSynonymFromVerify(idx) {
+  const item = _spSynLast[idx];
+  if (!item) { toast('⚠ 결과를 다시 생성해 주세요'); return; }
+  const list = _synGetList('syn');
+  // 중복 체크 (a/b 양방향)
+  const dup = list.find(x => x && ((x.a === item.base && x.b === item.candidate) || (x.a === item.candidate && x.b === item.base)));
+  if (dup) { toast('⚠ 이미 등록된 동의어입니다'); return; }
+  // 빈 슬롯 찾기
+  let placed = false;
+  for (let i = 0; i < 60; i++) {
+    if (!list[i] || (!list[i].a && !list[i].b)) {
+      list[i] = { a: item.base, b: item.candidate };
+      placed = true;
+      break;
+    }
+  }
+  if (!placed) { toast('⚠ 동의어 저장소가 가득 찼습니다 (60칸)'); return; }
+  _synSetList('syn', list);
+  // 동의어 탭 활성화 후 다시 그리기
+  _synTab = 'syn';
+  document.querySelectorAll('.syn-tab').forEach(x => {
+    const active = x.dataset.tab === 'syn';
+    x.classList.toggle('pill-btn-dark', active);
+    x.classList.toggle('pill-btn-light', !active);
+  });
+  _synPage = 1;
+  renderSynonyms();
+  toast(`✅ 동의어 추가: ${item.base} ⇄ ${item.candidate}`);
 }
 function verifyKeyword() {
   const a = document.getElementById('sp-base').value.trim();
