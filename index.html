@@ -3788,12 +3788,17 @@ async function extractFromKeyword() {
   // 2차 폴백: Open API + 상품 제목에서 태그 추출 (manuTag 는 못 얻지만 빈도 기반 태그 산출)
   try {
     if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 차단 — Open API 폴백 모드로 전환 중...</div>';
-    const api = _getApi();
-    if (!api.id || !api.secret) {
-      throw new Error('네이버 차단 + Open API 미설정 — 우상단 "API 설정" 에 Client ID/Secret 등록 필요');
+    // API 키를 두 곳에서 모두 시도: 분석페이지 설정(_getApi) + 키워드 순위 설정(_loadNaverApi)
+    let cid = '', csec = '';
+    try { const a1 = (typeof _getApi === 'function') ? _getApi() : {}; if (a1.id) cid = a1.id; if (a1.secret) csec = a1.secret; } catch(_) {}
+    if (!cid || !csec) {
+      try { const a2 = (typeof _loadNaverApi === 'function') ? _loadNaverApi() : {}; if (a2.clientId) cid = a2.clientId; if (a2.clientSecret) csec = a2.clientSecret; } catch(_) {}
+    }
+    if (!cid || !csec) {
+      throw new Error('네이버 차단 + Open API 미설정 — 우상단 "API 설정" 또는 "키워드 순위 → 설정"에 Client ID/Secret 등록 필요');
     }
     const apiR = await fetch(`/api/naver-shop?query=${encodeURIComponent(kw)}&display=80&sort=sim`, {
-      headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+      headers: { 'x-client-id': cid, 'x-client-secret': csec }
     });
     if (!apiR.ok) throw new Error('Open API 호출 실패: HTTP ' + apiR.status);
     const apiData = await apiR.json();
