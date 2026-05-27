@@ -10998,8 +10998,10 @@ function prodsrcAddFavorite(name) {
   if (!Array.isArray(_prodsrcState.favorites)) _prodsrcState.favorites = [];
   if (_prodsrcState.favorites.includes(name)) return;
   _prodsrcState.favorites.push(name);
-  _prodsrcSave();
+  // 화면 즉시 갱신 (사용자 피드백 우선)
   _prodsrcRender();
+  // 저장은 비동기 (Web Worker 압축 → 메인 스레드 안 막음. 큰 데이터일 때 freeze 방지)
+  _prodsrcSaveAsync();
 }
 
 // 드래그 앤 드롭 — 카테고리 폴더 ↔ 주요 폴더 양방향
@@ -11117,8 +11119,9 @@ document.addEventListener('click', (e) => {
 function prodsrcRemoveFavorite(name) {
   if (!Array.isArray(_prodsrcState.favorites)) return;
   _prodsrcState.favorites = _prodsrcState.favorites.filter(n => n !== name);
-  _prodsrcSave();
+  // 화면 즉시 갱신 + 저장은 비동기 (메인 스레드 안 막음)
   _prodsrcRender();
+  _prodsrcSaveAsync();
 }
 
 function prodsrcOpenCategory(name) {
