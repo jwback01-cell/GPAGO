@@ -7023,6 +7023,44 @@ function _kwVolumeText(v) {
   if (typeof v.total === 'string') return v.total + '회';
   return v.total.toLocaleString() + '회';
 }
+// 여러 키워드를 한 번의 API 호출로 조회 (최대 5개) — 네이버 검색광고 hintKeywords 는 콤마 구분 다중 키워드 지원
+async function _fetchAndCacheKwVolumeBatch(keywords) {
+  if (!_kwHasSaKey()) return;
+  const cache = _loadKwVolume();
+  const now = Date.now();
+  // 공백 제거 (네이버 거부), 최대 5개
+  const norm = s => String(s || '').replace(/\s+/g, '').toLowerCase();
+  const batch = (keywords || []).filter(Boolean).slice(0, 5);
+  const hints = batch.map(kw => kw.replace(/\s+/g, '')).filter(Boolean);
+  if (!hints.length) return;
+  const data = await _saFetchKeywords(hints.join(','));
+  if (!data || data.error || !Array.isArray(data.keywordList)) {
+    const errMsg = (data && (data.error || data.detail)) || 'fetch_failed';
+    batch.forEach(kw => { cache[kw] = { error: errMsg, ts: now }; });
+    _saveKwVolume(cache);
+    return;
+  }
+  // 응답의 keywordList 에서 원본 키워드와 매칭되는 항목 찾기
+  const idx = {};
+  data.keywordList.forEach(k => { idx[norm(k.relKeyword)] = k; });
+  batch.forEach(kw => {
+    const found = idx[norm(kw)];
+    if (!found) {
+      cache[kw] = { error: 'no_match', ts: now };
+      return;
+    }
+    const pc = _normalizeQc(found.monthlyPcQcCnt);
+    const mb = _normalizeQc(found.monthlyMobileQcCnt);
+    const allLow = pc.low && mb.low;
+    cache[kw] = {
+      pc: pc.n, mobile: mb.n,
+      total: allLow ? '< 20' : (pc.n + mb.n),
+      ts: now,
+    };
+  });
+  _saveKwVolume(cache);
+}
+
 async function _fetchAndCacheKwVolume(keyword) {
   if (!_kwHasSaKey()) {
     return { error: 'no_key' };
@@ -7113,10 +7151,16 @@ async function _refreshKwVolumesForRendered() {
     });
   });
   try {
-    for (const kw of needFetch) {
-      try { await _fetchAndCacheKwVolume(kw); } catch(e) { console.warn('[KW Volume] 예외:', kw, e); }
+    // 5개씩 묶어서 batch 호출 + 동시 3개 batch 까지 병렬 (전체적으로 약 10배 빠름)
+    const batches = [];
+    for (let i = 0; i < needFetch.length; i += 5) batches.push(needFetch.slice(i, i + 5));
+    const CONCURRENT = 3;
+    for (let i = 0; i < batches.length; i += CONCURRENT) {
+      const chunk = batches.slice(i, i + CONCURRENT);
+      await Promise.all(chunk.map(b => _fetchAndCacheKwVolumeBatch(b).catch(e => console.warn('[KW Volume] batch 예외:', e))));
       _applyKwVolumesToCells();
-      await new Promise(r => setTimeout(r, 250)); // rate-limit 회피
+      // 다음 라운드까지 짧은 간격 (rate-limit 회피)
+      if (i + CONCURRENT < batches.length) await new Promise(r => setTimeout(r, 150));
     }
   } finally {
     _kwVolumeFetchInFlight = false;
