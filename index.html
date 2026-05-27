@@ -3470,14 +3470,18 @@ async function verifyKeyword() {
       return;
     }
     const fmt = (n) => Number(n).toLocaleString('ko-KR');
-    if (ta === tb) {
-      resultEl.value = `✅ 진짜 유의어! 네이버가 동일 검색어로 취급 (둘 다 ${fmt(ta)}건)`;
+    const diff = Math.abs(ta - tb);
+    const denom = Math.max(ta, tb, 1);
+    const ratio = diff / denom;
+    // 검증 사이에 상품이 추가/삭제되어 약간의 차이가 생길 수 있음 → 1% 이내(=99% 일치)면 동일 검색어로 판단
+    if (ratio < 0.01) {
+      const sameStr = (diff === 0) ? '완전 일치' : `${(100 - ratio * 100).toFixed(2)}% 동일 (차이 ${fmt(diff)}건)`;
+      resultEl.value = `✅ 진짜 유의어! 네이버가 동일 검색어로 취급 (${sameStr}, 기준 ${fmt(ta)}건 / 비교 ${fmt(tb)}건)`;
       toast('✅ 진짜 유의어 — 네이버 동일 판정');
       // 빠른 동의어 추가용 캐시 등록
       _spSynLast = [{ base: a, candidate: b, candTotal: tb, origTotal: ta }];
     } else {
-      const diff = Math.abs(ta - tb);
-      const diffPct = ((diff / Math.max(ta, tb)) * 100).toFixed(2);
+      const diffPct = (ratio * 100).toFixed(2);
       resultEl.value = `❌ 다른 키워드 (기준 ${fmt(ta)}건 / 비교 ${fmt(tb)}건, ${diffPct}% 차이)`;
     }
   } catch (e) {
