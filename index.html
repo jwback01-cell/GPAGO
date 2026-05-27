@@ -820,6 +820,8 @@
 
       <!-- 탭: 순위 변동 추이 -->
       <div id="kw-tab-trend" class="space-y-6">
+        <!-- 목록 뷰 (카드 그리드) -->
+        <div id="kw-trend-list-view">
         <section class="bg-white p-6 md:p-8 rounded-4xl panel flex flex-col">
           <div class="flex justify-between items-center mb-5 shrink-0 flex-wrap gap-3">
             <div class="flex items-center gap-3">
@@ -887,6 +889,57 @@
           <!-- 카드 그리드 — 1줄에 2개 -->
           <div id="kw-trend-canvas" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
         </section>
+        </div><!-- /kw-trend-list-view -->
+
+        <!-- 상세 뷰 (카드 클릭 시 인라인으로 표시 — 로파고 스타일) -->
+        <div id="kw-trend-detail-view" class="hidden">
+          <section class="bg-white p-6 md:p-8 rounded-4xl panel flex flex-col">
+            <!-- 상단 툴바: 목록 돌아가기 + 슬롯 + 액션 -->
+            <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
+              <div class="flex items-center gap-3 min-w-0">
+                <button onclick="closeKwTrendDetail()" class="text-sm font-bold text-brand-gray hover:text-brand-black flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-brand-bg transition-colors" aria-label="목록 돌아가기">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                  목록 돌아가기
+                </button>
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-6 bg-brand-orange-light rounded-full shrink-0"></div>
+                  <h2 class="text-[1.1rem] font-bold whitespace-nowrap">키워드 일괄추적</h2>
+                  <span id="kw-detail-slot-badge" class="hidden text-[11px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full"></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" onclick="openKwProductMgrCurrent()" class="text-xs font-bold px-4 py-2 rounded-full bg-white border border-brand-border text-brand-black hover:bg-brand-bg flex items-center gap-1.5 transition-colors">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  키워드 관리
+                </button>
+                <button type="button" id="kw-detail-track-btn" onclick="runKwTrackForCurrent()" class="text-xs font-bold px-4 py-2 rounded-full bg-brand-black text-white hover:bg-[#333] flex items-center gap-1.5 transition-colors">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  순위추적
+                </button>
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full bg-brand-green-light text-[#00C853]">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                  자동추적 ON
+                </span>
+              </div>
+            </div>
+            <!-- 상품 정보 -->
+            <div id="kw-detail-product-info" class="pb-5 border-b border-brand-border"></div>
+            <!-- 통계 바 (이 상품 한정) -->
+            <div id="kw-detail-stats" class="py-4 border-b border-brand-border"></div>
+            <!-- 기간 필터 -->
+            <div class="py-3 border-b border-brand-border flex items-center gap-3 flex-wrap">
+              <div id="kw-detail-period" class="flex gap-1 bg-brand-bg p-1 rounded-xl">
+                <button data-days="7" class="kw-detail-pbtn px-3 py-1.5 text-sm font-bold bg-white shadow-sm rounded-lg text-brand-black">7일</button>
+                <button data-days="14" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">14일</button>
+                <button data-days="30" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">30일</button>
+                <button data-days="all" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">전체</button>
+              </div>
+              <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨 · 매일 오전 7시 자동 추적 + 수동 조회 누적</span>
+            </div>
+            <!-- 표 -->
+            <div id="kw-detail-canvas" class="overflow-auto"></div>
+          </section>
+        </div><!-- /kw-trend-detail-view -->
       </div><!-- /kw-tab-trend -->
 
       <!-- 탭: 설정 -->
@@ -1766,36 +1819,56 @@ PBT키캡	1180
   </div>
 </div>
 
-<!-- 순위 변동 추이 상세(상품별) 모달 -->
-<div id="kw-trend-detail-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeKwTrendDetail()">
-  <div class="bg-white rounded-3xl panel w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
-    <!-- 상단 타이틀 바 -->
-    <div class="px-6 py-3 border-b border-brand-border flex items-center justify-between gap-3 shrink-0">
-      <div class="flex items-center gap-2 min-w-0">
-        <div class="w-2 h-6 bg-brand-orange-light rounded-full shrink-0"></div>
-        <h2 class="text-[1.1rem] font-bold whitespace-nowrap">키워드 일괄추적</h2>
-        <span id="kw-detail-slot-badge" class="hidden text-[11px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2 py-0.5 rounded-full"></span>
+<!-- 상품 단위 키워드 관리 모달 (ROPAGO 스타일 - 카드 상세 화면에서 호출) -->
+<div id="kw-product-mgr-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeKwProductMgr()">
+  <div class="bg-white rounded-3xl panel w-full max-w-2xl overflow-hidden flex flex-col">
+    <!-- 헤더 -->
+    <div class="px-6 py-4 border-b border-brand-border flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-6 bg-brand-orange-light rounded-full"></div>
+        <h2 class="text-[1.05rem] font-bold">키워드 관리</h2>
       </div>
-      <button onclick="closeKwTrendDetail()" class="text-brand-gray hover:text-brand-black p-1 rounded-full hover:bg-brand-bg shrink-0" aria-label="닫기">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <div class="flex items-center gap-4">
+        <span class="text-sm font-bold"><b id="kw-prodmgr-counter" class="text-brand-black">0</b><span class="text-brand-gray font-medium"> / 50</span></span>
+        <button onclick="closeKwProductMgr()" class="text-brand-gray hover:text-brand-black p-1 rounded-full hover:bg-brand-bg" aria-label="닫기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- 입력 + 등록 -->
+    <div class="px-6 py-5">
+      <div class="flex items-stretch gap-2">
+        <div class="flex-1 flex items-center gap-2 bg-brand-bg border border-brand-border rounded-xl px-4">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <input id="kw-prodmgr-input" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault();addKwProductMgr();}" class="flex-1 bg-transparent py-2.5 text-sm focus:outline-none" placeholder="마스크, 린넨자켓, 청바지... (쉼표로 구분 · Enter 등록)">
+        </div>
+        <button onclick="addKwProductMgr()" class="px-5 py-2.5 rounded-xl bg-brand-black text-white text-sm font-bold hover:bg-[#333] shrink-0">등록</button>
+      </div>
+      <p class="text-brand-gray text-xs mt-2 flex items-center gap-1.5">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        쉼표(,)로 여러 개를 한번에 등록할 수 있습니다
+      </p>
+      <!-- 등록 키워드 목록 -->
+      <div class="mt-5 pt-5 border-t border-brand-border">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <span class="text-[11px] font-bold text-brand-blue uppercase tracking-wider">Registered Keywords</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-brand-gray">검색량 합계 <b id="kw-prodmgr-volsum" class="text-brand-black font-bold">0</b></span>
+            <button onclick="clearAllKwProductMgr()" class="text-[11px] font-bold text-brand-gray hover:text-brand-pink flex items-center gap-1 px-2 py-1 rounded hover:bg-brand-bg transition-colors">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+              전체 삭제
+            </button>
+          </div>
+        </div>
+        <div id="kw-prodmgr-list" class="flex flex-wrap gap-2 min-h-[40px]"></div>
+      </div>
+    </div>
+    <!-- 푸터 -->
+    <div class="px-6 py-3 border-t border-brand-border flex justify-end">
+      <button onclick="closeKwProductMgr()" class="text-xs font-bold text-brand-gray hover:text-brand-black flex items-center gap-1 px-3 py-1.5 rounded-full hover:bg-brand-bg">
+        닫기 <span class="text-[10px] bg-brand-bg border border-brand-border rounded px-1.5 py-0.5">ESC</span>
       </button>
     </div>
-    <!-- 상품 정보 -->
-    <div id="kw-detail-product-info" class="px-6 py-4 border-b border-brand-border shrink-0"></div>
-    <!-- 통계 바 (이 상품 한정) -->
-    <div id="kw-detail-stats" class="px-6 py-3 border-b border-brand-border shrink-0"></div>
-    <!-- 기간 필터 -->
-    <div class="px-6 py-3 border-b border-brand-border flex items-center gap-3 flex-wrap shrink-0">
-      <div id="kw-detail-period" class="flex gap-1 bg-brand-bg p-1 rounded-xl">
-        <button data-days="7" class="kw-detail-pbtn px-3 py-1.5 text-sm font-bold bg-white shadow-sm rounded-lg text-brand-black">7일</button>
-        <button data-days="14" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">14일</button>
-        <button data-days="30" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">30일</button>
-        <button data-days="all" class="kw-detail-pbtn px-3 py-1.5 text-sm font-medium text-brand-gray hover:text-brand-black transition-colors">전체</button>
-      </div>
-      <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨 · 매일 오전 7시 자동 추적 + 수동 조회 누적</span>
-    </div>
-    <!-- 표 -->
-    <div id="kw-detail-canvas" class="overflow-auto flex-1"></div>
   </div>
 </div>
 <!-- 공용 알림 모달 (native alert 대체) -->
@@ -5795,9 +5868,12 @@ function openKwTrendDetail(productKey) {
     });
     periodEl.dataset.bound = '1';
   }
-  // ESC 키로 닫기
+  // ESC 키로 목록으로 돌아가기
   document.addEventListener('keydown', _kwDetailEscHandler);
-  document.getElementById('kw-trend-detail-modal').classList.remove('hidden');
+  // 목록 숨기고 상세 표시 (인라인 — 팝업 X, 페이지 자체가 변경되는 느낌)
+  document.getElementById('kw-trend-list-view').classList.add('hidden');
+  document.getElementById('kw-trend-detail-view').classList.remove('hidden');
+  try { window.scrollTo({ top: 0, behavior: 'instant' }); } catch(_) { window.scrollTo(0, 0); }
   _renderKwDetailTable();
 }
 
@@ -5806,9 +5882,201 @@ function _kwDetailEscHandler(e) {
 }
 
 function closeKwTrendDetail() {
-  document.getElementById('kw-trend-detail-modal').classList.add('hidden');
+  document.getElementById('kw-trend-detail-view').classList.add('hidden');
+  document.getElementById('kw-trend-list-view').classList.remove('hidden');
   _kwDetailProductKey = null;
   document.removeEventListener('keydown', _kwDetailEscHandler);
+}
+
+// ── 상품 단위 키워드 관리 모달 (ROPAGO 스타일) ─────────────
+// 인라인 onclick 에서 호출하는 래퍼 — let 변수는 window scope 가 아니라서 직접 참조 불가
+function openKwProductMgrCurrent() { openKwProductMgr(_kwDetailProductKey); }
+function runKwTrackForCurrent() { runKwTrackForProduct(_kwDetailProductKey); }
+let _kwProdMgrProductKey = null;
+function _kwProdMgrEscHandler(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); closeKwProductMgr(); }
+}
+function openKwProductMgr(productKey) {
+  if (!productKey) { alert('상품을 먼저 선택해 주세요.'); return; }
+  _kwProdMgrProductKey = productKey;
+  const input = document.getElementById('kw-prodmgr-input');
+  if (input) input.value = '';
+  _renderKwProductMgrList();
+  document.getElementById('kw-product-mgr-modal').classList.remove('hidden');
+  document.addEventListener('keydown', _kwProdMgrEscHandler);
+  setTimeout(() => input?.focus(), 50);
+}
+function closeKwProductMgr() {
+  document.getElementById('kw-product-mgr-modal').classList.add('hidden');
+  document.removeEventListener('keydown', _kwProdMgrEscHandler);
+  _kwProdMgrProductKey = null;
+}
+function _renderKwProductMgrList() {
+  if (!_kwProdMgrProductKey) return;
+  const list = _loadKwManage().filter(it => it.productKey === _kwProdMgrProductKey);
+  const wrap = document.getElementById('kw-prodmgr-list');
+  if (!wrap) return;
+  const volMap = (typeof _loadKwVolume === 'function') ? _loadKwVolume() : {};
+  let volSum = 0;
+  if (!list.length) {
+    wrap.innerHTML = '<div class="text-xs text-brand-gray py-2">등록된 키워드가 없습니다. 위 입력창에 입력 후 등록하세요.</div>';
+  } else {
+    wrap.innerHTML = list.map(it => {
+      const v = volMap[it.keyword];
+      const volNum = (v && typeof v.n === 'number' && v.n > 0) ? v.n : null;
+      if (typeof volNum === 'number') volSum += volNum;
+      const volStr = (typeof volNum === 'number') ? Number(volNum).toLocaleString('ko-KR') : '';
+      return `<span class="inline-flex items-center gap-2 bg-brand-bg border border-brand-border rounded-full pl-3 pr-1.5 py-1.5 text-sm">
+        <span class="font-semibold text-brand-black">${_escapeHtml(it.keyword)}</span>
+        ${volStr ? `<span class="text-[11px] text-brand-gray font-medium">${volStr}</span>` : ''}
+        <button type="button" onclick="removeKwProductMgr('${it.id}')" title="삭제" class="w-5 h-5 rounded-full text-brand-gray hover:text-white hover:bg-brand-pink flex items-center justify-center text-[14px] leading-none transition-colors" aria-label="삭제">×</button>
+      </span>`;
+    }).join('');
+  }
+  const sumEl = document.getElementById('kw-prodmgr-volsum');
+  if (sumEl) sumEl.textContent = volSum.toLocaleString('ko-KR');
+  const cntEl = document.getElementById('kw-prodmgr-counter');
+  if (cntEl) cntEl.textContent = String(list.length);
+}
+function addKwProductMgr() {
+  if (!_kwProdMgrProductKey) return;
+  const input = document.getElementById('kw-prodmgr-input');
+  const raw = (input?.value || '').trim();
+  if (!raw) { input?.focus(); return; }
+  const keywords = [...new Set(raw.split(',').map(s => s.trim()).filter(Boolean))];
+  if (!keywords.length) return;
+  const list = _loadKwManage();
+  let added = 0, skipped = 0;
+  keywords.forEach(kw => {
+    const exists = list.some(x => x.keyword === kw && x.productKey === _kwProdMgrProductKey);
+    if (exists) { skipped++; return; }
+    list.push({ id: _kwUid(), keyword: kw, productKey: _kwProdMgrProductKey, auto: true, rankTypes: ['price'], createdAt: Date.now() });
+    added++;
+  });
+  if (added) _saveKwManage(list);
+  if (input) input.value = '';
+  _renderKwProductMgrList();
+  // 상세 화면 다시 그리기
+  if (_kwDetailProductKey === _kwProdMgrProductKey) {
+    _renderKwDetailStats(_kwDetailProductKey);
+    _renderKwDetailTable();
+  }
+  if (typeof renderKwManageList === 'function') renderKwManageList();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+  if (added && skipped) toast(`✅ ${added}개 등록 · ${skipped}개 중복 건너뜀`);
+  else if (added) toast(`✅ ${added}개 키워드 등록 완료`);
+  else if (skipped) toast('⚠ 모두 이미 등록된 키워드입니다');
+  input?.focus();
+}
+function removeKwProductMgr(id) {
+  const list = _loadKwManage();
+  const idx = list.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  list.splice(idx, 1);
+  _saveKwManage(list);
+  _renderKwProductMgrList();
+  if (_kwDetailProductKey) {
+    _renderKwDetailStats(_kwDetailProductKey);
+    _renderKwDetailTable();
+  }
+  if (typeof renderKwManageList === 'function') renderKwManageList();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+}
+function clearAllKwProductMgr() {
+  if (!_kwProdMgrProductKey) return;
+  const before = _loadKwManage();
+  const targetCnt = before.filter(it => it.productKey === _kwProdMgrProductKey).length;
+  if (!targetCnt) { toast('삭제할 키워드가 없습니다'); return; }
+  if (!confirm(`이 상품에 등록된 ${targetCnt}개 키워드를 모두 삭제할까요?\n추이 데이터도 함께 사라집니다.`)) return;
+  const list = before.filter(it => it.productKey !== _kwProdMgrProductKey);
+  _saveKwManage(list);
+  _renderKwProductMgrList();
+  if (_kwDetailProductKey) {
+    _renderKwDetailStats(_kwDetailProductKey);
+    _renderKwDetailTable();
+  }
+  if (typeof renderKwManageList === 'function') renderKwManageList();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+  toast(`✅ ${targetCnt}개 키워드 삭제`);
+}
+
+// ── 이 상품의 키워드만 순위 추적 실행 ─────────────────────
+async function runKwTrackForProduct(productKey) {
+  if (!productKey) return;
+  const list = _loadKwManage().filter(it => it.productKey === productKey);
+  if (!list.length) { alert('이 상품에 등록된 키워드가 없습니다.\n"키워드 관리"로 먼저 추가하세요.'); return; }
+  const api = _loadNaverApi();
+  if (!api.clientId || !api.clientSecret) { alert('네이버 API Client ID/Secret을 먼저 등록하세요.\n"설정" 탭 → 네이버 API 설정'); return; }
+  const product = _kwResolveProduct(productKey);
+  if (!product) { alert('연결된 상품을 찾을 수 없습니다.'); return; }
+
+  const btn = document.getElementById('kw-detail-track-btn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="animate-pulse">실행 중...</span>'; }
+
+  const history = _loadKwHistory();
+  const now = new Date();
+  const productIds = _extractProductIds(product.url);
+  const realKey = product.url || product.name;
+  let ok = 0, skipped = 0;
+  const errors = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const it = list[i];
+    const keyword = it.keyword;
+    const range = 200;
+    const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
+    const apiCache = new Map();
+    try {
+      for (const rankType of rankTypes) {
+        let foundRank = null;
+        let virtualRank = 0;
+        for (let start = 1; start <= range; start += 100) {
+          const need = Math.min(100, range - start + 1);
+          let resp = apiCache.get(start);
+          if (!resp) { resp = await _naverShopSearch(keyword, start, need, api.clientId, api.clientSecret); apiCache.set(start, resp); }
+          const items = resp.items || [];
+          const filtered = (rankType === 'plus') ? items.filter(_isPlusStoreItem) : items;
+          const idx = filtered.findIndex(x => _matchItem(x, product.name, productIds));
+          if (idx >= 0) { foundRank = (rankType === 'plus') ? (virtualRank + idx + 1) : (start + idx); break; }
+          if (rankType === 'plus') virtualRank += filtered.length;
+          if (items.length < need) break;
+        }
+        const histKey = realKey + '||' + keyword + '||' + rankType;
+        const hist = history[histKey] || { prev: null, best: null, worst: null };
+        const best = foundRank == null ? hist.best : (hist.best == null ? foundRank : Math.min(hist.best, foundRank));
+        const worst = foundRank == null ? hist.worst : (hist.worst == null ? foundRank : Math.max(hist.worst, foundRank));
+        history[histKey] = { prev: foundRank == null ? hist.prev : foundRank, best, worst, last: now.toISOString() };
+        _appendKwSeries(histKey, now.toISOString(), foundRank);
+      }
+      ok++;
+    } catch (e) {
+      const errMsg = e.message || String(e);
+      errors.push({ keyword, error: errMsg });
+      try {
+        rankTypes.forEach(rankType => {
+          const histKey = realKey + '||' + keyword + '||' + rankType;
+          _appendKwSeries(histKey, now.toISOString(), null);
+        });
+      } catch (_) {}
+      skipped++;
+    }
+  }
+  _saveKwHistory(history);
+  if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  // 상세 화면 다시 그리기
+  _renderKwDetailStats(productKey);
+  _renderKwDetailTable();
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+  let msg = `순위 추적 완료\n성공: ${ok}건 / 실패: ${skipped}건`;
+  if (errors.length) {
+    const byMsg = {};
+    errors.forEach(e => { byMsg[e.error] = (byMsg[e.error] || 0) + 1; });
+    const sorted = Object.entries(byMsg).sort((a, b) => b[1] - a[1]);
+    msg += '\n\n실패 사유:';
+    sorted.slice(0, 3).forEach(([m, c]) => { msg += `\n• [${c}건] ${m.slice(0, 100)}`; });
+  }
+  alert(msg);
 }
 
 function setKwDetailPeriod(days) {
