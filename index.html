@@ -2448,6 +2448,10 @@ function goPage(pageId) {
   try { localStorage.setItem('gpago_last_page', pageId); } catch(_) {}
   if (pageId === 'archive') renderSlots();
   if (pageId === 'special') renderSynonyms();
+  // 상품 소싱 페이지 — 첫 진입 시에만 무거운 데이터 로드 + 렌더 (새로고침 초반 렉 해결)
+  if (pageId === 'prodsrc' && typeof _prodsrcEnsureInit === 'function') {
+    _prodsrcEnsureInit();
+  }
   if (pageId === 'keywords') {
     try {
       if (typeof _loadKwExtras === 'function') _loadKwExtras();
@@ -13049,32 +13053,45 @@ function prodsrcClearAll() {
 // 페이지 로드 시 데이터 복원 (IndexedDB 우선 → localStorage 폴백)
 // IDB 로드 완료 전 빈 화면이 잠시 표시되는 것 방지 — 로딩 상태로 표시
 window._prodsrcLoading = true;
-document.addEventListener('DOMContentLoaded', async () => {
-  // 1단계: localStorage 에 데이터가 있으면 동기로 빠르게 표시 (마이그레이션 전 케이스)
-  const lsState = _prodsrcLoad();
-  if (lsState.rows.length > 0) {
-    _prodsrcState = lsState;
+window._prodsrcInitDone = false;
+
+// 상품 소싱 데이터는 새로고침 시 즉시 로드하지 않음 (~5MB JSON.parse + 1242개 카드 렌더로 초반 렉 유발)
+// 사용자가 "상품 소싱" 페이지에 진입할 때 로드/렌더 (goPage 에서 호출)
+async function _prodsrcEnsureInit() {
+  if (window._prodsrcInitDone) {
+    // 이미 로드 끝 — 다시 렌더만
+    try { _prodsrcRender(); } catch(_) {}
+    return;
+  }
+  window._prodsrcInitDone = true; // 중복 방지 (실패 시에도 재시도 안 함 — 사용자가 명시적으로 reload)
+  try {
+    // 1단계: localStorage 에 데이터 있으면 빠르게 표시
+    const lsState = _prodsrcLoad();
+    if (lsState.rows.length > 0) {
+      _prodsrcState = lsState;
+      window._prodsrcLoading = false;
+      try { _prodsrcRender(); } catch(_) {}
+    } else {
+      try { _prodsrcRender(); } catch(_) {}
+    }
+    // 2단계: localStorage → IDB 마이그레이션 (1회만, 보통은 no-op)
+    if (typeof _migrateProdsrcToIDB === 'function') await _migrateProdsrcToIDB();
+    // 3단계: IDB 에서 최종 로드
+    if (typeof _prodsrcLoadAsync === 'function') {
+      try {
+        const idbState = await _prodsrcLoadAsync();
+        if (idbState.rows.length > (_prodsrcState.rows?.length || 0)) {
+          _prodsrcState = idbState;
+        }
+      } catch (e) { console.warn('[prodsrcLoad] async failed:', e); }
+    }
     window._prodsrcLoading = false;
     try { _prodsrcRender(); } catch(_) {}
-  } else {
-    // localStorage 가 비어있음 (IDB 로 이전된 상태) — 로딩 상태 그대로 두고 IDB 우선 로드
-    try { _prodsrcRender(); } catch(_) {}
+  } catch (e) {
+    console.warn('[_prodsrcEnsureInit] failed:', e);
+    window._prodsrcLoading = false;
   }
-  // 2단계: localStorage → IDB 마이그레이션 (1회만, 보통은 no-op)
-  if (typeof _migrateProdsrcToIDB === 'function') await _migrateProdsrcToIDB();
-  // 3단계: IDB 에서 최종 로드
-  if (typeof _prodsrcLoadAsync === 'function') {
-    try {
-      const idbState = await _prodsrcLoadAsync();
-      // IDB 가 더 많으면 교체 / localStorage 가 비어있으면 무조건 IDB 사용
-      if (idbState.rows.length > (_prodsrcState.rows?.length || 0)) {
-        _prodsrcState = idbState;
-      }
-    } catch (e) { console.warn('[prodsrcLoad] async failed:', e); }
-  }
-  window._prodsrcLoading = false;
-  try { _prodsrcRender(); } catch(_) {}
-});
+}
 
 // ════════════════════════════════════════
 // GPLAN에서 마이그레이션 데이터 불러오기
