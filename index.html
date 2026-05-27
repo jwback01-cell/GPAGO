@@ -418,13 +418,22 @@
             <div class="text-xs text-brand-gray mt-0.5">네이버 쇼핑 검색의 all.json 응답을 붙여넣으면 상위 노출 상품의 핵심 태그·텀즈와 쇼핑몰별 제품·속성을 한 번에 보여줍니다</div>
           </div>
         </div>
-        <!-- JSON 입력 영역 -->
+        <!-- 키워드 입력 영역 (ROPAGO 스타일) -->
+        <div class="mb-5">
+          <label class="block text-[11px] font-black text-brand-gray tracking-wider mb-2">KEY WORD</label>
+          <div class="flex gap-2">
+            <input id="tool-json-kw" class="pill-input flex-1" placeholder="예) 버즈4 프로 케이스" onkeydown="if(event.key==='Enter'){event.preventDefault();extractFromKeyword();}">
+            <button id="tool-json-extract-btn" class="pill-btn pill-btn-dark" onclick="extractFromKeyword()">+ 추출</button>
+          </div>
+          <div class="text-[11px] text-brand-gray mt-2">키워드를 입력하면 네이버 쇼핑에서 상위 노출 상품을 가져와 마누태그를 자동 추출합니다</div>
+        </div>
+        <!-- (고급) JSON 직접 붙여넣기 -->
         <details class="mb-5" id="tool-json-details">
-          <summary class="cursor-pointer text-xs font-bold text-brand-blue hover:underline mb-2 inline-block">📋 JSON 붙여넣기 (펼치기 / 접기)</summary>
+          <summary class="cursor-pointer text-xs font-bold text-brand-blue hover:underline mb-2 inline-block">📋 (고급) 직접 JSON 붙여넣기</summary>
           <div class="flex flex-col gap-2 mt-2">
             <textarea id="tool-json-input" placeholder='네이버 쇼핑 검색 페이지 → F12 → Network 탭 → "all" 또는 "search" 요청 → Response 탭에서 전체 JSON 복사 후 여기에 붙여넣기' class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:border-brand-black resize-y h-32"></textarea>
             <div class="flex gap-2">
-              <button class="pill-btn pill-btn-dark flex-1" onclick="parseShopJson()">분석 실행 →</button>
+              <button class="pill-btn pill-btn-dark flex-1" onclick="parseShopJson()">JSON 분석 →</button>
               <button class="pill-btn pill-btn-light" onclick="document.getElementById('tool-json-input').value=''">초기화</button>
             </div>
           </div>
@@ -3732,6 +3741,51 @@ async function analyzeTerms() {
     localStorage.setItem('gpago_terms_recent', JSON.stringify(recent.slice(0, 10)));
     document.getElementById('tool-terms-count').textContent = Math.min(recent.length, 10);
   } catch(_) {}
+}
+
+// 3-1) 키워드 → 네이버 쇼핑 자동 스크래핑 → parseShopJson 로직 재사용 (ROPAGO 방식)
+async function extractFromKeyword() {
+  const kw = (document.getElementById('tool-json-kw').value || '').trim();
+  if (!kw) { toast('키워드를 입력해 주세요'); return; }
+  const btn = document.getElementById('tool-json-extract-btn');
+  const tagsBox  = document.getElementById('tool-json-tags');
+  const totalEl  = document.getElementById('tool-json-tag-total');
+  const kwBox    = document.getElementById('tool-json-keyword');
+  const resultListBox = document.getElementById('tool-json-result-list');
+  const termsBox = document.getElementById('tool-json-terms');
+  const origBtnText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '추출 중...'; }
+  if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 쇼핑 페이지에서 상품/태그 가져오는 중...</div>';
+  if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
+  if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
+  try {
+    const r = await fetch(`/api/naver-shop-scrape?query=${encodeURIComponent(kw)}`);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + r.status));
+    }
+    const data = await r.json();
+    if (!data.products || !data.products.length) {
+      throw new Error('상품 데이터를 가져오지 못했습니다');
+    }
+    // parseShopJson 이 textarea 의 JSON 을 읽으므로, textarea 에 fake JSON 채워 넣고 호출
+    const fakeJson = JSON.stringify({
+      query: data.query || kw,
+      products: data.products,
+      terms: data.terms || [],
+      nluTerms: data.nluTerms || [],
+    });
+    document.getElementById('tool-json-input').value = fakeJson;
+    parseShopJson();
+    toast(`✅ "${kw}" 추출 완료 — ${data.products.length}개 상품 (${data.source || ''})`);
+  } catch (e) {
+    if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 추출 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-brand-gray mt-2 inline-block">고급 옵션의 JSON 붙여넣기로 시도해 보세요</span></div>`;
+    if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">실패</span>';
+    if (totalEl) totalEl.textContent = '0';
+    console.error('[extractFromKeyword] 실패:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
+  }
 }
 
 // 3) 네이버 쇼핑 원본 JSON 직접 분석 → manuTag + Terms 정확 추출 (ROPAGO 스타일 결과)
