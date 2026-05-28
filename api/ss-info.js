@@ -1,50 +1,7 @@
-// Vercel 서버리스 함수 - 네이버 스마트스토어 상품 정보 추출
+// Vercel 서버리스 함수 - 네이버 스마트스토어 상품 정보 추출 (캐시 없음 버전)
 // GET /api/smartstore-info?url=https://smartstore.naver.com/{mall}/products/{id}
 
-const SUPABASE_URL = 'https://gdsutxmceghvkemcfyuw.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdkc3V0eG1jZWdodmtlbWNmeXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5ODc0MDEsImV4cCI6MjA5MTU2MzQwMX0.yO_UwxtQVtVBLC2dVsmJQ4_qgOuWl5LBVAbsnmlwq1U';
-const CACHE_TTL_DAYS = 7;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-async function cacheRead(url) {
-  try {
-    const ep = SUPABASE_URL + '/rest/v1/smartstore_info_cache?url=eq.' + encodeURIComponent(url) + '&select=data,fetched_at,expires_at';
-    const r = await fetch(ep, {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
-        Accept: 'application/json',
-      },
-    });
-    if (!r.ok) return null;
-    const rows = await r.json();
-    return (Array.isArray(rows) && rows.length) ? rows[0] : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function cacheWrite(url, data) {
-  try {
-    const expiresAt = new Date(Date.now() + CACHE_TTL_DAYS * 86400000).toISOString();
-    const ep = SUPABASE_URL + '/rest/v1/smartstore_info_cache';
-    await fetch(ep, {
-      method: 'POST',
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates',
-      },
-      body: JSON.stringify({
-        url,
-        data,
-        fetched_at: new Date().toISOString(),
-        expires_at: expiresAt,
-      }),
-    });
-  } catch (e) {}
-}
 
 function hasMeaningful(out) {
   let cnt = 0;
@@ -122,7 +79,6 @@ function parseHtml(html) {
   result.title = meta(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
   result.image = meta(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
   result.description = meta(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
-  // JSON-LD
   const ldMatches = html.match(/<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]+?)<\/script>/gi) || [];
   for (const m of ldMatches) {
     try {
@@ -156,7 +112,6 @@ function parseHtml(html) {
       }
     } catch (_) {}
   }
-  // regex fallback
   if (result.rating == null) {
     const m = html.match(/평점\s*:?\s*(\d+\.\d+)/);
     if (m) result.rating = Number(m[1]);
@@ -190,27 +145,11 @@ export default async function handler(req, res) {
     res.status(400).json({ error: '스마트스토어/브랜드스토어 URL 만 지원' });
     return;
   }
-  const bypassCache = String(q.refresh || '') === '1';
-
-  let cached = null;
-  if (!bypassCache) {
-    cached = await cacheRead(url);
-    if (cached) {
-      const fresh = new Date(cached.expires_at) > new Date();
-      if (fresh) {
-        res.setHeader('X-Cache', 'HIT');
-        res.status(200).json({ ...cached.data, _cached: true, _cachedAt: cached.fetched_at });
-        return;
-      }
-    }
-  }
 
   try {
     const internal = await tryInternalAPI(url);
     if (internal && hasMeaningful(internal)) {
       internal.url = url;
-      cacheWrite(url, internal).catch(() => {});
-      res.setHeader('X-Cache', 'MISS-API');
       res.status(200).json(internal);
       return;
     }
@@ -225,26 +164,14 @@ export default async function handler(req, res) {
       },
     });
     if (!r.ok) {
-      if (cached) {
-        res.setHeader('X-Cache', 'STALE');
-        res.status(200).json({ ...cached.data, _cached: true, _stale: true, _cachedAt: cached.fetched_at });
-        return;
-      }
       res.status(r.status).json({ error: '페이지 fetch 실패', status: r.status });
       return;
     }
     const html = await r.text();
     const out = parseHtml(html);
     out.url = url;
-    if (hasMeaningful(out)) cacheWrite(url, out).catch(() => {});
-    res.setHeader('X-Cache', 'MISS');
     res.status(200).json(out);
   } catch (err) {
-    if (cached) {
-      res.setHeader('X-Cache', 'STALE');
-      res.status(200).json({ ...cached.data, _cached: true, _stale: true, _cachedAt: cached.fetched_at });
-      return;
-    }
     res.status(500).json({ error: err.message || String(err) });
   }
 }
