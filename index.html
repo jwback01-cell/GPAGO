@@ -6237,16 +6237,15 @@ function renderKwTrend() {
   const cardsHtml = allProducts.map((p, i) => _renderCard(p.id, p, i + 1)).join('');
   canvas.innerHTML = cardsHtml + _plusCard(nextSlot);
 
-  // 누락 필드 자동 백필 (큐로 1개씩, 3~6초 간격 — 429 회피)
-  // _smartstoreQueue 가 직렬화 + 딜레이 처리해서 한꺼번에 안 보냄
-  if (window._kwAutoBackfilled !== true) {
+  // 자동 백필 — 테스트 모드: window._kwAutoBackfillEnabled = true 일 때만 동작
+  // 빠른 API 모드 진단 중이라 기본 비활성. ↻ 버튼으로 1개씩 수동 테스트 권장
+  if (window._kwAutoBackfilled !== true && window._kwAutoBackfillEnabled === true) {
     window._kwAutoBackfilled = true;
     try {
       const extras = _loadKwExtras();
       const needFetch = extras.filter(p => {
         if (!p.url) return false;
         if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) return false;
-        // 핵심 필드 중 2개 이상 비어있으면 백필 대상 (이전 엄격한 "모두 비어있음" 조건 완화)
         let missing = 0;
         if (p.reviewCount == null) missing++;
         if (p.wishCount == null) missing++;
@@ -6260,6 +6259,9 @@ function renderKwTrend() {
         needFetch.forEach(p => { try { _fetchKwProductInfo(p.id, p.url); } catch(_) {} });
       }
     } catch (e) { console.warn('[KW backfill] 실패:', e); }
+  } else if (window._kwAutoBackfilled !== true) {
+    window._kwAutoBackfilled = true;
+    console.log('[KW backfill] 자동 백필 비활성 (테스트 모드). 전체 진행하려면 콘솔에서 window._kwAutoBackfillEnabled=true 후 새로고침');
   }
 }
 
