@@ -6178,9 +6178,28 @@ function renderKwTrend() {
   const cardsHtml = allProducts.map((p, i) => _renderCard(p.id, p, i + 1)).join('');
   canvas.innerHTML = cardsHtml + _plusCard(nextSlot);
 
-  // 자동 이미지 백필 제거됨 — _fetchKwProductImage 내부에서 _fetchKwProductInfo 까지 호출해서
-  // 8개 카드가 한꺼번에 스마트스토어 fetch → 네이버 429 차단 유발하던 원인
-  // 사용자가 카드의 새로고침 ↻ 버튼을 누르면 정보+이미지 모두 1개씩 가져옴
+  // 정보가 비어있는 상품 자동 백필 (큐로 1개씩, 3~6초 간격 — 429 회피)
+  // _smartstoreQueue 가 직렬화 + 딜레이 처리해서 한꺼번에 안 보냄
+  if (window._kwAutoBackfilled !== true) {
+    window._kwAutoBackfilled = true;
+    try {
+      const extras = _loadKwExtras();
+      const needFetch = extras.filter(p => {
+        if (!p.url) return false;
+        if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) return false;
+        // 핵심 필드 모두 비어있으면 백필 대상
+        const noReview = p.reviewCount == null;
+        const noRegist = !p.registDate;
+        const noTags = !Array.isArray(p.tags) || !p.tags.length;
+        const noImage = !p.imageUrl;
+        return noReview && noRegist && noTags && noImage;
+      });
+      if (needFetch.length && typeof _fetchKwProductInfo === 'function') {
+        console.log('[KW backfill] 정보 비어있는 상품', needFetch.length, '개 자동 백필 시작');
+        needFetch.forEach(p => { try { _fetchKwProductInfo(p.id, p.url); } catch(_) {} });
+      }
+    } catch (e) { console.warn('[KW backfill] 실패:', e); }
+  }
 }
 
 // 키워드 칩 더보기/접기 토글 — 같은 flex 컨테이너 안에서 hidden 칩들을 표시/숨김
