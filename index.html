@@ -4628,7 +4628,45 @@ function _fetchSmartstoreViaExtension(url, timeoutMs) {
         window.removeEventListener('message', handler);
         resolve({ ok: false, error: 'extension timeout' });
       }
-    }, timeoutMs || 50000);  // background 45초 + 5초 여유
+    }, timeoutMs || 95000);  // background 90초 + 5초 여유
+  });
+}
+
+// ⚡ 빠른 모드 — 확장 background 스크립트가 Naver 내부 API 직접 호출 (1~3초)
+// 백그라운드 탭 열기 없이 fetch 만으로 끝나서 훨씬 빠름
+function _fetchSmartstoreViaExtensionAPI(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const reqId = 'ssapi_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    let done = false;
+    const handler = (e) => {
+      if (e.source !== window) return;
+      if (!e.data || e.data.source !== 'gpago-extension') return;
+      if (e.data.type !== 'GPAGO_SMARTSTORE_INFO_RESULT') return;
+      if (e.data.reqId !== reqId) return;
+      done = true;
+      window.removeEventListener('message', handler);
+      if (e.data.ok && e.data.data) {
+        resolve({ ok: true, data: e.data.data });
+      } else {
+        resolve({ ok: false, error: e.data.error || 'no_data' });
+      }
+    };
+    window.addEventListener('message', handler);
+    try {
+      window.postMessage({
+        source: 'gpago-page', type: 'GPAGO_FETCH_SMARTSTORE_API', url, reqId,
+      }, window.location.origin);
+    } catch (e) {
+      window.removeEventListener('message', handler);
+      resolve({ ok: false, error: String(e && e.message || e) });
+      return;
+    }
+    setTimeout(() => {
+      if (!done) {
+        window.removeEventListener('message', handler);
+        resolve({ ok: false, error: 'fast_api_timeout' });
+      }
+    }, timeoutMs || 10000); // 10초 타임아웃 (1~3초 안에 끝남)
   });
 }
 
@@ -4774,10 +4812,31 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
       console.log('[smartstore-info] Vercel 시도 실패 — 확장 시도:', e.message || e);
     }
 
-    // 2) 캐시 miss/부실 → 확장으로 백그라운드 탭 방문
+    // ⚡ 2) 확장 빠른 모드 (직접 API 호출, 1~3초) — 백그라운드 탭 열기 전에 먼저 시도
+    if (!info && (url.includes('smartstore.naver.com') || url.includes('brand.naver.com'))) {
+      try {
+        const fast = await _fetchSmartstoreViaExtensionAPI(url, 10000);
+        if (fast.ok && fast.data && _isInfoMeaningful(fast.data)) {
+          info = fast.data;
+          info._source = 'extension-api';
+          window._gpagoExtensionAvailable = true;
+          console.log('[smartstore-info] ⚡ 확장 직접 API 에서 받음 (빠른 모드):', info);
+          if (_isInfoMeaningful(info)) _pushSmartstoreInfoToCache(url, info);
+        } else if (fast.ok && fast.data) {
+          // 데이터는 받았는데 부실 — 탭 폴백 시도 안 하고 일단 사용
+          console.log('[smartstore-info] ⚡ 빠른 모드 부분 데이터:', fast.data);
+        } else {
+          console.log('[smartstore-info] ⚡ 빠른 모드 실패 (' + (fast.error || 'unknown') + ') — 탭 방식 폴백');
+        }
+      } catch (e) {
+        console.log('[smartstore-info] ⚡ 빠른 모드 예외:', e.message || e);
+      }
+    }
+
+    // 3) 캐시 miss/부실 → 확장으로 백그라운드 탭 방문 (느린 폴백)
     if (!info) {
       try {
-        const ext = await _fetchSmartstoreViaExtension(url, 50000);
+        const ext = await _fetchSmartstoreViaExtension(url, 95000);
         if (ext.ok && ext.data) {
           info = ext.data;
           info._source = 'extension-tab';
