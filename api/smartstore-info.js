@@ -1,5 +1,15 @@
-// 진단 v4 - fetch + parseHtml + JSON-LD 파싱
+// 진단 v5 - tryInternalAPI 추가
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function hasMeaningful(out) {
+  let cnt = 0;
+  if (out.reviewCount != null) cnt++;
+  if (out.rating != null) cnt++;
+  if (out.wishCount != null) cnt++;
+  if (out.registDate) cnt++;
+  if (Array.isArray(out.tags) && out.tags.length) cnt++;
+  return cnt >= 2;
+}
 
 function decodeHtml(s) {
   return String(s)
@@ -17,7 +27,6 @@ function parseHtml(html) {
   result.title = meta(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
   result.image = meta(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
   result.description = meta(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
-
   const ldMatches = html.match(/<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]+?)<\/script>/gi) || [];
   for (const m of ldMatches) {
     try {
@@ -54,10 +63,70 @@ function parseHtml(html) {
   return result;
 }
 
+async function tryInternalAPI(productUrl) {
+  const m = productUrl.match(/(?:smartstore|brand)\.naver\.com\/([^/?#]+)\/products\/(\d+)/);
+  if (!m) return null;
+  const productId = m[2];
+  const headers = {
+    Accept: 'application/json, text/plain, */*',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+    'User-Agent': UA,
+    Referer: productUrl,
+  };
+  const result = {
+    title: null, image: null, description: null,
+    reviewCount: null, rating: null, wishCount: null,
+    registDate: null, tags: [], category: null, price: null,
+  };
+  try {
+    const r = await fetch('https://smartstore.naver.com/i/v1/contents/reviews/product-summary/' + productId, { headers });
+    if (r.ok) {
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (ct.indexOf('json') !== -1) {
+        const data = await r.json();
+        const pri = data && data.productReviewInfo;
+        if (pri) {
+          if (pri.reviewCount != null) result.reviewCount = Number(pri.reviewCount);
+          if (pri.averageReviewScore != null) result.rating = Number(pri.averageReviewScore);
+        }
+      }
+    }
+  } catch (e) {}
+  try {
+    const r = await fetch('https://smartstore.naver.com/i/v1/contents/reviews/summary-tag/' + productId, { headers });
+    if (r.ok) {
+      const ct = String(r.headers.get('content-type') || '').toLowerCase();
+      if (ct.indexOf('json') !== -1) {
+        const data = await r.json();
+        if (Array.isArray(data) && data.length) {
+          const tags = [];
+          for (let i = 0; i < data.length; i++) {
+            const t = data[i];
+            const name = t && (t.representTagName || t.tagName || t.name);
+            if (name && typeof name === 'string') tags.push(name.trim());
+          }
+          if (tags.length) result.tags = tags.slice(0, 12);
+        }
+      }
+    }
+  } catch (e) {}
+  return hasMeaningful(result) ? result : null;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const url = String((req.query && req.query.url) || '').trim();
   if (!url) { res.status(400).json({ error: 'url required' }); return; }
+
+  try {
+    const internal = await tryInternalAPI(url);
+    if (internal) {
+      internal.url = url;
+      res.status(200).json(internal);
+      return;
+    }
+  } catch (e) {}
+
   try {
     const r = await fetch(url, { headers: { 'User-Agent': UA } });
     const html = await r.text();
