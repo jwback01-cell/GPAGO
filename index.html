@@ -4459,6 +4459,11 @@ async function _processExtensionPayload(payload, tabsMap) {
       const chosenTab = tabs['네이버페이'] ? '네이버페이' :
                         tabs['전체'] ? '전체' : null;
       const chosenPayload = chosenTab ? tabs[chosenTab] : payload;
+      // v1.7.21+ : 결과 필터(productType) 누락 보호 — 출처 탭으로부터 기본값 추론
+      //   네이버페이 탭 = productType '2' / 가격비교 탭 = '1' / 전체 = '' (필터 안 함)
+      const defaultProductType = chosenTab === '네이버페이' ? '2'
+                                : chosenTab === '가격비교' ? '1'
+                                : '';
       const items = (chosenPayload.products || []).map(p => ({
         title: p.productTitle || p.productName || p.title || '',
         link: p.crUrl || p.detailUrl || p.mallPcUrl || p.productUrl || '',
@@ -4467,7 +4472,7 @@ async function _processExtensionPayload(payload, tabsMap) {
         hprice: '',
         mallName: p.mallName || p.brandName || '',
         productId: String(p.id || p.nvMid || p.productId || ''),
-        productType: p.productType || '',
+        productType: String(p.productType || defaultProductType),
         brand: p.brand || p.brandName || '',
         maker: p.maker || '',
         category1: p.category1Name || p.category1 || '',
