@@ -6178,7 +6178,7 @@ function renderKwTrend() {
   const cardsHtml = allProducts.map((p, i) => _renderCard(p.id, p, i + 1)).join('');
   canvas.innerHTML = cardsHtml + _plusCard(nextSlot);
 
-  // 정보가 비어있는 상품 자동 백필 (큐로 1개씩, 3~6초 간격 — 429 회피)
+  // 누락 필드 자동 백필 (큐로 1개씩, 3~6초 간격 — 429 회피)
   // _smartstoreQueue 가 직렬화 + 딜레이 처리해서 한꺼번에 안 보냄
   if (window._kwAutoBackfilled !== true) {
     window._kwAutoBackfilled = true;
@@ -6187,15 +6187,17 @@ function renderKwTrend() {
       const needFetch = extras.filter(p => {
         if (!p.url) return false;
         if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) return false;
-        // 핵심 필드 모두 비어있으면 백필 대상
-        const noReview = p.reviewCount == null;
-        const noRegist = !p.registDate;
-        const noTags = !Array.isArray(p.tags) || !p.tags.length;
-        const noImage = !p.imageUrl;
-        return noReview && noRegist && noTags && noImage;
+        // 핵심 필드 중 2개 이상 비어있으면 백필 대상 (이전 엄격한 "모두 비어있음" 조건 완화)
+        let missing = 0;
+        if (p.reviewCount == null) missing++;
+        if (p.wishCount == null) missing++;
+        if (!p.registDate) missing++;
+        if (!Array.isArray(p.tags) || !p.tags.length) missing++;
+        if (!p.imageUrl) missing++;
+        return missing >= 2;
       });
       if (needFetch.length && typeof _fetchKwProductInfo === 'function') {
-        console.log('[KW backfill] 정보 비어있는 상품', needFetch.length, '개 자동 백필 시작');
+        console.log('[KW backfill] 누락 필드 있는 상품', needFetch.length, '개 자동 백필 시작');
         needFetch.forEach(p => { try { _fetchKwProductInfo(p.id, p.url); } catch(_) {} });
       }
     } catch (e) { console.warn('[KW backfill] 실패:', e); }
