@@ -324,7 +324,7 @@
             <div class="flex items-center gap-2">
               <span class="text-xs font-black text-brand-pink w-16 shrink-0">FITER+</span>
               <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1 min-w-0">
-                <input id="kw-filter" class="bg-transparent outline-none text-sm flex-1 min-w-0" placeholder="예: kf 94" onkeydown="if(event.key==='Enter') runAnalysis()">
+                <input id="kw-filter" class="bg-transparent outline-none text-sm flex-1 min-w-0" placeholder="예: kf 94" oninput="_onFilterInputChange()" onkeydown="if(event.key==='Enter') runAnalysis()">
                 <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="runAnalysis()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
@@ -2716,6 +2716,18 @@ let _multiActiveIndex = 0;
 let _extensionTriggerSource = null;
 
 // 확장 프로그램으로 받은 데이터를 현재 FITER+ / 기준키워드 값으로 재분석 (API 호출 없음)
+// v1.7.19+ : FITER+ 입력 변경 시 자동 재분석 (디바운스 400ms) — 가중치 분석 버튼 안 눌러도 위치가중치 등 갱신
+let _filterInputTimer = null;
+function _onFilterInputChange() {
+  if (_filterInputTimer) clearTimeout(_filterInputTimer);
+  _filterInputTimer = setTimeout(() => {
+    _filterInputTimer = null;
+    // 캐시된 데이터가 있어야 재분석 가능 (없으면 무시 — 분석 안 한 상태)
+    if (!_lastAnalysisItems || !_lastAnalysisItems.length) return;
+    try { _reanalyzeFromCachedData(); } catch (e) { console.warn('[filter input 자동 재분석]', e); }
+  }, 400);
+}
+
 function _reanalyzeFromCachedData() {
   if (!_lastAnalysisItems || !_lastAnalysisItems.length) {
     toast('확장 프로그램으로 먼저 데이터를 받아주세요 (Ctrl+Q 또는 N 입력 후 엔터)');
