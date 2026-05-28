@@ -4459,27 +4459,30 @@ async function _processExtensionPayload(payload, tabsMap) {
       const chosenTab = tabs['네이버페이'] ? '네이버페이' :
                         tabs['전체'] ? '전체' : null;
       const chosenPayload = chosenTab ? tabs[chosenTab] : payload;
-      // v1.7.21+ : 결과 필터(productType) 누락 보호 — 출처 탭으로부터 기본값 추론
-      //   네이버페이 탭 = productType '2' / 가격비교 탭 = '1' / 전체 = '' (필터 안 함)
-      const defaultProductType = chosenTab === '네이버페이' ? '2'
-                                : chosenTab === '가격비교' ? '1'
-                                : '';
-      const items = (chosenPayload.products || []).map(p => ({
-        title: p.productTitle || p.productName || p.title || '',
-        link: p.crUrl || p.detailUrl || p.mallPcUrl || p.productUrl || '',
-        image: p.imageUrl || (p.imageUrls && p.imageUrls[0]) || '',
-        lprice: String(p.price || p.lowPrice || ''),
-        hprice: '',
-        mallName: p.mallName || p.brandName || '',
-        productId: String(p.id || p.nvMid || p.productId || ''),
-        productType: String(p.productType || defaultProductType),
-        brand: p.brand || p.brandName || '',
-        maker: p.maker || '',
-        category1: p.category1Name || p.category1 || '',
-        category2: p.category2Name || p.category2 || '',
-        category3: p.category3Name || p.category3 || '',
-        category4: p.category4Name || p.category4 || '',
-      }));
+      // v1.7.22+ : 출처 탭에 맞게 productType 강제 매핑
+      //   p.productType 이 '1'(가격비교) 또는 다른 값이어도 네이버페이 탭에서 캡처된 데이터는 '2' 로 강제
+      //   → 결과 필터 chip 이 '네이버페이' 일 때 정상 통과
+      const items = (chosenPayload.products || []).map(p => {
+        let pt = String(p.productType || '');
+        if (chosenTab === '네이버페이' && !['2','3'].includes(pt)) pt = '2';
+        else if (chosenTab === '가격비교' && pt !== '1') pt = '1';
+        return {
+          title: p.productTitle || p.productName || p.title || '',
+          link: p.crUrl || p.detailUrl || p.mallPcUrl || p.productUrl || '',
+          image: p.imageUrl || (p.imageUrls && p.imageUrls[0]) || '',
+          lprice: String(p.price || p.lowPrice || ''),
+          hprice: '',
+          mallName: p.mallName || p.brandName || '',
+          productId: String(p.id || p.nvMid || p.productId || ''),
+          productType: pt,
+          brand: p.brand || p.brandName || '',
+          maker: p.maker || '',
+          category1: p.category1Name || p.category1 || '',
+          category2: p.category2Name || p.category2 || '',
+          category3: p.category3Name || p.category3 || '',
+          category4: p.category4Name || p.category4 || '',
+        };
+      });
       _lastAnalysisItems = items;
       _lastBaseKw = chosenPayload.query || payload.query || '';
       // 네이버 NLU terms 저장 — 모델명+접미사 자동 결합 ("버즈4"+"프로" → "버즈4프로")
