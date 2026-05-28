@@ -1,5 +1,6 @@
 // Vercel 서버리스 함수 — 네이버 스마트스토어 상품 정보 추출 (이미지/리뷰/평점/찜/등록일/태그)
 // 호출: GET /api/smartstore-info?url=https://smartstore.naver.com/{mall}/products/{productId}
+// Last redeploy trigger: 2026-05-28
 //
 // 캐싱 흐름 (ROPAGO 식):
 //   1) 요청 → Supabase smartstore_info_cache 에서 url 로 조회
