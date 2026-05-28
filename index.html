@@ -928,7 +928,7 @@
           </div>
 
           <!-- 카드 그리드 — 1줄에 2개 -->
-          <div id="kw-trend-canvas" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+          <div id="kw-trend-canvas" class="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6"></div>
         </section>
         </div><!-- /kw-trend-list-view -->
 
@@ -5925,7 +5925,7 @@ function renderKwTrend() {
   function _plusCard(slotNum) {
     const numStr = String(slotNum).padStart(2, '0');
     return `
-    <button type="button" onclick="openKwAddProductModal()" class="bg-white border-2 border-dashed border-brand-border rounded-3xl p-5 flex items-center gap-5 hover:border-brand-orange hover:bg-brand-orange-light/20 transition-colors min-h-[180px] text-left">
+    <button type="button" onclick="openKwAddProductModal()" class="bg-white border-2 border-dashed border-[#C7CACE] rounded-3xl p-5 flex items-center gap-5 hover:border-brand-orange hover:bg-brand-orange-light/20 transition-colors min-h-[180px] text-left">
       <div class="shrink-0 flex flex-col items-center justify-center w-14">
         <div class="text-[1.6rem] font-black text-brand-gray leading-none">${numStr}</div>
         <div class="text-[10px] font-bold text-brand-gray mt-1">미등록</div>
@@ -6089,7 +6089,7 @@ function renderKwTrend() {
         </div>`
       : '';
 
-    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border border-brand-border rounded-3xl p-4 md:p-6 hover:shadow-md hover:border-brand-black/30 transition-all cursor-pointer">
+    return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border-2 border-[#D1D5DB] rounded-3xl p-4 md:p-6 shadow-sm hover:shadow-md hover:border-brand-black/40 transition-all cursor-pointer">
       <!-- 상단: 슬롯번호 + 썸네일 + 본문 + 우측액션 -->
       <div class="flex gap-3 md:gap-5">
         <!-- 슬롯 번호 -->
