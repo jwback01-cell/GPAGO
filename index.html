@@ -4459,15 +4459,21 @@ async function _processExtensionPayload(payload, tabsMap) {
       const chosenTab = tabs['네이버페이'] ? '네이버페이' :
                         tabs['전체'] ? '전체' : null;
       const chosenPayload = chosenTab ? tabs[chosenTab] : payload;
-      // v1.7.23+ : 이미 검증된 _adaptJsonProductToAnalysisItem 사용 (productType 추론 + 모든 필드)
-      //   탭 출처 힌트도 함께 설정 (탭 힌트가 productType 추론 폴백에 사용됨)
+      // v1.7.24+ : _adaptJsonProductToAnalysisItem 으로 모든 필드 추출 + productType 출처 탭 기반 강제
+      //   (Naver 가 네이버페이 탭 응답에 productType='1' 인 가격비교 상품을 섞어서 주기 때문)
       try {
         const ps = chosenPayload.searchParam?.productSet || chosenPayload.productSetFilter?.name || '';
         window._jsonProductSetHint = String(ps).toLowerCase();
         if (!window._jsonProductSetHint && chosenTab === '네이버페이') window._jsonProductSetHint = 'npay';
         else if (!window._jsonProductSetHint && chosenTab === '가격비교') window._jsonProductSetHint = 'compare';
       } catch (_) {}
-      const items = (chosenPayload.products || []).map(p => _adaptJsonProductToAnalysisItem(p));
+      const items = (chosenPayload.products || []).map(p => {
+        const adapted = _adaptJsonProductToAnalysisItem(p);
+        // 출처 탭 기반 productType 강제 — Naver 가 탭과 다른 타입 상품을 섞어서 줘도 대응
+        if (chosenTab === '네이버페이' && !['2','3'].includes(String(adapted.productType))) adapted.productType = '2';
+        else if (chosenTab === '가격비교' && String(adapted.productType) !== '1') adapted.productType = '1';
+        return adapted;
+      });
       _lastAnalysisItems = items;
       _lastBaseKw = chosenPayload.query || payload.query || '';
       // 네이버 NLU terms 저장 — 모델명+접미사 자동 결합 ("버즈4"+"프로" → "버즈4프로")
