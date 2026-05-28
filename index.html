@@ -6254,10 +6254,9 @@ function renderKwTrend() {
       const needFetch = extras.filter(p => {
         if (!p.url) return false;
         if (!p.url.includes('smartstore.naver.com') && !p.url.includes('brand.naver.com')) return false;
-        // v1.7.0+ : 찜수도 검색 결과에서 가져오므로 누락 체크 다시 포함
+        // v1.7.15+ : 찜수 fetch 비활성 (사용자 요청 — 속도 우선) → missing 체크에서 제외
         let missing = 0;
         if (p.reviewCount == null) missing++;
-        if (p.wishCount == null) missing++;
         if (!p.registDate) missing++;
         if (!Array.isArray(p.tags) || !p.tags.length) missing++;
         if (!p.imageUrl) missing++;
