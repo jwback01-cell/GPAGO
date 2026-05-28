@@ -2856,6 +2856,51 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   }
 }
 
+// v1.7.18+ : 두 필터 키워드의 거리 계산 (단어 단위)
+//   규칙: 키워드 사이의 단어 수 = 기본 거리, 키워드 순서 역순이면 +1 패널티
+//   예시 (필터: 버즈4프로, 케이스):
+//     "버즈4프로 이쁜 케이스" → 거리 1 (사이 1단어)
+//     "버즈4프로 이쁜 투명 케이스" → 거리 2 (사이 2단어)
+//     "케이스 이쁜 버즈4프로" → 거리 2 (사이 1단어 + 역순 1)
+function _calcKwDistance(title, kw1, kw2) {
+  if (!title || !kw1 || !kw2) return null;
+  // 토큰화 — 공백/슬래시/하이픈/괄호 등으로 분리
+  const tokens = String(title).replace(/[\/\-,()\[\]]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+
+  // 키워드가 토큰들 중 어디 있는지 찾기
+  //   - 단일 토큰 정확 일치
+  //   - 단일 토큰에 부분 포함
+  //   - 여러 토큰 연결로 일치 (예: "버즈4프로" = "버즈4" + "프로")
+  function findInTokens(kw) {
+    const kwLow = String(kw).replace(/\s+/g, '').toLowerCase();
+    if (!kwLow) return null;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i].toLowerCase();
+      if (t === kwLow || t.includes(kwLow)) return { start: i, end: i };
+      // 연결 매칭
+      let acc = t;
+      for (let j = i + 1; j < tokens.length && acc.length <= kwLow.length + 3; j++) {
+        acc += tokens[j].toLowerCase();
+        if (acc === kwLow || acc.includes(kwLow)) return { start: i, end: j };
+      }
+    }
+    return null;
+  }
+
+  const p1 = findInTokens(kw1);
+  const p2 = findInTokens(kw2);
+  if (!p1 || !p2) return null;
+
+  let earlier, later, reversed;
+  if (p1.start <= p2.start) { earlier = p1; later = p2; reversed = false; }
+  else { earlier = p2; later = p1; reversed = true; }
+
+  const wordsBetween = Math.max(0, later.start - earlier.end - 1);
+  const distance = wordsBetween + (reversed ? 1 : 0);
+  return { distance, wordsBetween, reversed };
+}
+
 function _extractTerms(baseKw, filterKw) {
   // 1) JSON에서 받은 NLU terms가 있고 분석 키워드와 일치하면 그것을 우선 사용
   // (예: "버즈4 프로 케이스" 검색 시 단순 공백 분할은 [버즈4, 프로, 케이스]가 되지만
@@ -2968,12 +3013,36 @@ function computeStats(items, terms, baseKw, filterKw) {
   if (termCounts[1]) _fillCell('stat-cell-6', _fmtMiss(termCounts[1]));
   else _fillCell('stat-cell-6', '-');
 
-  // 위치 가중치 - 1위 상품
-  const top1 = items[0];
+  // v1.7.18+ 위치 가중치 — 필터 2개 키워드의 거리가 가장 먼 상품 표시 + 사이 단어 수
+  //   필터 키워드가 2개 미만이면 폴백: 1위 상품 표시
   const posBar = document.getElementById('position-bar');
-  if (top1 && posBar) {
-    posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTermsInline(_stripHtml(top1.title), terms) + '</span>';
-    posBar.classList.add('filled');
+  if (posBar) {
+    const filterKws = String(filterKw || '').split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+    let best = null;
+    if (filterKws.length >= 2) {
+      const k1 = filterKws[0], k2 = filterKws[1];
+      for (const item of items) {
+        const cleanTitle = _stripHtml(item.title);
+        const r = _calcKwDistance(cleanTitle, k1, k2);
+        if (!r) continue;
+        if (!best || r.distance > best.distance) {
+          best = { item, ...r, title: cleanTitle };
+        }
+      }
+    }
+    if (best) {
+      const distBadge = `<span class="font-black text-brand-pink text-[16px] ml-2 shrink-0">${best.distance}${best.reversed ? '<span class="text-[10px] font-bold text-brand-gray ml-1">(역순)</span>' : ''}</span>`;
+      posBar.innerHTML = `<span class="font-bold text-brand-black truncate inline-block flex-1 text-left px-2" title="필터 키워드 사이: ${best.wordsBetween}단어${best.reversed ? ' + 역순 1' : ''}">${_highlightTermsInline(best.title, terms)}</span>${distBadge}`;
+      posBar.classList.add('filled');
+      // flex 레이아웃 보장 — 거리 뱃지가 우측에 자리잡도록
+      posBar.style.display = 'flex';
+      posBar.style.alignItems = 'center';
+    } else if (items[0]) {
+      // 폴백 — 필터 키워드 2개 미만이거나 매칭되는 상품 없음 → 1위 상품
+      posBar.innerHTML = '<span class="font-bold text-brand-black truncate inline-block w-full text-left px-2">' + _highlightTermsInline(_stripHtml(items[0].title), terms) + '</span>';
+      posBar.classList.add('filled');
+      posBar.style.display = '';
+    }
   }
 
   // 카테고리 비율 — 전체 검색 결과 기준
