@@ -2,6 +2,11 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "regions": ["icn1"],
+  "functions": {
+    "api/smartstore-info.js": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/",
