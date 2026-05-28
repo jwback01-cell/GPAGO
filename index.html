@@ -4467,6 +4467,8 @@ async function _processExtensionPayload(payload, tabsMap) {
         if (!window._jsonProductSetHint && chosenTab === '네이버페이') window._jsonProductSetHint = 'npay';
         else if (!window._jsonProductSetHint && chosenTab === '가격비교') window._jsonProductSetHint = 'compare';
       } catch (_) {}
+      // v1.7.26+ : 그룹/가격비교 감지에 필요한 raw 상품 인덱스 구축
+      try { _indexJsonProducts(chosenPayload.products || []); } catch (_) {}
       const items = (chosenPayload.products || []).map(p => {
         const adapted = _adaptJsonProductToAnalysisItem(p);
         // 출처 탭 기반 productType 강제 — Naver 가 탭과 다른 타입 상품을 섞어서 줘도 대응
