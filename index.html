@@ -4785,11 +4785,11 @@ function _isInfoMeaningful(info) {
 async function _doFetchSmartstoreInfo(extraId, url, opts) {
   opts = opts || {};
   try {
-    console.log('[smartstore-info] 요청:', url);
+    console.log('[smartstore-info] 요청:', url, opts.forceRefresh ? '(force refresh — 캐시 우회)' : '');
     let info = null;
 
-    // 1) Vercel API 먼저 시도 (캐시 hit 이면 즉시)
-    try {
+    // 1) Vercel API 먼저 시도 (캐시 hit 이면 즉시) — forceRefresh 시 스킵
+    if (!opts.forceRefresh) try {
       const r = await fetch(`/api/smartstore-info?url=${encodeURIComponent(url)}`);
       if (r.ok) {
         const apiInfo = await r.json();
@@ -6320,7 +6320,8 @@ function _refreshKwProductInfo(productKey) {
   const target = extras.find(p => p.id === id);
   if (!target || !target.url) { if (typeof toast === 'function') toast('URL 없음 — 슬롯에 등록된 상품 URL 이 없습니다'); return; }
   if (typeof toast === 'function') toast(`📡 "${target.name}" 정보 가져오는 중...`);
-  _fetchKwProductInfo(id, target.url, { showToast: true });
+  // v1.7.12+ : ↻ 클릭 시 Vercel 캐시 우회 → 항상 확장으로 최신 데이터 fetch
+  _fetchKwProductInfo(id, target.url, { showToast: true, forceRefresh: true });
 }
 
 // 슬롯(상품) 전체 삭제
