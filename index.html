@@ -6346,9 +6346,9 @@ function renderKwTrend() {
     return `<div onclick="openKwTrendDetail('${_escapeHtml(productKey)}')" class="bg-white border-2 border-[#D1D5DB] rounded-3xl p-4 md:p-6 shadow-sm hover:shadow-md hover:border-brand-black/40 transition-all cursor-pointer">
       <!-- 상단: 슬롯번호 + 썸네일 + 본문 + 우측액션 -->
       <div class="flex gap-3 md:gap-5">
-        <!-- 슬롯 번호 -->
+        <!-- 슬롯 번호 — 클릭 시 위치 변경 -->
         <div class="shrink-0 flex flex-col items-center justify-start w-10 md:w-14 pt-1">
-          <div class="text-[1.3rem] md:text-[1.7rem] font-black text-brand-black leading-none">${numStr}</div>
+          <div onclick="event.stopPropagation(); _promptReorderKwSlot('${_escapeHtml(productKey)}', ${slotNum})" title="클릭하여 순서 변경" class="text-[1.3rem] md:text-[1.7rem] font-black text-brand-black leading-none cursor-pointer hover:text-brand-blue transition-colors px-1 rounded select-none">${numStr}</div>
           <div class="text-[9px] md:text-[10px] font-bold ${statusColor} mt-1 whitespace-nowrap">${status}</div>
         </div>
         <!-- 썸네일 -->
@@ -6498,6 +6498,34 @@ function refreshAllKwProductInfo() {
 }
 
 // 상품 상세 정보 (리뷰/평점/찜/태그) 수동 새로고침 — 카드 우측 새로고침 버튼에서 호출
+// v1.7.25+ : 슬롯 번호 클릭 시 호출 — 새 위치 입력 받아 extras 배열 재정렬
+function _promptReorderKwSlot(productKey, currentSlot) {
+  if (!productKey || !productKey.startsWith('ex:')) {
+    if (typeof toast === 'function') toast('이 슬롯은 순서 변경 지원 안 됨');
+    return;
+  }
+  const targetId = productKey.slice(3);
+  const extras = _loadKwExtras();
+  const fromIdx = extras.findIndex(p => p.id === targetId);
+  if (fromIdx < 0) return;
+  const total = extras.length;
+  const input = prompt(`현재 위치: ${currentSlot}번\n새 위치 (1 ~ ${total}) 입력:`, String(currentSlot));
+  if (input == null) return;
+  const newPos = parseInt(input, 10);
+  if (isNaN(newPos) || newPos < 1 || newPos > total) {
+    if (typeof toast === 'function') toast(`⚠ 1 ~ ${total} 사이 숫자를 입력하세요`);
+    return;
+  }
+  const newIdx = newPos - 1;
+  if (newIdx === fromIdx) return;
+  // 배열에서 빼서 새 위치에 삽입
+  const [moved] = extras.splice(fromIdx, 1);
+  extras.splice(newIdx, 0, moved);
+  _saveKwExtras(extras);
+  if (typeof renderKwTrend === 'function') renderKwTrend();
+  if (typeof toast === 'function') toast(`✅ ${currentSlot}번 → ${newPos}번 으로 이동`);
+}
+
 function _refreshKwProductInfo(productKey) {
   const m = String(productKey).match(/^ex:(.+)$/);
   if (!m) { if (typeof toast === 'function') toast('해당 슬롯은 새로고침 지원 안 됨'); return; }
