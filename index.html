@@ -4878,6 +4878,13 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
     const extras = _loadKwExtras();
     const target = extras.find(p => p.id === extraId);
     if (!target) return;
+    // v1.7.16+ 안전망 : 평점이 0(또는 < 0.5)이면 리뷰 0개로 강제 (Naver 는 0점 리뷰 없음)
+    if (info.rating != null && Number(info.rating) < 0.5) {
+      if (info.reviewCount != null && Number(info.reviewCount) > 0) {
+        console.log('[smartstore-info] 안전망: 평점 0 → 리뷰 수 0 교정 (이전:', info.reviewCount, ')');
+      }
+      info.reviewCount = 0;
+    }
     let filled = 0;
     if (info.image && !target.imageUrl) { target.imageUrl = info.image; filled++; }
     if (info.title)               { target.fetchedTitle = info.title; filled++; }   // 원본 상품명 (셀러명 추출용)
