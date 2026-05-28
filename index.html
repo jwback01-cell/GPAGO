@@ -2868,6 +2868,28 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   }
 }
 
+// v1.7.20+ : Naver 가 모델명+접미사를 분리해서 반환할 때 (예: "버즈4 프로" → ["버즈4", "프로"])
+//   사용자 인식과 맞도록 자동 결합 ("버즈4프로" 로 합침)
+//   조건: 앞 토큰이 숫자로 끝나고, 뒤 토큰이 모델 접미사 (프로/울트라/플러스 등)
+const _MODEL_SUFFIXES = new Set(['프로','미니','울트라','플러스','라이트','맥스','노트','액티브','클래식','pro','max','mini','ultra','plus','lite','fe','se','active','classic']);
+function _smartJoinModelTerms(terms) {
+  if (!Array.isArray(terms) || terms.length < 2) return terms;
+  const out = [];
+  let i = 0;
+  while (i < terms.length) {
+    const cur = terms[i];
+    const nxt = terms[i + 1];
+    if (nxt && /\d$/.test(String(cur)) && _MODEL_SUFFIXES.has(String(nxt).toLowerCase())) {
+      out.push(cur + nxt);
+      i += 2;
+    } else {
+      out.push(cur);
+      i++;
+    }
+  }
+  return out;
+}
+
 // v1.7.18+ : 두 필터 키워드의 거리 계산 (단어 단위)
 //   규칙: 키워드 사이의 단어 수 = 기본 거리, 키워드 순서 역순이면 +1 패널티
 //   예시 (필터: 버즈4프로, 케이스):
@@ -4428,9 +4450,16 @@ async function _processExtensionPayload(payload, tabsMap) {
     _extensionTriggerSource = null; // 처리 후 리셋
 
     if (source === 'analysis') {
-      // 키워드 분석 모드 — _lastAnalysisItems 채우고 재분석 실행
-      const items = (payload.products || []).map(p => ({
-        // 네이버 검색 API 형식으로 변환 (runAnalysis 가 기대하는 구조)
+      // v1.7.20+ 키워드 분석 모드:
+      //   - 네이버페이 탭이 있으면 우선 사용 (없으면 전체)
+      //   - payload.terms 를 _jsonNluTerms 에 저장 (위치 가중치/하이라이트 정확도 향상)
+      //   - FITER+ 자동 채우기 (사용자 추가 입력 없이 즉시 분석)
+      //   - 결과 필터 chip 네이버페이로 활성화
+      const tabs = window._extensionTabPayloads || {};
+      const chosenTab = tabs['네이버페이'] ? '네이버페이' :
+                        tabs['전체'] ? '전체' : null;
+      const chosenPayload = chosenTab ? tabs[chosenTab] : payload;
+      const items = (chosenPayload.products || []).map(p => ({
         title: p.productTitle || p.productName || p.title || '',
         link: p.crUrl || p.detailUrl || p.mallPcUrl || p.productUrl || '',
         image: p.imageUrl || (p.imageUrls && p.imageUrls[0]) || '',
@@ -4447,10 +4476,35 @@ async function _processExtensionPayload(payload, tabsMap) {
         category4: p.category4Name || p.category4 || '',
       }));
       _lastAnalysisItems = items;
-      _lastBaseKw = payload.query || '';
+      _lastBaseKw = chosenPayload.query || payload.query || '';
+      // 네이버 NLU terms 저장 — 모델명+접미사 자동 결합 ("버즈4"+"프로" → "버즈4프로")
+      const rawTerms = Array.isArray(chosenPayload.terms) ? chosenPayload.terms.filter(t => typeof t === 'string' && t.trim()) : [];
+      const joinedTerms = _smartJoinModelTerms(rawTerms);
+      if (joinedTerms.length) {
+        window._jsonNluTerms = { query: String(_lastBaseKw), terms: joinedTerms.slice() };
+      }
+      // FITER+ 자동 채우기 (joined terms 가 있으면 공백 join, 없으면 query 그대로)
+      const filterInput = document.getElementById('kw-filter');
+      if (filterInput) {
+        filterInput.value = joinedTerms.length ? joinedTerms.join(' ') : _lastBaseKw;
+        _lastFilterKw = filterInput.value;
+      }
+      // 결과 필터 — 네이버페이 chip 활성화
+      if (chosenTab) {
+        const chipMap = { '전체': 'all', '가격비교': 'price', '네이버페이': 'naverpay' };
+        const targetRfilter = chipMap[chosenTab];
+        if (targetRfilter) {
+          try {
+            _resultFilter = targetRfilter;
+            document.querySelectorAll('[data-rfilter]').forEach(x => {
+              x.classList.toggle('weight-chip-active', x.dataset.rfilter === targetRfilter);
+            });
+          } catch (_) {}
+        }
+      }
       try { _hideLoadingOverlay(); } catch (_) {}
       try { _reanalyzeFromCachedData(); } catch (e) { console.error('[analysis 모드 재분석]', e); }
-      try { toast && toast(`✅ 키워드 분석 완료 (${items.length}개 상품)`); } catch (_) {}
+      try { toast && toast(`✅ 키워드 분석 완료 — ${chosenTab || '전체'} (${items.length}개 상품)`); } catch (_) {}
       return;
     }
 
