@@ -9527,32 +9527,9 @@ async function loadNaverCategories() {
     }
   } catch (_) {}
 
-  // 폴백 먼저 세팅 (즉시 사용 가능)
+  // 폴백 사용 — 외부 CORS 프록시(corsproxy.io, allorigins) 가 모두 차단되어 더 이상 동작 안 함
+  // (콘솔에 ERR_FAILED / CORS preflight 에러 발생) → 빌트인 카테고리 데이터만 사용
   _useFallbackCategories();
-
-  // API 시도 — 성공하면 덮어쓰기
-  const api = _loadNaverApi();
-  if (!api.clientId || !api.clientSecret) return;
-
-  try {
-    const target = 'https://openapi.naver.com/v1/datalab/shopping/categories';
-    const proxies = [
-      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    ];
-    let resp = null;
-    for (const wrap of proxies) {
-      try {
-        const r = await fetch(wrap(target), { headers: { 'X-Naver-Client-Id': api.clientId, 'X-Naver-Client-Secret': api.clientSecret } });
-        if (r.ok) { resp = await r.json(); break; }
-      } catch (_) {}
-    }
-    if (resp && Array.isArray(resp.results) && resp.results.length > 20) {
-      _srcCatTree = _buildCatTree(resp.results);
-      localStorage.setItem(SRC_CAT_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: _srcCatTree }));
-      _fillSrcCatLevel(1);
-    }
-  } catch (e) { console.error('카테고리 로드 실패:', e); }
 }
 
 function _buildCatTree(flat) {
@@ -9840,21 +9817,8 @@ async function onSrcCatChange(level) {
 }
 
 async function _fetchNaverSubCats(cid) {
-  const target = `https://datalab.naver.com/shoppingInsight/getCategory.naver?cid=${encodeURIComponent(cid)}`;
-  const proxies = [
-    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  ];
-  for (const wrap of proxies) {
-    try {
-      const r = await fetch(wrap(target), { headers: { 'Referer': 'https://datalab.naver.com/shoppingInsight/sCategory.naver' } });
-      if (!r.ok) continue;
-      const data = await r.json();
-      if (data && Array.isArray(data.childList)) {
-        return data.childList.map(c => ({ cid: String(c.cid), name: c.name }));
-      }
-    } catch (_) {}
-  }
+  // 외부 CORS 프록시(corsproxy.io, allorigins) 가 모두 차단되어 더 이상 동작 안 함
+  // 빌트인 카테고리 트리 사용
   return [];
 }
 
