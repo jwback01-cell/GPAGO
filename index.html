@@ -2679,6 +2679,7 @@ function _triggerExtensionFromN() {
   const naverKw = (document.getElementById('kw-naver').value || '').trim();
   if (!naverKw) { toast('네이버 검색 키워드를 입력해 주세요'); return; }
   _extensionAckReceived = false;
+  _extensionTriggerSource = 'analysis';  // v1.7.17+ : 키워드 분석 소스 표시
   window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: naverKw }, window.location.origin);
   // 1초 후 확장 응답이 없으면 폴백 (API 호출 방식)
   setTimeout(() => {
@@ -2706,6 +2707,13 @@ window.addEventListener('message', (e) => {
 // 다중 키워드 분석 결과 저장 (탭 전환용)
 let _multiAnalysisResults = []; // [{ query, items, total, baseKw, filterKw }]
 let _multiActiveIndex = 0;
+
+// v1.7.17+ : 확장 트리거 소스 추적 — 키워드 분석/도구가 독립적으로 동작하도록
+//   'analysis' = 키워드 분석 페이지에서 N 입력/돋보기 클릭
+//   'tool'     = 키워드 도구 페이지에서 + 추출 버튼 클릭
+//   'terms'    = 텀즈 마스터 (기존 _termsAnalysisPending 우선)
+//   null       = 외부 트리거 (Ctrl+Q on 네이버 검색 페이지) — analysis 로 기본 라우팅
+let _extensionTriggerSource = null;
 
 // 확장 프로그램으로 받은 데이터를 현재 FITER+ / 기준키워드 값으로 재분석 (API 호출 없음)
 function _reanalyzeFromCachedData() {
@@ -4098,6 +4106,7 @@ async function extractFromKeyword() {
   };
   window.addEventListener('message', ackListener);
   try {
+    _extensionTriggerSource = 'tool';  // v1.7.17+ : 키워드 도구 소스 표시
     window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
     // 1초 대기 — 확장 ACK 확인
     await new Promise(r => setTimeout(r, 1000));
@@ -4330,7 +4339,41 @@ async function _processExtensionPayload(payload, tabsMap) {
       window._extensionTabPayloads = { '전체': payload };
     }
 
-    // 마누태그 추출 UI(tool-json-*)는 "키워드 도구" 페이지로 이동됨 → 거기로 네비게이션
+    // v1.7.17+ : 트리거 소스에 따라 라우팅 분리
+    //   'analysis' = 키워드 분석 페이지로 데이터 채우기 (탭 이동 X)
+    //   'tool'     = 키워드 도구 페이지로 이동 후 마누태그 추출 (기존 동작)
+    //   null       = 외부 트리거 (Ctrl+Q) → analysis 기본
+    const source = _extensionTriggerSource || 'analysis';
+    _extensionTriggerSource = null; // 처리 후 리셋
+
+    if (source === 'analysis') {
+      // 키워드 분석 모드 — _lastAnalysisItems 채우고 재분석 실행
+      const items = (payload.products || []).map(p => ({
+        // 네이버 검색 API 형식으로 변환 (runAnalysis 가 기대하는 구조)
+        title: p.productTitle || p.productName || p.title || '',
+        link: p.crUrl || p.detailUrl || p.mallPcUrl || p.productUrl || '',
+        image: p.imageUrl || (p.imageUrls && p.imageUrls[0]) || '',
+        lprice: String(p.price || p.lowPrice || ''),
+        hprice: '',
+        mallName: p.mallName || p.brandName || '',
+        productId: String(p.id || p.nvMid || p.productId || ''),
+        productType: p.productType || '',
+        brand: p.brand || p.brandName || '',
+        maker: p.maker || '',
+        category1: p.category1Name || p.category1 || '',
+        category2: p.category2Name || p.category2 || '',
+        category3: p.category3Name || p.category3 || '',
+        category4: p.category4Name || p.category4 || '',
+      }));
+      _lastAnalysisItems = items;
+      _lastBaseKw = payload.query || '';
+      try { _hideLoadingOverlay(); } catch (_) {}
+      try { _reanalyzeFromCachedData(); } catch (e) { console.error('[analysis 모드 재분석]', e); }
+      try { toast && toast(`✅ 키워드 분석 완료 (${items.length}개 상품)`); } catch (_) {}
+      return;
+    }
+
+    // === 이하 'tool' 모드 — 키워드 도구 마누태그 추출 (기존 동작) ===
     if (typeof goPage === 'function') goPage('tools');
     const ta = await _waitForElement('tool-json-input', 3000);
     if (!ta) {
@@ -4377,6 +4420,9 @@ async function _processExtensionPayload(payload, tabsMap) {
     }
   } catch (err) {
     console.error('[GPAGO ext receive]', err);
+  } finally {
+    // v1.7.17+ : 어떤 경로든 끝났으면 로딩 오버레이 숨김 (95% 무한 대기 방지)
+    try { _hideLoadingOverlay(); } catch (_) {}
   }
 }
 
