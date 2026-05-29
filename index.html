@@ -13474,9 +13474,14 @@ function prodsrcDeleteKeyword(keywordRaw) {
       ...(_prodsrcState || {}),
       rows: rows.filter(r => !((r.folderName || r.category) === cat && r.keyword === keyword)),
     };
-    _prodsrcSave();
-    _prodsrcMsg(`🗑 "${keyword}" 키워드를 폴더에서 제거했습니다`, 'ok');
+    // v1 : UI 먼저 즉시 갱신 → 저장은 비동기(Web Worker 압축 + IndexedDB) 백그라운드
     prodsrcRenderDetail();
+    _prodsrcMsg(`🗑 "${keyword}" 키워드를 폴더에서 제거했습니다`, 'ok');
+    if (typeof _prodsrcSaveAsync === 'function') {
+      _prodsrcSaveAsync().catch(e => console.error('[prodsrc] async save fail:', e));
+    } else {
+      _prodsrcSave();
+    }
   };
   if (typeof showAppConfirm === 'function') {
     showAppConfirm('키워드 삭제', `"${keyword}" 키워드를 이 폴더에서 제거할까요?\n(다른 폴더 데이터에는 영향 없음)`, proceed,
