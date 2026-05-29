@@ -2845,7 +2845,7 @@ function _rtrankRestoreHistory(idx) {
   document.getElementById('rtrank-keyword').value = h.keyword || '';
   document.getElementById('rtrank-seller').value = h.seller || '';
   if (Array.isArray(h.items) && h.items.length) {
-    _rtrankRenderResult(h.keyword, h.seller, h.items, h.at, /*fromHistory=*/true);
+    _rtrankRenderResult(h.keyword, h.seller, h.items, h.at, /*fromHistory=*/true, h.totalSearched || 80);
   }
 }
 
@@ -2895,7 +2895,7 @@ async function _rtrankSearch() {
   }
 }
 
-function _rtrankRenderResult(keyword, seller, items, atIso, fromHistory) {
+function _rtrankRenderResult(keyword, seller, items, atIso, fromHistory, totalSearched) {
   const area = document.getElementById('rtrank-result-area');
   const empty = document.getElementById('rtrank-empty');
   if (empty) empty.classList.add('hidden');
@@ -2921,7 +2921,8 @@ function _rtrankRenderResult(keyword, seller, items, atIso, fromHistory) {
   // 리스트
   const list = document.getElementById('rtrank-result-list');
   if (!items.length) {
-    list.innerHTML = `<div class="bg-white border-2 border-brand-border rounded-2xl p-10 text-center text-brand-gray">"${_escapeHtml(seller)}" 셀러의 상품이 검색 결과(80개 내)에 없습니다</div>`;
+    const n = totalSearched || 80;
+    list.innerHTML = `<div class="bg-white border-2 border-brand-border rounded-2xl p-10 text-center text-brand-gray">"${_escapeHtml(seller)}" 셀러의 상품이 검색 결과(${n}개 내)에 없습니다</div>`;
     return;
   }
   const fmtNum = (v) => v == null ? '-' : Number(v).toLocaleString('ko-KR');
@@ -2957,9 +2958,15 @@ function _rtrankProcessPayload(payload, tabsMap) {
   _extensionTriggerSource = null;
   const kw = _rtrankPendingKw;
   const seller = _rtrankPendingSeller;
-  // 네이버페이 탭 우선
+  // v1.7.29+ : 상품수 더 많은 탭 선택 (deep 모드: 전체 400 > 네이버페이 80)
   const tabs = tabsMap || {};
-  const chosenPayload = tabs['네이버페이'] || tabs['전체'] || payload;
+  let chosenPayload = payload;
+  let maxLen = (payload && Array.isArray(payload.products)) ? payload.products.length : 0;
+  for (const tabName of ['전체', '네이버페이', '가격비교']) {
+    const p = tabs[tabName];
+    const len = (p && Array.isArray(p.products)) ? p.products.length : 0;
+    if (len > maxLen) { chosenPayload = p; maxLen = len; }
+  }
   const products = (chosenPayload && chosenPayload.products) || [];
   // 셀러 매칭 (정확 일치, 띄어쓰기 무시 후 비교)
   const sellerNorm = String(seller).replace(/\s+/g, '').toLowerCase();
@@ -2983,12 +2990,12 @@ function _rtrankProcessPayload(payload, tabsMap) {
     }
   });
   const atIso = new Date().toISOString();
-  _rtrankRenderResult(kw, seller, matched, atIso, false);
+  _rtrankRenderResult(kw, seller, matched, atIso, false, products.length);
   // 기록 저장 (중복 시 갱신, 앞으로 이동)
   const hist = _rtrankLoadHistory();
   const dupIdx = hist.findIndex(h => h.keyword === kw && h.seller === seller);
   if (dupIdx >= 0) hist.splice(dupIdx, 1);
-  hist.unshift({ keyword: kw, seller, at: atIso, count: matched.length, items: matched });
+  hist.unshift({ keyword: kw, seller, at: atIso, count: matched.length, items: matched, totalSearched: products.length });
   _rtrankSaveHistory(hist);
   _rtrankRenderHistory();
   try { toast && toast(`✅ ${matched.length}개 상품 검색 완료`); } catch (_) {}
