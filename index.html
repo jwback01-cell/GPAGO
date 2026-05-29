@@ -3723,11 +3723,18 @@ function renderAnalysisResults() {
     const _titleLinkCls = isOrderFixed
       ? 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-green-light px-3 py-1.5 rounded-xl'
       : 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-orange-light px-3 py-1.5 rounded-xl';
+    // v1.7.40+ : 상품 이미지 썸네일 (있을 때만 표시, 없으면 아무것도 안 보임)
+    const imgHtml = it.image
+      ? `<img src="${escapeHtml(it.image)}" alt="" class="w-10 h-10 rounded-md object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
+      : '<div class="w-10 h-10 rounded-md bg-brand-bg shrink-0"></div>';
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
       <td class="px-3 py-3.5 text-sm align-middle">
-        <a href="${escapeHtml(it.link || '#')}" target="_blank" class="${_titleLinkCls}">${highlighted}</a>
+        <div class="flex items-center gap-2.5">
+          ${imgHtml}
+          <a href="${escapeHtml(it.link || '#')}" target="_blank" class="${_titleLinkCls}">${highlighted}</a>
+        </div>
       </td>
       <td class="px-5 py-3.5 text-sm text-brand-black font-bold align-middle whitespace-nowrap">${_highlightTermsInline(it.mallName || '-', terms)}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${attrCell}</td>
