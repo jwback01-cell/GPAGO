@@ -2880,14 +2880,14 @@ async function _rtrankSearch() {
       _rtrankPending = false; _extensionTriggerSource = null;
       return;
     }
-    // 결과 대기 (5페이지 × 6초 + 마진 = 최대 45초)
+    // 결과 대기 (5페이지 × 평균 11초 + 마진 = 최대 70초)
     const startedAt = Date.now();
-    while (_rtrankPending && Date.now() - startedAt < 50000) {
+    while (_rtrankPending && Date.now() - startedAt < 75000) {
       await new Promise(r => setTimeout(r, 300));
     }
     if (_rtrankPending) {
       _rtrankPending = false; _extensionTriggerSource = null;
-      toast('⚠ 캡처 시간 초과 (50초)');
+      toast('⚠ 캡처 시간 초과 (75초)');
     }
   } finally {
     window.removeEventListener('message', ackListener);
