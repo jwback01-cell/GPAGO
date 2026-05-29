@@ -6156,9 +6156,17 @@ function setKwTab(tab) {
     if (el)  el.classList.toggle('hidden', t !== tab);
     if (btn) btn.className = (t === tab) ? activeCls : idleCls;
   }
-  // 추이 탭으로 전환 시 차트가 늦게 그려진 경우 다시 렌더
-  if (tab === 'trend' && typeof renderKwTrend === 'function') {
-    try { renderKwTrend(); } catch (_) {}
+  // v1.7.32+ : 추이 탭으로 전환 시 detail view 열려 있으면 list view 로 복귀
+  if (tab === 'trend') {
+    const detailView = document.getElementById('kw-trend-detail-view');
+    const listView = document.getElementById('kw-trend-list-view');
+    if (detailView && !detailView.classList.contains('hidden')) {
+      detailView.classList.add('hidden');
+      if (listView) listView.classList.remove('hidden');
+    }
+    if (typeof renderKwTrend === 'function') {
+      try { renderKwTrend(); } catch (_) {}
+    }
   }
 }
 
