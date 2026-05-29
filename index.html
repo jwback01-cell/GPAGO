@@ -362,6 +362,14 @@
               <button class="weight-chip weight-chip-active" data-match="terms">텀즈</button>
               <span class="text-xs text-brand-gray flex-1 truncate min-w-0" id="terms-display">-</span>
             </div>
+            <!-- 스토어명 입력 → 검색 결과 안 순위 즉시 표시 -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] font-bold text-brand-gray w-16 shrink-0">스토어명</span>
+              <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1 min-w-0">
+                <input id="seller-rank-input" type="text" placeholder="예: 다올랜드 → 분석 결과 순위 자동 표시" class="bg-transparent outline-none text-xs flex-1 min-w-0" oninput="_findSellerRank()">
+              </div>
+              <span id="seller-rank-result" class="text-xs text-brand-gray min-w-0 truncate"></span>
+            </div>
             <!-- 전체 / 가격비교 / 네이버페이 + 상품수 -->
             <div class="flex items-center gap-2 flex-wrap mt-auto" id="result-filter">
               <button class="weight-chip weight-chip-active" data-rfilter="all">전체</button>
@@ -3025,6 +3033,32 @@ function _rtrankProcessPayload(payload, tabsMap) {
 
 // 초기 렌더
 try { _rtrankRenderHistory(); } catch (_) {}
+
+// v1.7.38+ : 스토어명 입력 → 분석 결과 안에서 매칭되는 상품 순위 즉시 표시
+function _findSellerRank() {
+  const input = document.getElementById('seller-rank-input');
+  const result = document.getElementById('seller-rank-result');
+  if (!input || !result) return;
+  const raw = (input.value || '').trim();
+  if (!raw) { result.textContent = ''; return; }
+  const q = raw.replace(/\s+/g, '').toLowerCase();
+  if (!_lastAnalysisItems || !_lastAnalysisItems.length) {
+    result.innerHTML = '<span class="text-brand-gray">먼저 분석을 실행하세요</span>';
+    return;
+  }
+  const ranks = [];
+  _lastAnalysisItems.forEach((it, idx) => {
+    const mall = String(it.mallName || '').replace(/\s+/g, '').toLowerCase();
+    if (!mall) return;
+    if (mall === q || mall.includes(q) || q.includes(mall)) ranks.push(idx + 1);
+  });
+  if (!ranks.length) {
+    result.innerHTML = `<span class="text-brand-pink font-bold">${_escapeHtml(raw)} 없음 (${_lastAnalysisItems.length}위 내)</span>`;
+  } else {
+    const ranksHtml = ranks.map(r => `<b class="text-brand-blue cursor-pointer hover:underline" onclick="scrollToRank && scrollToRank(${r})">${r}위</b>`).join(', ');
+    result.innerHTML = `<span class="text-brand-gray">${_escapeHtml(raw)}:</span> ${ranksHtml}`;
+  }
+}
 
 function _onFilterInputChange() {
   if (_filterInputTimer) clearTimeout(_filterInputTimer);
