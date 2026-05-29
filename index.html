@@ -1855,13 +1855,9 @@ PBT키캡	1180
     </div>
     <div class="p-6 flex flex-col gap-4">
       <div>
-        <label class="block text-sm font-bold mb-2">상품명</label>
-        <input id="kw-new-product-name" type="text" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors" placeholder="예: 24SS 프리미엄 오버핏 티셔츠" onkeydown="if(event.key==='Enter')document.getElementById('kw-new-product-url').focus()">
-      </div>
-      <div>
-        <label class="block text-sm font-bold mb-2">상품 URL <span class="text-brand-gray font-medium">(선택)</span></label>
+        <label class="block text-sm font-bold mb-2">상품 URL</label>
         <input id="kw-new-product-url" type="url" class="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-black transition-colors" placeholder="https://smartstore.naver.com/..." onkeydown="if(event.key==='Enter')submitKwAddProduct()">
-        <p class="text-brand-gray text-xs mt-2">네이버 쇼핑/스마트스토어 등 상품 상세 페이지 주소를 입력하세요.</p>
+        <p class="text-brand-gray text-xs mt-2">네이버 쇼핑/스마트스토어 등 상품 상세 페이지 주소를 입력하세요. 상품명은 자동으로 가져옵니다.</p>
       </div>
     </div>
     <div class="px-6 py-4 border-t border-brand-border flex justify-end gap-2">
@@ -4943,32 +4939,31 @@ function _escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;
 
 function openKwAddProductModal() {
   document.getElementById('kw-add-product-modal').classList.remove('hidden');
-  setTimeout(() => document.getElementById('kw-new-product-name')?.focus(), 50);
+  setTimeout(() => document.getElementById('kw-new-product-url')?.focus(), 50);
 }
 function closeKwAddProductModal() {
   document.getElementById('kw-add-product-modal').classList.add('hidden');
-  const nameI = document.getElementById('kw-new-product-name');
   const urlI = document.getElementById('kw-new-product-url');
-  if (nameI) nameI.value = '';
   if (urlI) urlI.value = '';
 }
 function submitKwAddProduct() {
-  const nameI = document.getElementById('kw-new-product-name');
   const urlI = document.getElementById('kw-new-product-url');
-  const name = (nameI?.value || '').trim();
   let url = (urlI?.value || '').trim();
-  if (!name) { nameI?.focus(); return; }
-  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  if (!url) { urlI?.focus(); if (typeof toast === 'function') toast('상품 URL 을 입력하세요'); return; }
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  // 상품명은 URL 에서 임시 추정 (productId 기반) — fetch 후 실제 제목으로 자동 갱신됨
+  const productIdMatch = url.match(/products\/(\d+)/);
+  const tmpName = productIdMatch ? `상품 #${productIdMatch[1]}` : '상품';
   const extras = _loadKwExtras();
   const newId = _kwExtraUid();
-  extras.push({ id: newId, name, url, imageUrl: '' });
+  extras.push({ id: newId, name: tmpName, url, imageUrl: '' });
   _saveKwExtras(extras);
   closeKwAddProductModal();
   renderKwProductSelect();
   const sel = document.getElementById('kw-product-select');
   if (sel) { sel.value = 'ex:' + newId; sel.classList.remove('text-brand-gray'); }
-  // 백그라운드로 이미지 자동 가져오기
-  _fetchKwProductImage(newId, name, url);
+  // 백그라운드로 상품 정보 자동 가져오기 (제목, 이미지, 리뷰, 평점, 등록일, 태그 등)
+  _fetchKwProductImage(newId, tmpName, url);
 }
 
 // 네이버 쇼핑 API에서 상품 이미지 자동 가져오기 + 스마트스토어 상세 정보 (리뷰/평점/찜/태그)
