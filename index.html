@@ -6527,7 +6527,12 @@ function renderKwTrend() {
     if (!arr.length) return { rank: undefined, prev: undefined, t: '' };
     arr.sort((a, b) => String(a.t).localeCompare(String(b.t)));
     const last = arr[arr.length - 1];
-    const prev = arr.length >= 2 ? arr[arr.length - 2].r : undefined;
+    // v1.7.36+ : prev 는 last 와 "다른 날짜" 의 가장 최근 값 (오늘 여러 번 추적해도 어제와 비교)
+    const lastDate = String(last.t).slice(0, 10);
+    let prev;
+    for (let i = arr.length - 2; i >= 0; i--) {
+      if (String(arr[i].t).slice(0, 10) !== lastDate) { prev = arr[i].r; break; }
+    }
     return { rank: last.r, prev, t: last.t };
   }
 
