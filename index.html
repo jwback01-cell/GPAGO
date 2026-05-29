@@ -2872,21 +2872,22 @@ async function _rtrankSearch() {
   };
   window.addEventListener('message', ackListener);
   try {
-    window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
+    // v1.7.29+ : deep=5 → 5페이지(400위)까지 순차 캡처
+    window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw, deep: 5 }, window.location.origin);
     await new Promise(r => setTimeout(r, 1000));
     if (!ackReceived) {
       toast('⚠ 확장프로그램 미설치/응답 없음');
       _rtrankPending = false; _extensionTriggerSource = null;
       return;
     }
-    // 결과 대기 (_processExtensionPayload 가 rtrank 분기에서 처리)
+    // 결과 대기 (5페이지 × 6초 + 마진 = 최대 45초)
     const startedAt = Date.now();
-    while (_rtrankPending && Date.now() - startedAt < 25000) {
+    while (_rtrankPending && Date.now() - startedAt < 50000) {
       await new Promise(r => setTimeout(r, 300));
     }
     if (_rtrankPending) {
       _rtrankPending = false; _extensionTriggerSource = null;
-      toast('⚠ 캡처 시간 초과 (25초)');
+      toast('⚠ 캡처 시간 초과 (50초)');
     }
   } finally {
     window.removeEventListener('message', ackListener);
