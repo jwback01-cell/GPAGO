@@ -2880,14 +2880,14 @@ async function _rtrankSearch() {
       _rtrankPending = false; _extensionTriggerSource = null;
       return;
     }
-    // 결과 대기 (5페이지 × 평균 11초 + 마진 = 최대 70초)
+    // v1.7.25+ : popup 1개 + 페이지 2~5는 fetch (API 직접 호출) → 총 ~15초
     const startedAt = Date.now();
-    while (_rtrankPending && Date.now() - startedAt < 75000) {
+    while (_rtrankPending && Date.now() - startedAt < 30000) {
       await new Promise(r => setTimeout(r, 300));
     }
     if (_rtrankPending) {
       _rtrankPending = false; _extensionTriggerSource = null;
-      toast('⚠ 캡처 시간 초과 (75초)');
+      toast('⚠ 캡처 시간 초과 (30초)');
     }
   } finally {
     window.removeEventListener('message', ackListener);
