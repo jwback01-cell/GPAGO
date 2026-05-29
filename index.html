@@ -3365,14 +3365,32 @@ function computeStats(items, terms, baseKw, filterKw) {
 
   // 상품명 가중치 — 각 텀이 포함된 상품 개수 + 텀 미포함 모든 순위
   // 띄어쓰기 무시 비교 ("버즈 4" === "버즈4")
+  // v1+ : 특수 키워드 동의어 저장소(syn) 적용 — 같은 그룹 표기도 같은 단어로 카운트
+  //   예) 에어태그 ⇄ AirTag 등록 시 "에어태그" 검색 → "AirTag" 포함 상품도 매칭
+  const synG = (typeof _buildSynonymGroups === 'function') ? _buildSynonymGroups() : null;
+  const synPairs = (typeof _synGetList === 'function') ? (_synGetList('syn') || []) : [];
+  function _termVariants(t) {
+    const base = String(t || '').toLowerCase().trim();
+    const set = new Set([base]);
+    if (!synG || !synPairs.length || !base) return Array.from(set).filter(Boolean);
+    const tCanon = synG.canon(t);
+    synPairs.forEach(p => {
+      if (!p) return;
+      const a = String(p.a || '').toLowerCase().trim();
+      const b = String(p.b || '').toLowerCase().trim();
+      if (a && synG.canon(a) === tCanon) set.add(a);
+      if (b && synG.canon(b) === tCanon) set.add(b);
+    });
+    return Array.from(set).filter(Boolean);
+  }
   const termCounts = terms.map(t => {
     let cnt = 0;
     const missingRanks = []; // 텀을 포함하지 않는 모든 상품의 순위 (1부터)
     const missingInfo = []; // [{rank, foundIn: ['스토어'|'속성'|'태그']}]
-    const tNoSpace = t.toLowerCase().replace(/\s+/g, '');
+    const variants = _termVariants(t).map(v => v.replace(/\s+/g, ''));
     items.forEach((it, idx) => {
       const titleNoSpace = _stripHtml(it.title).toLowerCase().replace(/\s+/g, '');
-      const has = titleNoSpace.includes(tNoSpace);
+      const has = variants.some(v => v && titleNoSpace.includes(v));
       if (has) { cnt++; return; }
       missingRanks.push(idx + 1);
       // 상품명에 없으면 — 스토어명/속성/태그에서도 찾아봄 (사용자가 어디서 매칭됐는지 알 수 있게)
@@ -3381,9 +3399,9 @@ function computeStats(items, terms, baseKw, filterKw) {
       const charNoSpace = String(matched?.characterValue || '').toLowerCase().replace(/\s+/g, '');
       const tagsNoSpace = String(matched?.manuTag || '').toLowerCase().replace(/\s+/g, '');
       const foundIn = [];
-      if (mallNoSpace.includes(tNoSpace)) foundIn.push('스토어');
-      if (charNoSpace.includes(tNoSpace)) foundIn.push('속성');
-      if (tagsNoSpace.includes(tNoSpace)) foundIn.push('태그');
+      if (variants.some(v => v && mallNoSpace.includes(v))) foundIn.push('스토어');
+      if (variants.some(v => v && charNoSpace.includes(v))) foundIn.push('속성');
+      if (variants.some(v => v && tagsNoSpace.includes(v))) foundIn.push('태그');
       missingInfo.push({ rank: idx + 1, foundIn });
     });
     return { term: t, count: cnt, missingRanks, missingInfo };
