@@ -1598,7 +1598,7 @@ PBT키캡	1180
               ⚡ 자동 분석
             </button>
             <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-bold cursor-pointer hover:bg-brand-bg"
-              title="ON: 분석한 카테고리(상위 폴더)에 해당하는 키워드만 등록. 다른 카테고리로 분류된 키워드는 자동 제외.">
+              title="ON: itemscout 카테고리 분류 무시 → 모든 키워드를 분석한 폴더 1개에 강제 통합. (예: 갤럭시 케이스 분석 시 z플립7케이스/s26울트라케이스 등 100개 키워드를 모두 갤럭시 케이스 폴더로). 저장 속도도 빨라짐.">
               <input type="checkbox" id="prodsrc-single-folder-only" class="accent-brand-blue" onchange="_prodsrcSaveSingleFolderOnly()">
               <span>단일 폴더만</span>
             </label>
@@ -12258,26 +12258,23 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     return;
   }
 
-  // v1+ : "단일 폴더만" 옵션이 켜져있으면 — 분석 카테고리(analysisPath)에 해당하는 폴더만 유지
-  //   다른 카테고리로 분류된 키워드는 자동 제외 → 저장 속도 대폭 단축
+  // v2 : "단일 폴더만" 옵션이 켜져있으면 — 모든 키워드를 analysisPath 폴더 하나에 강제 통합
+  //   itemscout 의 fine-grained 카테고리 분류 무시 → 사용자가 분석한 폴더로 전부 모음
   try {
     const singleOnlyEl = document.getElementById('prodsrc-single-folder-only');
     if (singleOnlyEl && singleOnlyEl.checked && analysisPath) {
       const beforeFolders = rowsByFolder.size;
-      const beforeKws = Array.from(rowsByFolder.values()).reduce((s, a) => s + a.length, 0);
-      const kept = new Map();
-      if (rowsByFolder.has(analysisPath)) {
-        kept.set(analysisPath, rowsByFolder.get(analysisPath));
+      const mergedRows = [];
+      for (const [_, batch] of rowsByFolder) {
+        batch.forEach(r => {
+          r.folderName = analysisPath;
+          r.category = analysisPath;
+        });
+        mergedRows.push(...batch);
       }
-      const droppedFolders = beforeFolders - kept.size;
-      const droppedKws = beforeKws - (kept.get(analysisPath)?.length || 0);
       rowsByFolder.clear();
-      kept.forEach((v, k) => rowsByFolder.set(k, v));
-      if (rowsByFolder.size === 0) {
-        _prodsrcMsg(`⚠️ "단일 폴더만" 옵션 ON — 분석 카테고리("${analysisPath}")와 정확히 일치하는 키워드가 없어 ${beforeKws}개 모두 제외됨`, 'warn');
-        return;
-      }
-      console.log(`[itemscout 단일폴더] ${droppedFolders}개 다른 폴더 / ${droppedKws}개 키워드 제외`);
+      rowsByFolder.set(analysisPath, mergedRows);
+      console.log(`[itemscout 단일폴더] ${beforeFolders}개 폴더 → "${analysisPath}" 1개로 강제 통합, 키워드 ${mergedRows.length}개`);
     }
   } catch (_) {}
 
