@@ -3531,17 +3531,40 @@ function _highlightTerms(text, terms) {
 // 상품명·속성·태그·카테고리용 — 키워드별 색상 (1번째 파랑, 2번째 빨강, cycle)
 const _TERM_INLINE_COLORS = ['#2196F3','#F44336'];
 function _highlightTermsInline(text, terms) {
-  let result = escapeHtml(text);
+  const escaped = escapeHtml(text);
+  if (!terms || !terms.length) return escaped;
+  // v1+ : 단일 패스 + 위치 기반 wrap — 색상 hex(#2196F3) 안의 "2" 등이
+  //   짧은 텀에 의해 재매칭되어 HTML이 깨지던 문제 수정
+  const matches = []; // [{start, end, termIdx}]
   (terms || []).forEach((t, i) => {
     if (!t) return;
-    const tNoSpace = t.replace(/\s+/g, '');
+    const tNoSpace = String(t).replace(/\s+/g, '');
     if (!tNoSpace) return;
     const pattern = tNoSpace.split('').map(c => c.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')).join('\\s*');
-    const re = new RegExp('(' + pattern + ')', 'gi');
-    const color = _TERM_INLINE_COLORS[i % _TERM_INLINE_COLORS.length];
-    result = result.replace(re, `<span style="color:${color};font-weight:700;">$1</span>`);
+    const re = new RegExp(pattern, 'gi');
+    let m;
+    while ((m = re.exec(escaped)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      matches.push({ start: m.index, end: m.index + m[0].length, termIdx: i });
+    }
   });
-  return result;
+  if (!matches.length) return escaped;
+  // 시작 위치 → 길이 긴 것 우선. 겹치면 먼저 등장한 것만 살림
+  matches.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+  const kept = [];
+  let cursor = 0;
+  for (const m of matches) {
+    if (m.start >= cursor) { kept.push(m); cursor = m.end; }
+  }
+  // 뒤에서부터 wrap (인덱스 변동 방지)
+  let out = escaped;
+  for (let i = kept.length - 1; i >= 0; i--) {
+    const m = kept[i];
+    const color = _TERM_INLINE_COLORS[m.termIdx % _TERM_INLINE_COLORS.length];
+    const matched = out.slice(m.start, m.end);
+    out = out.slice(0, m.start) + `<span style="color:${color};font-weight:700;">${matched}</span>` + out.slice(m.end);
+  }
+  return out;
 }
 
 // 다중 키워드 탭 렌더링
