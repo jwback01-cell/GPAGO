@@ -7528,7 +7528,10 @@ function _renderKwDetailTable() {
       } else if (prev === null) {
         delta = `<span class="ml-1.5 text-brand-orange font-bold text-xs">신규</span>`;
       }
-      return `<td class="p-3 whitespace-nowrap"><span class="font-bold text-brand-black">${cur}위</span> <span class="text-brand-gray text-xs">- ${page}페이지 ${cur}위</span>${delta}</td>`;
+      return `<td class="p-3 whitespace-nowrap align-top">
+        <div class="flex items-center gap-1.5"><span class="font-bold text-brand-black">${cur}위</span>${delta}</div>
+        <div class="text-brand-gray text-[11px] mt-0.5">${page}페이지 ${cur}위</div>
+      </td>`;
     }).join('');
     const typeBadge = item.rankType === 'plus'
       ? '<span class="inline-block bg-brand-green-light text-[#00C853] text-[10px] font-bold px-1.5 py-0.5 rounded">플러스</span>'
