@@ -1597,6 +1597,11 @@ PBT키캡	1180
               title="입력란에 카테고리 ID/URL 있으면 → 그 카테고리만 자동 분석. 비어있으면 → 등록된 모든 폴더 자동 갱신.">
               ⚡ 자동 분석
             </button>
+            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-border bg-white text-xs font-bold cursor-pointer hover:bg-brand-bg"
+              title="ON: 분석한 카테고리(상위 폴더)에 해당하는 키워드만 등록. 다른 카테고리로 분류된 키워드는 자동 제외.">
+              <input type="checkbox" id="prodsrc-single-folder-only" class="accent-brand-blue" onchange="_prodsrcSaveSingleFolderOnly()">
+              <span>단일 폴더만</span>
+            </label>
             <button onclick="prodsrcImportFromItemscout()" id="prodsrc-itemscout-btn"
               class="px-3 py-1.5 rounded-full bg-brand-blue text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5"
               title="이미 열려있는 itemscout.io 탭에서 현재 보이는 데이터를 가져옵니다.">
@@ -11757,6 +11762,24 @@ function prodsrcImportFromItemscout() {
   }, 5000);
 }
 
+// "단일 폴더만" 옵션 — localStorage 영구 저장
+const _PRODSRC_SINGLE_FOLDER_KEY = 'gplan_prodsrc_single_folder_only';
+function _prodsrcSaveSingleFolderOnly() {
+  const el = document.getElementById('prodsrc-single-folder-only');
+  if (!el) return;
+  try { localStorage.setItem(_PRODSRC_SINGLE_FOLDER_KEY, el.checked ? '1' : '0'); } catch (_) {}
+}
+function _prodsrcRestoreSingleFolderOnly() {
+  const el = document.getElementById('prodsrc-single-folder-only');
+  if (!el) return;
+  try { el.checked = localStorage.getItem(_PRODSRC_SINGLE_FOLDER_KEY) === '1'; } catch (_) {}
+}
+if (document.readyState !== 'loading') {
+  setTimeout(_prodsrcRestoreSingleFolderOnly, 50);
+} else {
+  document.addEventListener('DOMContentLoaded', () => setTimeout(_prodsrcRestoreSingleFolderOnly, 50));
+}
+
 // 자동 분석 입력란이 브라우저 자동완성으로 채워지는 것 방지 (페이지 로드 시 + 페이지 진입 시)
 function _prodsrcClearItemscoutInput() {
   const el = document.getElementById('prodsrc-itemscout-input');
@@ -12234,6 +12257,29 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     _prodsrcMsg('❌ 변환된 키워드 행이 없습니다.', 'error');
     return;
   }
+
+  // v1+ : "단일 폴더만" 옵션이 켜져있으면 — 분석 카테고리(analysisPath)에 해당하는 폴더만 유지
+  //   다른 카테고리로 분류된 키워드는 자동 제외 → 저장 속도 대폭 단축
+  try {
+    const singleOnlyEl = document.getElementById('prodsrc-single-folder-only');
+    if (singleOnlyEl && singleOnlyEl.checked && analysisPath) {
+      const beforeFolders = rowsByFolder.size;
+      const beforeKws = Array.from(rowsByFolder.values()).reduce((s, a) => s + a.length, 0);
+      const kept = new Map();
+      if (rowsByFolder.has(analysisPath)) {
+        kept.set(analysisPath, rowsByFolder.get(analysisPath));
+      }
+      const droppedFolders = beforeFolders - kept.size;
+      const droppedKws = beforeKws - (kept.get(analysisPath)?.length || 0);
+      rowsByFolder.clear();
+      kept.forEach((v, k) => rowsByFolder.set(k, v));
+      if (rowsByFolder.size === 0) {
+        _prodsrcMsg(`⚠️ "단일 폴더만" 옵션 ON — 분석 카테고리("${analysisPath}")와 정확히 일치하는 키워드가 없어 ${beforeKws}개 모두 제외됨`, 'warn');
+        return;
+      }
+      console.log(`[itemscout 단일폴더] ${droppedFolders}개 다른 폴더 / ${droppedKws}개 키워드 제외`);
+    }
+  } catch (_) {}
 
   // 폴더별 처리 (갱신 or 신규 생성)
   const allRows = existing.slice();
