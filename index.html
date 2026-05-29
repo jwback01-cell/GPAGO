@@ -5363,7 +5363,7 @@ async function _doFetchSmartstoreInfo(extraId, url, opts) {
       info.reviewCount = 0;
     }
     let filled = 0;
-    if (info.image && !target.imageUrl) { target.imageUrl = info.image; filled++; }
+    if (info.image)               { target.imageUrl = info.image; filled++; }   // v1.7.34+ : 새로고침 시 이미지도 갱신 (이전엔 빈 경우에만 채워서 변경된 이미지 반영 안 됨)
     if (info.title)               { target.fetchedTitle = info.title; filled++; }   // 원본 상품명 (셀러명 추출용)
     if (info.description)         { target.description = info.description; filled++; }  // 셀러명 추출용
     if (info.reviewCount != null) { target.reviewCount = Number(info.reviewCount); filled++; }
