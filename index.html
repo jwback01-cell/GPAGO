@@ -2452,11 +2452,15 @@ document.addEventListener('click', (e) => {
   const sub = e.target.closest('[data-kw-tab]');
   if (!sub) return;
   e.preventDefault();
+  e.stopPropagation();
   const tab = sub.dataset.kwTab;
+  // v1.7.31+ : rtrank 등 다른 페이지에서 진입 시 안정 전환 — 동기 호출 + 명시적 활성화
   if (typeof goPage === 'function') goPage('keywords');
-  setTimeout(() => { if (typeof setKwTab === 'function') setKwTab(tab); }, 0);
-  // 하위 메뉴 active 표시
+  if (typeof setKwTab === 'function') setKwTab(tab);
+  // 하위 메뉴 active 표시 (data-kw-tab 만)
   document.querySelectorAll('[data-kw-tab]').forEach(a => a.classList.toggle('active', a === sub));
+  // rtrank 등 다른 data-page 서브메뉴 active 명시적 해제
+  document.querySelectorAll('.nav-sub[data-page]').forEach(a => a.classList.remove('active'));
 });
 
 // 모바일 사이드바 토글 — 햄버거 버튼 / 백드롭 클릭 / 메뉴 항목 선택 시 호출
