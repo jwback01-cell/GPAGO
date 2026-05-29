@@ -362,11 +362,11 @@
               <button class="weight-chip weight-chip-active" data-match="terms">텀즈</button>
               <span class="text-xs text-brand-gray flex-1 truncate min-w-0" id="terms-display">-</span>
             </div>
-            <!-- 스토어명 입력 → 검색 결과 안 순위 즉시 표시 -->
+            <!-- 스토어명 입력 → 검색 결과 안 순위 즉시 표시 (값 localStorage 에 저장) -->
             <div class="flex items-center gap-2 flex-wrap">
               <span class="text-[11px] font-bold text-brand-gray w-16 shrink-0">스토어명</span>
               <div class="flex items-center gap-1 bg-brand-bg rounded-full px-3 py-1.5 flex-1 min-w-0">
-                <input id="seller-rank-input" type="text" placeholder="예: 다올랜드 → 분석 결과 순위 자동 표시" class="bg-transparent outline-none text-xs flex-1 min-w-0" oninput="_findSellerRank()">
+                <input id="seller-rank-input" type="text" placeholder="예: 다올랜드 → 분석 결과 순위 자동 표시" class="bg-transparent outline-none text-xs flex-1 min-w-0" oninput="_onSellerRankInput()">
               </div>
               <span id="seller-rank-result" class="text-xs text-brand-gray min-w-0 truncate"></span>
             </div>
@@ -3034,6 +3034,23 @@ function _rtrankProcessPayload(payload, tabsMap) {
 // 초기 렌더
 try { _rtrankRenderHistory(); } catch (_) {}
 
+// v1.7.39+ : 스토어명 자동 채우기 (기본값: 다올랜드, 사용자 입력은 localStorage 저장)
+const SELLER_RANK_KEY = 'gpago_seller_rank_default';
+function _onSellerRankInput() {
+  const input = document.getElementById('seller-rank-input');
+  if (input) { try { localStorage.setItem(SELLER_RANK_KEY, input.value); } catch (_) {} }
+  _findSellerRank();
+}
+// 초기 자동 채우기 — 저장된 값 우선, 없으면 '다올랜드'
+try {
+  const saved = localStorage.getItem(SELLER_RANK_KEY);
+  const input = document.getElementById('seller-rank-input');
+  if (input) {
+    input.value = (saved != null && saved !== '') ? saved : '다올랜드';
+    setTimeout(() => { try { _findSellerRank(); } catch (_) {} }, 100);
+  }
+} catch (_) {}
+
 // v1.7.38+ : 스토어명 입력 → 분석 결과 안에서 매칭되는 상품 순위 즉시 표시
 function _findSellerRank() {
   const input = document.getElementById('seller-rank-input');
@@ -3083,6 +3100,7 @@ function _reanalyzeFromCachedData() {
   try { document.getElementById('terms-display').textContent = terms.join(',') || '-'; } catch(_) {}
   try { computeStats(_lastAnalysisItems, terms, _lastBaseKw, filterKw); } catch(e) { console.error('[reanalyze computeStats]', e); }
   try { renderAnalysisResults(); } catch(e) { console.error('[reanalyze render]', e); }
+  try { _findSellerRank(); } catch(_) {}  // v1.7.39+ : 분석 완료 후 스토어명 매칭 결과도 갱신
   toast(`✅ 재분석 완료 — 필터: ${filterKw || '(없음)'} (${_lastAnalysisItems.length}개 상품)`);
 }
 
