@@ -2490,6 +2490,10 @@ function goPage(pageId) {
   });
   document.querySelectorAll('.nav-item[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
   document.querySelectorAll('.nav-sub[data-page]').forEach(a => a.classList.toggle('active', a.dataset.page === pageId));
+  // v1.7.33+ : 'keywords' 페이지가 아니면 data-kw-tab 의 active 모두 해제 (rtrank 등으로 이동 시 잔존 방지)
+  if (pageId !== 'keywords') {
+    document.querySelectorAll('[data-kw-tab]').forEach(a => a.classList.remove('active'));
+  }
   // 반자동 그룹은 하위 페이지 중 하나가 활성일 때 부모도 active + 자동 펼침
   const isSemi = SEMI_PAGES.includes(pageId);
   document.querySelectorAll('[data-page-group="semi"]').forEach(a => a.classList.toggle('active', isSemi));
