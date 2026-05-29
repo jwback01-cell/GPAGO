@@ -13338,6 +13338,45 @@ function prodsrcDeleteSelectedFolders() {
   }
 }
 
+// 단일 하위 폴더 삭제 — detail view 에서 ✕ 버튼 클릭
+function prodsrcDeleteChildFolder(folderNameRaw) {
+  const folderName = String(folderNameRaw)
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  const rows = (_prodsrcState && _prodsrcState.rows) || [];
+  // 정확 일치 OR 더 깊은 자식 폴더 (prefix) 매칭 — 자식 트리 모두 제거
+  const matchFn = (fn) => fn === folderName || fn.startsWith(folderName + ' > ');
+  const affectedFolders = new Set();
+  rows.forEach(r => { const fn = r.folderName || r.category || ''; if (matchFn(fn)) affectedFolders.add(fn); });
+  const targetRowCount = rows.filter(r => matchFn(r.folderName || r.category || '')).length;
+  if (targetRowCount === 0) {
+    _prodsrcMsg(`"${folderName}" 에 데이터가 없습니다`, 'warn');
+    return;
+  }
+  const leaf = folderName.split(' > ').pop();
+  const childCount = affectedFolders.size - 1;
+  const msg = `"${leaf}" 폴더를 삭제합니다.${childCount > 0 ? `\n(자식 폴더 ${childCount}개 포함, 총 ${affectedFolders.size}개 폴더)` : ''}\n\n총 ${targetRowCount}개 키워드 행이 제거됩니다. 되돌릴 수 없음.\n\n계속할까요?`;
+  const apply = () => {
+    const remaining = rows.filter(r => !matchFn(r.folderName || r.category || ''));
+    const favs = Array.isArray(_prodsrcState.favorites) ? _prodsrcState.favorites : [];
+    const newFavs = favs.filter(f => !matchFn(f));
+    _prodsrcState = { ...(_prodsrcState || {}), rows: remaining, favorites: newFavs };
+    // UI 먼저 갱신, 저장은 백그라운드
+    if (typeof prodsrcRenderDetail === 'function') prodsrcRenderDetail();
+    _prodsrcMsg(`🗑 "${leaf}" 폴더 삭제됨 (${targetRowCount}개 키워드)`, 'ok');
+    if (typeof _prodsrcSaveAsync === 'function') {
+      _prodsrcSaveAsync().catch(e => console.error('[prodsrc] save fail:', e));
+    } else {
+      _prodsrcSave();
+    }
+  };
+  if (typeof showAppConfirm === 'function') {
+    showAppConfirm('하위 폴더 삭제', msg, apply, { type: 'danger', confirmText: '삭제', confirmStyle: 'danger' });
+  } else {
+    if (confirm(msg)) apply();
+  }
+}
+
 // 그룹(부모 폴더) 진입 — 자식 폴더 목록 표시
 function prodsrcOpenGroup(parentName) {
   _prodsrcCurrentGroup = parentName;
@@ -13392,14 +13431,18 @@ function prodsrcRenderDetail() {
       children.sort((a, b) => String(a.leaf).localeCompare(String(b.leaf), 'ko'));
       childrenGrid.innerHTML = children.map(ch => {
         const safeName = _prodsrcEsc(ch.name).replace(/'/g, "\\'");
-        return `<div onclick="prodsrcOpenCategory('${safeName}')"
-          class="bg-white hover:bg-brand-bg border border-brand-border hover:border-brand-blue rounded-xl p-3 cursor-pointer transition-all"
-          title="${_prodsrcEsc(ch.name)} — 클릭해서 들어가기">
-          <div class="flex items-center gap-2 mb-1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
-            <span class="font-bold text-xs truncate">${_prodsrcEsc(ch.leaf)}</span>
+        return `<div class="relative group">
+          <div onclick="prodsrcOpenCategory('${safeName}')"
+            class="bg-white hover:bg-brand-bg border border-brand-border hover:border-brand-blue rounded-xl p-3 cursor-pointer transition-all"
+            title="${_prodsrcEsc(ch.name)} — 클릭해서 들어가기">
+            <div class="flex items-center gap-2 mb-1 pr-5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFCB52" stroke="#E5A93B" stroke-width="1"><path d="M4 14 C4 9.6 7.6 6 12 6 L30 6 L36 12 L68 12 C72.4 12 76 15.6 76 20 L76 54 C76 58.4 72.4 62 68 62 L12 62 C7.6 62 4 58.4 4 54 Z" transform="scale(0.3)"/></svg>
+              <span class="font-bold text-xs truncate">${_prodsrcEsc(ch.leaf)}</span>
+            </div>
+            <div class="text-[10px] text-brand-gray">키워드 ${ch.count}개 · ${_prodsrcFmt(ch.totalSearch)}</div>
           </div>
-          <div class="text-[10px] text-brand-gray">키워드 ${ch.count}개 · ${_prodsrcFmt(ch.totalSearch)}</div>
+          <button onclick="event.stopPropagation(); prodsrcDeleteChildFolder('${safeName}')" title="이 하위 폴더 삭제"
+            class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-brand-border text-brand-gray hover:text-white hover:bg-brand-pink hover:border-brand-pink flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">×</button>
         </div>`;
       }).join('');
     } else {
