@@ -405,12 +405,13 @@
                 <th class="px-3 py-4 text-left w-16"></th>
                 <th class="px-3 py-4 text-left w-[26%]">상품명</th>
                 <th class="px-5 py-4 text-left whitespace-nowrap">스토어명</th>
+                <th class="px-3 py-4 text-right whitespace-nowrap">가격</th>
                 <th class="px-3 py-4 text-left">속성</th>
                 <th class="px-3 py-4 text-left w-[22%]">태그</th>
               </tr>
             </thead>
             <tbody id="analysis-tbody">
-              <tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">
+              <tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">
                 기준 키워드를 입력하고 <b>가중치 분석</b> 버튼을 누르면 결과가 표시됩니다<br>
                 <span class="text-[11px] mt-2 inline-block">처음 사용 시 우측 상단 <b>API 설정</b> 에서 네이버 Client ID/Secret 을 등록해 주세요</span>
               </td></tr>
@@ -3164,7 +3165,7 @@ async function _legacyRunAnalysisViaApi() {
   for (let i = 0; i < baseList.length; i++) {
     const bk = baseList[i];
     const q = filterKw ? (bk + ' ' + filterKw).trim() : bk;
-    tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 ${escapeHtml(bk)} 분석 중... (${i+1}/${baseList.length})</span></td></tr>`;
     try {
       const proxyUrl = '/api/naver-shop?query=' + encodeURIComponent(q) + '&display=80&sort=sim';
       const resp = await fetch(proxyUrl, { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
@@ -3188,7 +3189,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
   document.getElementById('multi-kw-tabs').classList.add('hidden');
   const api = _getApi();
   const tbody = document.getElementById('analysis-tbody');
-  tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm"><span class="inline-block animate-pulse">🔍 네이버 쇼핑에서 분석 중...</span></td></tr>';
   _resetStats();
   try {
     // 분석 히스토리 저장
@@ -3215,7 +3216,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     const data = await resp.json();
     const items = data.items || [];
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(query)}" 검색 결과 없음</td></tr>`;
       return;
     }
 
@@ -3237,7 +3238,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     toast(`✅ ${items.length}개 분석 완료 (전체 ${(data.total || 0).toLocaleString('ko-KR')}개 중)`);
   } catch (e) {
     console.error('[분석] 실패:', e);
-    tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-12 text-center text-brand-pink text-sm">❌ 분석 실패: ${escapeHtml(e.message || String(e))}<br><span class="text-[11px] text-brand-gray mt-2 inline-block">로컬에서는 CORS 차단으로 직접 호출 불가 — Vercel 배포 후 사용 가능합니다</span></td></tr>`;
   }
 }
 
@@ -3596,7 +3597,7 @@ function activateMultiKwTab(idx) {
   const r = _multiAnalysisResults[idx];
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
     renderMultiKwTabs();
     return;
   }
@@ -3739,7 +3740,7 @@ function renderAnalysisResults() {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it, i) => {
@@ -3782,6 +3783,11 @@ function renderAnalysisResults() {
       ? `<img src="${escapeHtml(it.image)}" alt="" class="w-10 h-10 rounded-md object-cover bg-brand-bg shrink-0" onerror="this.style.display='none'">`
       : '<div class="w-10 h-10 rounded-md bg-brand-bg shrink-0"></div>';
     const _plainTitle = title.replace(/"/g, '&quot;');
+    // 가격 — lprice(검색API) / lowPrice / price 순으로 우선. 가격비교면 최저가만 표시
+    const _rawPrice = Number(it.lprice || matched?.lowPrice || matched?.price || 0) || 0;
+    const priceCell = _rawPrice > 0
+      ? `<span class="font-bold text-brand-black">${_rawPrice.toLocaleString('ko-KR')}</span><span class="text-[10px] text-brand-gray ml-0.5">원</span>`
+      : '<span class="text-brand-gray text-[11px]">-</span>';
     return `<tr id="row-rank-${i + 1}" class="border-b border-brand-border hover:bg-brand-bg/50 transition-colors">
       <td class="px-5 py-3.5 text-sm font-bold text-brand-gray align-middle">${i + 1}</td>
       <td class="px-3 py-3.5 align-middle">${groupBadge}</td>
@@ -3792,6 +3798,7 @@ function renderAnalysisResults() {
         </div>
       </td>
       <td class="px-5 py-3.5 text-sm text-brand-black font-bold align-middle whitespace-nowrap">${_highlightTermsInline(it.mallName || '-', terms)}</td>
+      <td class="px-3 py-3.5 text-sm align-middle whitespace-nowrap text-right">${priceCell}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${attrCell}</td>
       <td class="px-3 py-3.5 text-[12px] align-middle leading-relaxed">${tagCell}</td>
     </tr>`;
