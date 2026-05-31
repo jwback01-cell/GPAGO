@@ -1972,7 +1972,7 @@ PBT키캡	1180
       <div class="flex items-stretch gap-2">
         <div class="flex-1 flex items-center gap-2 bg-brand-bg border border-brand-border rounded-xl px-4">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <input id="kw-prodmgr-input" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault();addKwProductMgr();}" onpaste="setTimeout(()=>{this.value=this.value.replace(/[\n\r\t]+/g,',').replace(/,+/g,',').replace(/^,|,$/g,'');},0)" class="flex-1 bg-transparent py-2.5 text-sm focus:outline-none" placeholder="마스크, 린넨자켓, 청바지... (엑셀 한 줄 복사도 가능 · 쉼표·줄바꿈 모두 인식)">
+          <input id="kw-prodmgr-input" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault();addKwProductMgr();}" onpaste="event.preventDefault();const _t=(event.clipboardData||window.clipboardData).getData('text')||'';const _norm=_t.replace(/[\n\r\t]+/g,',').replace(/,+/g,',').replace(/^,|,$/g,'');this.value=(this.value?this.value+',':'')+_norm;" class="flex-1 bg-transparent py-2.5 text-sm focus:outline-none" placeholder="마스크, 린넨자켓, 청바지... (엑셀 한 줄 복사도 가능 · 쉼표·줄바꿈·탭 모두 인식)">
         </div>
         <button onclick="addKwProductMgr()" class="px-5 py-2.5 rounded-xl bg-brand-black text-white text-sm font-bold hover:bg-[#333] shrink-0">등록</button>
       </div>
