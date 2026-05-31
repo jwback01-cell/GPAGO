@@ -510,6 +510,16 @@
               <input id="sp-result" class="pill-input flex-[2] min-w-[140px]" placeholder="검증 후 결과 표시" readonly>
               <button class="pill-btn pill-btn-blue" onclick="verifyKeyword()">✓ 검증</button>
             </div>
+            <!-- 엑셀 일괄 검증 — 키워드 여러 개를 한 번에 비교해 동의어 그룹 묶기 -->
+            <div class="mt-4 pt-4 border-t border-brand-border">
+              <label class="block text-xs font-bold text-brand-gray mb-1.5">📋 엑셀 일괄 검증 (키워드 여러 개)</label>
+              <textarea id="sp-bulk-input" rows="3" placeholder="엑셀에서 키워드 열을 복사 후 여기에 붙여넣기 (탭/줄바꿈/공백 구분, 숫자는 자동 제외)" class="w-full bg-brand-bg border-0 rounded-2xl p-3 text-sm focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border"></textarea>
+              <div class="flex items-center justify-between gap-2 mt-2">
+                <span class="text-[11px] text-brand-gray">네이버 검색결과 수가 같은 키워드끼리 동의어 그룹으로 자동 묶음</span>
+                <button onclick="verifyBulkKeywords()" class="pill-btn pill-btn-blue">⚡ 일괄 검증</button>
+              </div>
+              <div id="sp-bulk-result" class="mt-3"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -4092,6 +4102,98 @@ async function verifyKeyword() {
   } catch (e) {
     resultEl.value = '오류: ' + (e.message || String(e));
   }
+}
+
+// 엑셀 일괄 검증 — 여러 키워드의 네이버 검색결과 수를 비교해 동의어 그룹으로 묶음
+async function verifyBulkKeywords() {
+  const text = (document.getElementById('sp-bulk-input')?.value || '').trim();
+  const resultEl = document.getElementById('sp-bulk-result');
+  if (!text) { toast('키워드를 붙여넣어 주세요'); return; }
+
+  // 키워드 파싱 — 줄바꿈/탭/콤마로 split, 숫자만/헤더 제외, 중복 제거
+  const SKIP_HEADERS = ['url','키워드','순위','검색량','검색수','count','total','keyword','rank'];
+  const raw = text.split(/[\n\r\t,]+/).map(s => s.trim()).filter(Boolean);
+  const seen = new Set();
+  const keywords = [];
+  raw.forEach(c => {
+    if (/^[\d.,]+$/.test(c)) return;             // 숫자만 (검색수 등)
+    if (/^\d{4}-\d{2}-\d{2}/.test(c)) return;    // 날짜
+    if (SKIP_HEADERS.includes(c.toLowerCase())) return;
+    if (c.length < 2 || c.length > 50) return;
+    if (seen.has(c)) return;
+    seen.add(c);
+    keywords.push(c);
+  });
+  if (!keywords.length) { resultEl.innerHTML = '<div class="text-sm text-brand-pink">유효한 키워드가 없습니다</div>'; return; }
+  if (keywords.length > 100) { resultEl.innerHTML = '<div class="text-sm text-brand-pink">최대 100개까지 검증 가능합니다 (현재 '+keywords.length+'개)</div>'; return; }
+
+  const api = (typeof _loadNaverApi === 'function') ? _loadNaverApi() : {};
+  if (!api.clientId || !api.clientSecret) {
+    resultEl.innerHTML = '<div class="text-sm text-brand-pink">⚠ 먼저 "키워드 순위 → 설정"에서 네이버 API 키를 등록해 주세요</div>';
+    return;
+  }
+
+  resultEl.innerHTML = `<div class="text-sm text-brand-gray">검증 중... <b id="sp-bulk-prog">0</b>/${keywords.length}</div>`;
+
+  // 각 키워드 → 네이버 검색 total 수집 (순차, rate limit 안전하게)
+  const totals = new Map();
+  for (let i = 0; i < keywords.length; i++) {
+    const k = keywords[i];
+    try {
+      const r = await _naverShopSearch(k, 1, 1, api.clientId, api.clientSecret);
+      totals.set(k, Number(r.total || 0));
+    } catch (e) {
+      totals.set(k, -1);   // 에러 표시용
+    }
+    const progEl = document.getElementById('sp-bulk-prog');
+    if (progEl) progEl.textContent = String(i + 1);
+    await new Promise(r => setTimeout(r, 120));
+  }
+
+  // 결과 그룹화 — total 이 1% 이내 차이면 동일 그룹 (verifyKeyword 와 같은 기준)
+  const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  const groups = [];
+  const errors = [];
+  for (const [kw, t] of sorted) {
+    if (t < 0) { errors.push(kw); continue; }
+    if (t === 0) { errors.push(kw + ' (0건)'); continue; }
+    let placed = false;
+    for (const g of groups) {
+      const diff = Math.abs(g.total - t) / Math.max(g.total, t, 1);
+      if (diff < 0.01) { g.keywords.push({ kw, total: t }); placed = true; break; }
+    }
+    if (!placed) groups.push({ total: t, keywords: [{ kw, total: t }] });
+  }
+
+  const fmt = (n) => Number(n).toLocaleString('ko-KR');
+  const synGroups = groups.filter(g => g.keywords.length >= 2);
+  const lone = groups.filter(g => g.keywords.length === 1);
+
+  let html = '';
+  if (synGroups.length) {
+    html += `<div class="font-bold text-sm mb-2 text-brand-black">✅ 동의어 그룹 ${synGroups.length}개 발견</div>`;
+    synGroups.forEach((g, i) => {
+      html += `<div class="bg-brand-green-light/40 border border-brand-green/20 rounded-xl p-3 mb-2">
+        <div class="text-[11px] text-brand-gray mb-1.5">그룹 ${i + 1} — 네이버 검색결과 <b class="text-brand-black">${fmt(g.total)}건</b> 동일</div>
+        <div class="flex flex-wrap gap-1.5">
+          ${g.keywords.map(k => `<span class="bg-white border border-brand-green/40 rounded-full px-3 py-1 text-xs font-bold text-brand-black">${escapeHtml(k.kw)}</span>`).join('')}
+        </div>
+      </div>`;
+    });
+  } else {
+    html += '<div class="text-sm text-brand-gray mb-2">동의어 그룹 없음 (모두 다른 검색어)</div>';
+  }
+  if (lone.length) {
+    html += `<details class="mt-2"><summary class="text-[11px] text-brand-gray cursor-pointer">단독 키워드 ${lone.length}개 보기</summary>
+      <div class="flex flex-wrap gap-1.5 mt-2">
+        ${lone.map(g => `<span class="bg-brand-bg border border-brand-border rounded-full px-3 py-1 text-[11px] text-brand-gray">${escapeHtml(g.keywords[0].kw)} <span class="text-brand-gray/60">${fmt(g.total)}건</span></span>`).join('')}
+      </div></details>`;
+  }
+  if (errors.length) {
+    html += `<div class="text-[10px] text-brand-pink mt-2">⚠ 검색 실패/결과 없음: ${errors.map(escapeHtml).join(', ')}</div>`;
+  }
+  html += `<div class="text-[11px] text-brand-gray mt-3">총 ${keywords.length}개 검증 · 동의어 ${synGroups.reduce((s, g) => s + g.keywords.length, 0)}개 / 단독 ${lone.length}개</div>`;
+  resultEl.innerHTML = html;
 }
 
 // 동의어 저장소
