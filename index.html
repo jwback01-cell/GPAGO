@@ -4736,6 +4736,11 @@ async function extractFromKeyword() {
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
 
+  // v1+ : 텀즈 모드 잔여 상태 확실히 정리 (이전 텀즈 분석이 timeout/취소된 경우 응답을 가로채던 문제)
+  _termsAnalysisPending = false;
+  _termsAnalysisInputName = '';
+  try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
+
   // 확장이 kw-naver 입력란을 읽으므로 키워드 미리 동기화
   const nInput = document.getElementById('kw-naver');
   if (nInput) nInput.value = kw;
