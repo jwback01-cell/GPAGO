@@ -4395,6 +4395,8 @@ async function analyzeTerms() {
 
   _termsAnalysisPending = true;
   _termsAnalysisInputName = name;
+  // v1+ : 키워드 분석과 완전 분리 — 트리거 소스를 'terms' 로 명시해서 응답이 키워드 분석에 안 흘러가게
+  _extensionTriggerSource = 'terms';
   // 예기치 못한 리로드를 대비한 sessionStorage 백업 (확장 v1.4.8+ 에서는 리로드 안 일어남)
   try { sessionStorage.setItem('_gpago_terms_pending', name); } catch(_) {}
   // 마누태그 UI 정리 (텀즈 분석 결과가 마누태그 자리에 잘못 표시되는 것 방지)
@@ -4409,8 +4411,10 @@ async function analyzeTerms() {
   if (mtTotal) mtTotal.textContent = '0';
   if (mtTerms) mtTerms.innerHTML = '<span class="text-brand-gray">-</span>';
 
-  // 확장이 kw-naver 를 읽으므로 동기화
+  // v1+ : 키워드 분석(kw-naver)에는 영향 안 주도록 — 기존 값 백업 후 임시 변경, finally 에서 복원
+  //   (확장이 kw-naver 를 읽기 때문에 잠시 채워야 하지만, 분석 끝나면 원래 값으로 되돌림)
   const nInput = document.getElementById('kw-naver');
+  const prevKwValue = nInput ? nInput.value : '';
   if (nInput) nInput.value = name;
 
   // 진행 상태 카드 (recent 최상단)
@@ -4450,6 +4454,10 @@ async function analyzeTerms() {
   } finally {
     window.removeEventListener('message', ackListener);
     if (btn) { btn.disabled = false; btn.innerHTML = origBtn; }
+    // kw-naver 원래 값으로 복원 — 키워드 분석에 영향 안 주도록
+    if (nInput) nInput.value = prevKwValue;
+    // 트리거 소스도 리셋 (_processExtensionPayload 의 텀즈 분기에서도 리셋하지만 안전장치)
+    if (_extensionTriggerSource === 'terms') _extensionTriggerSource = null;
   }
 }
 
