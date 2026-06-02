@@ -3237,6 +3237,7 @@ async function _runSingleAnalysis(baseKw, filterKw, query) {
     // 텀즈 표시
     const terms = _extractTerms(baseKw, filterKw);
     document.getElementById('terms-display').textContent = terms.join(',') || '-';
+    window._lastApiTotal = Number(data.total || 0) || 0;
     document.getElementById('total-count').textContent = (data.total || items.length).toLocaleString('ko-KR');
 
     // 통계 계산
@@ -3749,8 +3750,21 @@ function renderAnalysisResults() {
   } else if (_resultFilter === 'naverpay') {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
-  // 상품 개수 표시 (선택된 필터 기준)
-  try { document.getElementById('total-count').textContent = items.length.toLocaleString('ko-KR'); } catch(_) {}
+  // 상품 개수 표시 — 네이버 서버 총 갯수(3312 같은) 우선, 없으면 캡처된 갯수
+  try {
+    const filterToTab = { all: '전체', price: '가격비교', naverpay: '네이버페이' };
+    const tabName = filterToTab[_resultFilter];
+    let serverTotal = 0;
+    if (tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
+      const p = window._extensionTabPayloads[tabName];
+      serverTotal = Number(p.total || (p.shoppingResult && p.shoppingResult.total) || 0) || 0;
+    }
+    if (!serverTotal && _resultFilter === 'all' && window._lastApiTotal) {
+      serverTotal = Number(window._lastApiTotal) || 0;
+    }
+    const shown = serverTotal || items.length;
+    document.getElementById('total-count').textContent = shown.toLocaleString('ko-KR');
+  } catch(_) {}
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
