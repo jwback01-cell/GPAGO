@@ -3749,6 +3749,8 @@ function renderAnalysisResults() {
   } else if (_resultFilter === 'naverpay') {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
+  // 상품 개수 표시 (선택된 필터 기준)
+  try { document.getElementById('total-count').textContent = items.length.toLocaleString('ko-KR'); } catch(_) {}
   if (!items.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
