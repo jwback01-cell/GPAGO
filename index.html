@@ -2869,9 +2869,11 @@ async function _runMultiKwAnalysis(keywords) {
         _extensionTriggerSource = 'analysis';
         window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
       });
-      const totalPromise = _fetchNaverServerTotal(kw);   // API 키가 있을 때만 동작 (없으면 0)
+      const totalPromise = _fetchNaverServerTotal(kw);   // 스크랩(탭별 카운트 포함) → API 폴백
       const { data, tabs } = await capturePromise;
-      const apiTotal = await totalPromise.catch(() => 0);
+      const totalInfo = await totalPromise.catch(() => ({ total: 0, tabTotals: {} }));
+      const apiTotal = totalInfo.total || 0;
+      const scrapedTabTotals = totalInfo.tabTotals || {};
       // payload → items 변환 (네이버페이 탭 우선, 없으면 전체)
       const tabsObj = tabs || {};
       const chosenName = tabsObj['네이버페이'] ? '네이버페이' : (tabsObj['전체'] ? '전체' : null);
@@ -2895,6 +2897,7 @@ async function _runMultiKwAnalysis(keywords) {
         items,
         total: totalNum,
         _tabPayloads: tabsObj,
+        _tabTotals: scrapedTabTotals,
         _nluTerms: joinedTerms.slice(),
         _rawProducts: rawProducts,
       });
@@ -2918,18 +2921,31 @@ async function _runMultiKwAnalysis(keywords) {
   toast(`✅ 다중 분석 완료 — ${_multiAnalysisResults.filter(r => r.items.length).length}/${keywords.length} 성공`);
 }
 
-// 네이버 쇼핑 API 로 키워드의 진짜 총 갯수만 조회 (API 키 없으면 0 반환)
+// 네이버 쇼핑 키워드의 진짜 총 갯수 + 탭별 갯수 조회
+// 1순위: HTML 스크랩 (탭별 카운트까지 받음) — API 키 불필요
+// 2순위: 공식 API (전체 total만)
 async function _fetchNaverServerTotal(query) {
+  // 스크랩 먼저 — 탭별 카운트 포함
+  try {
+    const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(query));
+    if (resp.ok) {
+      const data = await resp.json();
+      const total = Number(data.total || 0) || 0;
+      const tabTotals = (data && typeof data.tabTotals === 'object') ? data.tabTotals : {};
+      if (total > 0 || Object.keys(tabTotals).length) return { total, tabTotals };
+    }
+  } catch (_) {}
+  // 공식 API 폴백
   try {
     const api = _getApi();
-    if (!api || !api.id || !api.secret) return 0;
+    if (!api || !api.id || !api.secret) return { total: 0, tabTotals: {} };
     const resp = await fetch('/api/naver-shop?query=' + encodeURIComponent(query) + '&display=1&sort=sim', {
       headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
     });
-    if (!resp.ok) return 0;
+    if (!resp.ok) return { total: 0, tabTotals: {} };
     const data = await resp.json();
-    return Number(data.total || 0) || 0;
-  } catch (_) { return 0; }
+    return { total: Number(data.total || 0) || 0, tabTotals: {} };
+  } catch (_) { return { total: 0, tabTotals: {} }; }
 }
 
 // 확장에게 트리거를 보낸 뒤 다음 GPAGO_AUTO_ANALYZE 응답을 한 번 캡처
@@ -3747,6 +3763,8 @@ function activateMultiKwTab(idx) {
   // 탭별 캡처 페이로드 복원 — 필터(전체/가격비교/네이버페이) 우측 갯수가 키워드별로 정확하게 갱신되도록
   if (r._tabPayloads) window._extensionTabPayloads = r._tabPayloads;
   else window._extensionTabPayloads = null;
+  // 스크랩된 탭별 카운트 (탭마다 다른 진짜 값) — renderAnalysisResults 가 우선 사용
+  window._scrapedTabTotals = (r._tabTotals && typeof r._tabTotals === 'object') ? r._tabTotals : {};
   window._lastApiTotal = Number(r.total || 0) || 0;
   // raw 상품 인덱스 복원 — _findJsonMatch (속성·태그 매칭) 가 키워드별로 정확해짐
   if (Array.isArray(r._rawProducts) && typeof _indexJsonProducts === 'function') {
@@ -3910,16 +3928,19 @@ function renderAnalysisResults() {
   } else if (_resultFilter === 'naverpay') {
     items = items.filter(it => ['2','3'].includes(String(it.productType)));
   }
-  // 상품 개수 표시 — 네이버 서버 총 갯수(3312 같은) 우선, 없으면 캡처된 갯수
+  // 상품 개수 표시 — 우선순위: 스크랩 탭별 카운트 > 확장 탭 페이로드 total > API 전체 total > 캡처된 갯수
   try {
     const filterToTab = { all: '전체', price: '가격비교', naverpay: '네이버페이' };
     const tabName = filterToTab[_resultFilter];
     let serverTotal = 0;
-    if (tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
+    if (tabName && window._scrapedTabTotals && window._scrapedTabTotals[tabName]) {
+      serverTotal = Number(window._scrapedTabTotals[tabName]) || 0;
+    }
+    if (!serverTotal && tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
       const p = window._extensionTabPayloads[tabName];
       serverTotal = Number(p.total || (p.shoppingResult && p.shoppingResult.total) || 0) || 0;
     }
-    if (!serverTotal && window._lastApiTotal) {
+    if (!serverTotal && _resultFilter === 'all' && window._lastApiTotal) {
       serverTotal = Number(window._lastApiTotal) || 0;
     }
     const shown = serverTotal || items.length;

@@ -62,6 +62,28 @@ function findProducts(obj, depth) {
   return null;
 }
 
+// 탭별 갯수 찾기 — 트리 안에서 {name, total} 형태(혹은 유사)의 productSet 정보 추출
+// 결과: { '전체': N, '가격비교': N, '네이버페이': N, ... } (찾은 것만)
+function findTabTotals(obj, depth, out) {
+  out = out || {};
+  if (!obj || typeof obj !== 'object' || depth > 12) return out;
+  if (Array.isArray(obj)) {
+    obj.forEach(v => findTabTotals(v, depth + 1, out));
+    return out;
+  }
+  // 이름+totalCount/total 형태
+  const name = obj.name || obj.title || obj.label;
+  const totalField = obj.totalCount ?? obj.total ?? obj.count;
+  if (typeof name === 'string' && typeof totalField === 'number' && totalField > 0) {
+    const KNOWN = ['전체','가격비교','네이버페이','백화점','홈쇼핑','쇼핑윈도','해외직구','백화점/홈쇼핑'];
+    if (KNOWN.includes(name) && (out[name] == null || out[name] < totalField)) {
+      out[name] = totalField;
+    }
+  }
+  for (const k of Object.keys(obj)) findTabTotals(obj[k], depth + 1, out);
+  return out;
+}
+
 function regexFallback(html) {
   const products = [];
   const tags = [];
@@ -109,8 +131,10 @@ export default async function handler(req, res) {
       // 1) __NEXT_DATA__ 시도
       const nextData = extractNextData(r.html);
       let scope = null;
+      let tabTotals = {};
       if (nextData) {
         scope = findProducts(nextData.props, 0) || findProducts(nextData, 0);
+        tabTotals = findTabTotals(nextData, 0) || {};
       }
       if (scope && scope.products && scope.products.length) {
         res.setHeader('Cache-Control', 'public, max-age=300');
@@ -118,6 +142,7 @@ export default async function handler(req, res) {
           query: scope.query || q,
           products: scope.products,
           total: scope.total || scope.products.length,
+          tabTotals,
           terms: scope.terms || [],
           nluTerms: scope.nluTerms || [],
           source: `next-data-${a.label}`,
