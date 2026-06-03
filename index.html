@@ -349,7 +349,7 @@
                 <span class="w-7 h-7 rounded-full bg-brand-green text-white flex items-center justify-center font-black text-sm">N</span>
               </span>
               <div class="bg-brand-bg rounded-full px-3 py-1.5 flex items-center gap-2 flex-1 min-w-0">
-                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음" onkeydown="if(event.key==='Enter') _triggerExtensionFromN()">
+                <input id="kw-naver" type="text" class="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-brand-gray" placeholder="키워드 없음 (쉼표 또는 엑셀 붙여넣기로 여러 개)" onpaste="_kwNaverHandlePaste(event)" onkeydown="if(event.key==='Enter') _triggerExtensionFromN()">
                 <button class="text-brand-gray hover:text-brand-black shrink-0" onclick="_triggerExtensionFromN()">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </button>
@@ -2794,6 +2794,32 @@ function _startLoadingProgress(keyword) {
   }, 90000);
 }
 let _loadingMaxTimer = null;
+
+// N 입력란에 엑셀(또는 멀티라인) 붙여넣기 — 줄/탭으로 분리해 쉼표로 합쳐 넣음
+// 헤더 같은 단어("키워드", "keyword")는 자동 제거
+function _kwNaverHandlePaste(e) {
+  const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+  if (!text) return;
+  // 줄바꿈 또는 탭이 있으면 멀티 키워드로 처리
+  if (!/[\n\t]/.test(text)) return;   // 단일 라인 텍스트는 기본 paste 동작
+  e.preventDefault();
+  const HEADER_WORDS = new Set(['키워드','keyword','keywords','검색어','query','상품명']);
+  const parts = text
+    .split(/[\r\n\t]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(s => !HEADER_WORDS.has(s.toLowerCase()));
+  if (!parts.length) return;
+  const merged = parts.join(', ');
+  const inp = e.target;
+  // 선택 영역만 교체 (셀렉트 없으면 전체 교체와 동일)
+  const start = inp.selectionStart ?? inp.value.length;
+  const end   = inp.selectionEnd ?? inp.value.length;
+  inp.value = inp.value.slice(0, start) + merged + inp.value.slice(end);
+  const caret = start + merged.length;
+  try { inp.setSelectionRange(caret, caret); } catch (_) {}
+  toast && toast(`📋 ${parts.length}개 키워드 붙여넣음 — Enter 또는 돋보기 클릭`);
+}
 
 // N 입력란 Enter / 돋보기 클릭 시 — 확장 프로그램에게 트리거 요청
 let _extensionAckReceived = false;
