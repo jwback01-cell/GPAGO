@@ -2877,18 +2877,26 @@ async function _runMultiKwAnalysis(keywords) {
       const chosenName = tabsObj['네이버페이'] ? '네이버페이' : (tabsObj['전체'] ? '전체' : null);
       const chosenPayload = chosenName ? tabsObj[chosenName] : data;
       const rawProducts = Array.isArray(chosenPayload?.products) ? chosenPayload.products : [];
+      // raw 상품을 _findJsonMatch 가 사용하도록 인덱싱
+      try { if (typeof _indexJsonProducts === 'function') _indexJsonProducts(rawProducts); } catch (_) {}
       const items = rawProducts.map(p => _adaptJsonProductToAnalysisItem(p));
       // productType 강제 (탭 소속 기반)
       if (chosenName === '네이버페이') items.forEach(it => { if (!['2','3'].includes(String(it.productType))) it.productType = '2'; });
       else if (chosenName === '가격비교') items.forEach(it => { if (String(it.productType) !== '1') it.productType = '1'; });
       const totalNum = apiTotal || Number(chosenPayload?.total || chosenPayload?.shoppingResult?.total || 0) || items.length;
+      // 네이버 NLU terms 추출 → FITER+ 자동 값 + 텀즈 표시
+      const rawTerms = Array.isArray(chosenPayload?.terms) ? chosenPayload.terms.filter(t => typeof t === 'string' && t.trim()) : [];
+      const joinedTerms = (typeof _smartJoinModelTerms === 'function') ? _smartJoinModelTerms(rawTerms) : rawTerms.slice();
+      const filterKw = joinedTerms.length ? joinedTerms.join(' ') : kw;
       _multiAnalysisResults.push({
         query: kw,
         baseKw: kw,
-        filterKw: '',
+        filterKw,
         items,
         total: totalNum,
         _tabPayloads: tabsObj,
+        _nluTerms: joinedTerms.slice(),
+        _rawProducts: rawProducts,
       });
     } catch (err) {
       console.warn('[multi-kw] 실패:', kw, err);
@@ -3740,6 +3748,14 @@ function activateMultiKwTab(idx) {
   if (r._tabPayloads) window._extensionTabPayloads = r._tabPayloads;
   else window._extensionTabPayloads = null;
   window._lastApiTotal = Number(r.total || 0) || 0;
+  // raw 상품 인덱스 복원 — _findJsonMatch (속성·태그 매칭) 가 키워드별로 정확해짐
+  if (Array.isArray(r._rawProducts) && typeof _indexJsonProducts === 'function') {
+    try { _indexJsonProducts(r._rawProducts); } catch (_) {}
+  }
+  // NLU terms 복원 — _extractTerms 가 이 값을 우선 사용
+  if (Array.isArray(r._nluTerms) && r._nluTerms.length) {
+    window._jsonNluTerms = { query: String(r.baseKw || ''), terms: r._nluTerms.slice() };
+  }
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
@@ -3750,6 +3766,16 @@ function activateMultiKwTab(idx) {
   _lastAnalysisItems = r.items;
   _lastBaseKw = r.baseKw;
   _lastFilterKw = r.filterKw;
+  // FITER+ 입력란 갱신 — 키워드 분석/위치가중치/순서고정 계산이 모두 이 값을 참조
+  try {
+    const fInput = document.getElementById('kw-filter');
+    if (fInput) fInput.value = r.filterKw || r.baseKw || '';
+  } catch (_) {}
+  // 기준 키워드 입력란도 동기화 (있다면)
+  try {
+    const bInput = document.getElementById('kw-base');
+    if (bInput && r.baseKw) bInput.value = r.baseKw;
+  } catch (_) {}
   const terms = _extractTerms(r.baseKw, r.filterKw);
   document.getElementById('terms-display').textContent = terms.join(',') || '-';
   computeStats(r.items, terms, r.baseKw, r.filterKw);
