@@ -3693,9 +3693,14 @@ function activateMultiKwTab(idx) {
   if (!_multiAnalysisResults[idx]) return;
   _multiActiveIndex = idx;
   const r = _multiAnalysisResults[idx];
+  // 탭별 캡처 페이로드 복원 — 필터(전체/가격비교/네이버페이) 우측 갯수가 키워드별로 정확하게 갱신되도록
+  if (r._tabPayloads) window._extensionTabPayloads = r._tabPayloads;
+  else window._extensionTabPayloads = null;
+  window._lastApiTotal = Number(r.total || 0) || 0;
   if (r.error || !r.items.length) {
     const tbody = document.getElementById('analysis-tbody');
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="px-5 py-20 text-center text-brand-gray text-sm">"${escapeHtml(r.query)}" — ${r.error || '검색 결과 없음'}</td></tr>`;
+    try { document.getElementById('total-count').textContent = '0'; } catch (_) {}
     renderMultiKwTabs();
     return;
   }
@@ -3704,9 +3709,8 @@ function activateMultiKwTab(idx) {
   _lastFilterKw = r.filterKw;
   const terms = _extractTerms(r.baseKw, r.filterKw);
   document.getElementById('terms-display').textContent = terms.join(',') || '-';
-  document.getElementById('total-count').textContent = (r.total || r.items.length).toLocaleString('ko-KR');
   computeStats(r.items, terms, r.baseKw, r.filterKw);
-  renderAnalysisResults();
+  renderAnalysisResults();   // 내부에서 _extensionTabPayloads 기반으로 total-count 갱신
   renderMultiKwTabs();
 }
 
