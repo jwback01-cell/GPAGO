@@ -2865,10 +2865,14 @@ async function _runMultiKwAnalysis(keywords) {
     const pct = Math.round(5 + (i / keywords.length) * 90);
     _updateLoadingOverlay(pct, `[${i+1}/${keywords.length}] '${kw}' 분석 중...`);
     try {
-      const { data, tabs } = await _captureNextExtensionPayload(60000, () => {
+      // 확장 캡처와 네이버 API 총 갯수 조회를 병렬로 실행
+      const capturePromise = _captureNextExtensionPayload(60000, () => {
         _extensionTriggerSource = 'analysis';
         window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
       });
+      const totalPromise = _fetchNaverServerTotal(kw);   // API 키가 있을 때만 동작 (없으면 0)
+      const { data, tabs } = await capturePromise;
+      const apiTotal = await totalPromise.catch(() => 0);
       // payload → items 변환 (네이버페이 탭 우선, 없으면 전체)
       const tabsObj = tabs || {};
       const chosenName = tabsObj['네이버페이'] ? '네이버페이' : (tabsObj['전체'] ? '전체' : null);
@@ -2878,7 +2882,7 @@ async function _runMultiKwAnalysis(keywords) {
       // productType 강제 (탭 소속 기반)
       if (chosenName === '네이버페이') items.forEach(it => { if (!['2','3'].includes(String(it.productType))) it.productType = '2'; });
       else if (chosenName === '가격비교') items.forEach(it => { if (String(it.productType) !== '1') it.productType = '1'; });
-      const totalNum = Number(chosenPayload?.total || chosenPayload?.shoppingResult?.total || items.length) || items.length;
+      const totalNum = apiTotal || Number(chosenPayload?.total || chosenPayload?.shoppingResult?.total || 0) || items.length;
       _multiAnalysisResults.push({
         query: kw,
         baseKw: kw,
@@ -2905,6 +2909,20 @@ async function _runMultiKwAnalysis(keywords) {
     activateMultiKwTab(_multiActiveIndex);
   }
   toast(`✅ 다중 분석 완료 — ${_multiAnalysisResults.filter(r => r.items.length).length}/${keywords.length} 성공`);
+}
+
+// 네이버 쇼핑 API 로 키워드의 진짜 총 갯수만 조회 (API 키 없으면 0 반환)
+async function _fetchNaverServerTotal(query) {
+  try {
+    const api = _getApi();
+    if (!api || !api.id || !api.secret) return 0;
+    const resp = await fetch('/api/naver-shop?query=' + encodeURIComponent(query) + '&display=1&sort=sim', {
+      headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+    });
+    if (!resp.ok) return 0;
+    const data = await resp.json();
+    return Number(data.total || 0) || 0;
+  } catch (_) { return 0; }
 }
 
 // 확장에게 트리거를 보낸 뒤 다음 GPAGO_AUTO_ANALYZE 응답을 한 번 캡처
@@ -3876,7 +3894,7 @@ function renderAnalysisResults() {
       const p = window._extensionTabPayloads[tabName];
       serverTotal = Number(p.total || (p.shoppingResult && p.shoppingResult.total) || 0) || 0;
     }
-    if (!serverTotal && _resultFilter === 'all' && window._lastApiTotal) {
+    if (!serverTotal && window._lastApiTotal) {
       serverTotal = Number(window._lastApiTotal) || 0;
     }
     const shown = serverTotal || items.length;
