@@ -1808,7 +1808,7 @@ PBT키캡	1180
         <span class="text-[12px] font-bold whitespace-nowrap">상품 등록</span>
       </div>
       <input id="cmp-url-input" type="text" placeholder="네이버 쇼핑 / 스마트스토어 상품 URL 붙여넣기" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-blue" onkeydown="if(event.key==='Enter') addCompetitor()">
-      <button type="button" onclick="addCompetitor()" class="bg-brand-black text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#333] transition-colors whitespace-nowrap shrink-0">+ 추가</button>
+      <button type="button" id="cmp-add-btn" onclick="addCompetitor()" class="bg-brand-black text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#333] transition-colors whitespace-nowrap shrink-0">+ 추가</button>
     </div>
 
     <!-- 요약 카드 5개 -->
@@ -1820,7 +1820,12 @@ PBT키캡	1180
       <div>
         <div class="flex items-center justify-between mb-3 px-1">
           <h2 class="text-[1.05rem] font-bold">경쟁사 비교</h2>
-          <span id="cmp-count" class="text-[12px] text-brand-gray font-medium">0개 추적 중</span>
+          <div class="flex items-center gap-3">
+            <span id="cmp-count" class="text-[12px] text-brand-gray font-medium">0개 추적 중</span>
+            <button type="button" id="cmp-refresh-all" onclick="refreshAllCompetitors()" class="text-[12px] font-bold text-brand-gray hover:text-brand-black inline-flex items-center gap-1">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>전체 갱신
+            </button>
+          </div>
         </div>
         <div id="cmp-list" class="flex flex-col gap-3"></div>
       </div>
@@ -14589,19 +14594,95 @@ async function importGpagoMigrationData(evt) {
       memo:'' },
   ];
 
-  // ── 사용자 추가 상품 / 메모 오버라이드 (localStorage) ──
-  function _cmpLoadAdded(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_added')||'[]'); }catch(_){ return []; } }
-  function _cmpSaveAdded(a){ try{ localStorage.setItem('gpago_cmp_added', JSON.stringify(a)); }catch(_){} }
+  // ── 실데이터 저장 (localStorage) ──
+  function _cmpLoadProducts(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_products')||'[]'); }catch(_){ return []; } }
+  function _cmpSaveProducts(a){ try{ localStorage.setItem('gpago_cmp_products', JSON.stringify(a)); }catch(_){} }
   function _cmpLoadMemos(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_memo')||'{}'); }catch(_){ return {}; } }
   function _cmpSaveMemos(m){ try{ localStorage.setItem('gpago_cmp_memo', JSON.stringify(m)); }catch(_){} }
 
-  // 전체 상품 = 샘플 + 추가 (메모 오버라이드 병합)
+  // 실제 등록 상품이 있으면 그것을, 없으면 샘플(데모) 표시
+  function _cmpHasReal(){ return _cmpLoadProducts().length>0; }
   function _cmpAll(){
     const memos=_cmpLoadMemos();
-    const list=_CMP_SAMPLE.concat(_cmpLoadAdded());
+    const real=_cmpLoadProducts();
+    const list = real.length ? real : _CMP_SAMPLE;
     return list.map(p=> (memos[p.id]!=null ? {...p, memo:memos[p.id]} : p));
   }
   function _cmpGet(id){ return _cmpAll().find(p=>p.id===id); }
+
+  // ── fetch / 스냅샷 / 변동감지 ──
+  function _cmpPid(url){ const m=String(url||'').match(/products\/(\d+)/)||String(url||'').match(/(\d{7,})/); return m?m[1]:''; }
+  function _cmpMallFromUrl(url){ const m=String(url||'').match(/(?:smartstore|brand)\.naver\.com\/([^/?#]+)/); return m?decodeURIComponent(m[1]):''; }
+  function _cmpGuessKeyword(title){
+    const toks=String(title||'').replace(/[\[\](){}:|]/g,' ').split(/\s+/).filter(Boolean).filter(t=>/^[가-힣]{2,}$/.test(t));
+    if(!toks.length) return (String(title||'').split(/\s+/)[0]||'');
+    return toks.slice().sort((a,b)=>b.length-a.length)[0];
+  }
+  function _cmpMD(iso){ return String(iso||'').slice(5,10).replace('-','/'); }  // 2026-06-07.. → 06/07
+
+  async function _cmpFetchInfo(url){
+    if(typeof _fetchSmartstoreViaExtension!=='function') return {ok:false,error:'확장프로그램 함수 없음'};
+    try{ return await _fetchSmartstoreViaExtension(url, 95000, ''); }catch(e){ return {ok:false,error:String(e&&e.message||e)}; }
+  }
+  // Open API 로 메인키워드 검색 → 상품 순위(1~100). 못찾으면 null(100위 밖), 키 없거나 오류면 undefined
+  async function _cmpFetchRank(keyword, productId){
+    const api=_getApi(); if(!api.id||!api.secret||!keyword||!productId) return undefined;
+    try{
+      const r=await fetch('/api/naver-shop?query='+encodeURIComponent(keyword)+'&display=100&sort=sim',{headers:{'x-client-id':api.id,'x-client-secret':api.secret}});
+      if(!r.ok) return undefined;
+      const data=await r.json(); const items=data.items||[];
+      for(let i=0;i<items.length;i++){
+        const it=items[i]||{};
+        if(String(it.link||'').includes(productId) || String(it.productId||'')===String(productId) || String(it.id||'')===String(productId)) return i+1;
+      }
+      return null;
+    }catch(_){ return undefined; }
+  }
+
+  // 새 스냅샷을 적용 — 직전 대비 변동을 감지해 history/badges 갱신, 같은 날이면 덮어쓰기
+  function _cmpApplyDiff(p, snap){
+    p.history=p.history||[]; p.snapshots=p.snapshots||[];
+    const prev=p.snapshots.length?p.snapshots[p.snapshots.length-1]:null;
+    const md=_cmpMD(snap.t);
+    const badges=new Set();
+    if(prev){
+      if(snap.price!=null && prev.price!=null && snap.price!==prev.price){
+        if(snap.price<prev.price){ badges.add('가격인하'); p.history.unshift({type:'가격인하',date:md,text:'가격 인하 — '+_won(prev.price)+'원 → '+_won(snap.price)+'원'}); }
+        else { badges.add('가격인상'); p.history.unshift({type:'가격인상',date:md,text:'가격 인상 — '+_won(prev.price)+'원 → '+_won(snap.price)+'원'}); }
+      }
+      if(snap.title && prev.title && snap.title!==prev.title){ badges.add('정보변경'); p.history.unshift({type:'정보변경',date:md,text:'상품명 변경: '+prev.title+' → '+snap.title}); }
+      if(snap.category && prev.category && snap.category!==prev.category){ badges.add('정보변경'); p.history.unshift({type:'정보변경',date:md,text:'카테고리 변경: '+prev.category+' → '+snap.category}); }
+      if(typeof snap.rank==='number' && typeof prev.rank==='number' && snap.rank<prev.rank){ p.history.unshift({type:'순위상승',date:md,text:'순위 상승 — '+prev.rank+'위 → '+snap.rank+'위'}); }
+    }
+    if(prev && prev.t.slice(0,10)===snap.t.slice(0,10)){ p.snapshots[p.snapshots.length-1]=snap; }
+    else { p.snapshots.push(snap); }
+    if(p.snapshots.length>400) p.snapshots=p.snapshots.slice(-400);
+    if(p.history.length>100) p.history=p.history.slice(0,100);
+    p.badges=Array.from(badges);
+    if(snap.price!=null) p.price=snap.price;
+    if(snap.title) p.name=snap.title;
+    if(snap.reviewCount!=null) p.reviewCount=snap.reviewCount;
+    if(snap.category) p.category=snap.category;
+  }
+  async function _cmpRefreshOne(p){
+    const res=await _cmpFetchInfo(p.url);
+    if(!res.ok||!res.data) return false;
+    const d=res.data;
+    const rank=await _cmpFetchRank(p.mainKeyword,p.productId);
+    const now=new Date().toISOString();
+    _cmpApplyDiff(p,{ t:now, price:(Number(d.price)||p.price||0), title:(d.title||p.name), reviewCount:(d.reviewCount!=null?Number(d.reviewCount):p.reviewCount), category:(d.category||p.category||''), stock:null, rank:(typeof rank==='number'?rank:(rank===null?null:undefined)) });
+    p.updatedAt=now; return true;
+  }
+  // 차트용 배열 (real=스냅샷, sample=내장배열)
+  function _cmpArrays(p){
+    if(p.real){
+      const s=p.snapshots||[];
+      return { rank:s.map(x=> (typeof x.rank==='number'?x.rank:null)), price:s.map(x=> (x.price!=null?x.price:null)), rev:null, labels:s.map(x=>_cmpMD(x.t)) };
+    }
+    return { rank:p.rank, price:p.priceS, rev:p.rev, labels:_CMP_DATES };
+  }
+  function _cmpRankChartArr(rank){ const nums=(rank||[]).filter(v=>typeof v==='number'); if(!nums.length) return null; const mx=Math.max.apply(null,nums); return rank.map(v=> v==null? mx+2 : v); }
+  function _cmpRankText(rank){ const last=(rank&&rank.length)?rank[rank.length-1]:undefined; if(typeof last==='number') return last+'위'; if(last===null) return '100위 밖'; return '미조회'; }
 
   // ── 변동 타입 색상 ──
   function _cmpTypeStyle(type){
@@ -14672,9 +14753,10 @@ async function importGpagoMigrationData(evt) {
   // ── 메인 렌더 ──
   window.renderCompetitor=function(){
     const all=_cmpAll();
-    const data=all.filter(p=>!p.pending);
+    const isSample=!_cmpHasReal();
+    const data=all;
     // 집계
-    const totalRev=data.reduce((s,p)=>s+_last(p.rev),0);
+    const totalPrice=data.reduce((s,p)=>s+(Number(p.price)||0),0);
     const priceDown=data.filter(p=>(p.badges||[]).includes('가격인하')).length;
     const priceUp=data.filter(p=>(p.badges||[]).includes('가격인상')).length;
     const infoChg=data.filter(p=>(p.badges||[]).includes('정보변경')).length;
@@ -14683,7 +14765,7 @@ async function importGpagoMigrationData(evt) {
     const ic=(p)=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">'+p+'</svg>';
     const sumEl=document.getElementById('cmp-summary');
     if(sumEl){ sumEl.innerHTML=[
-      _cmpSummaryCard(ic('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),'추적 상품','총 '+_won(totalRev)+'만원',all.length+'개', 'blue'),
+      _cmpSummaryCard(ic('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),'추적 상품',all.length+'개','합계 '+_won(totalPrice)+'원','blue'),
       _cmpSummaryCard(ic('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),'변동 사항',changed+'건','감지','purple'),
       _cmpSummaryCard(ic('<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>'),'가격 인하',priceDown+'개','인하','green'),
       _cmpSummaryCard(ic('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),'가격 인상',priceUp+'개','인상','pink'),
@@ -14696,32 +14778,27 @@ async function importGpagoMigrationData(evt) {
     // 좌: 경쟁사 비교 리스트
     const listEl=document.getElementById('cmp-list');
     if(listEl){
-      if(!all.length){
-        listEl.innerHTML='<div class="bg-white border border-dashed border-brand-border rounded-2xl p-10 text-center text-sm text-brand-gray">등록된 경쟁사 상품이 없습니다. 위에 상품 URL을 붙여넣어 추가하세요.</div>';
-      } else {
-        listEl.innerHTML=all.map(p=>{
-          if(p.pending){
-            return '<div class="w-full bg-white border border-brand-border rounded-2xl p-4 panel flex items-center gap-4">'
-              +'<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center shrink-0"><div class="w-5 h-5 rounded-full border-2 border-brand-bg border-t-brand-blue animate-spin"></div></div>'
-              +'<div class="flex-1 min-w-0"><div class="text-[11px] text-brand-gray font-semibold mb-0.5">추가됨</div>'
-              +'<div class="text-[13px] font-bold text-brand-black truncate">'+_cmpEsc(p.name||p.url)+'</div>'
-              +'<div class="text-[11px] text-brand-orange mt-0.5">데이터 수집 대기 — 다음 단계에서 연결</div></div>'
-              +'<button onclick="deleteCompetitor(\''+p.id+'\')" class="text-brand-gray hover:text-brand-pink text-lg px-2 shrink-0" title="삭제">×</button></div>';
-          }
-          const badges=(p.badges||[]).map(_cmpBadge).join(' ');
-          return '<button type="button" onclick="openCompetitorDetail(\''+p.id+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-blue/50 transition-colors flex items-center gap-4">'
-            +'<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center text-2xl shrink-0">'+(p.emoji||'🛍️')+'</div>'
-            +'<div class="flex-1 min-w-0">'
-              +'<div class="flex items-center gap-1.5 mb-0.5"><span class="text-[11px] text-brand-gray font-semibold">'+_cmpEsc(p.mall)+'</span>'
-              +(p.sample?'<span class="text-[9px] text-brand-gray bg-brand-bg px-1.5 py-0.5 rounded font-bold">샘플</span>':'')+'</div>'
-              +'<div class="text-[14px] font-bold text-brand-black truncate">'+_cmpEsc(p.name)+'</div></div>'
-            +'<div class="text-right shrink-0 flex flex-col items-end gap-1.5">'
-              +(badges?'<div class="flex gap-1 flex-wrap justify-end">'+badges+'</div>':'')
-              +'<div class="text-[15px] font-black">'+_won(p.price)+'원</div>'
-              +(p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':'')
-            +'</div></button>';
-        }).join('');
-      }
+      const notice = isSample
+        ? '<div class="bg-brand-blue-light/50 border border-brand-blue-light rounded-2xl p-3 text-[12px] text-brand-blue text-center mb-1">아직 등록된 상품이 없어 <b>샘플</b>을 표시합니다. 위에 스마트스토어 상품 URL을 붙여넣어 실제 상품을 추가하세요. (GPAGO 확장프로그램 필요)</div>'
+        : '';
+      listEl.innerHTML=notice + all.map(p=>{
+        const badges=(p.badges||[]).map(_cmpBadge).join(' ');
+        const thumb = p.image
+          ? '<img src="'+_cmpEsc(p.image)+'" class="w-12 h-12 rounded-xl object-cover bg-brand-bg shrink-0" onerror="this.outerHTML=\'<div class=&quot;w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center text-2xl shrink-0&quot;>🛍️</div>\'">'
+          : '<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center text-2xl shrink-0">'+(p.emoji||'🛍️')+'</div>';
+        return '<button type="button" onclick="openCompetitorDetail(\''+p.id+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-blue/50 transition-colors flex items-center gap-4">'
+          +thumb
+          +'<div class="flex-1 min-w-0">'
+            +'<div class="flex items-center gap-1.5 mb-0.5"><span class="text-[11px] text-brand-gray font-semibold">'+_cmpEsc(p.mall)+'</span>'
+            +(p.mainKeyword?'<span class="text-[9px] text-brand-blue bg-brand-blue-light px-1.5 py-0.5 rounded font-bold">'+_cmpEsc(p.mainKeyword)+'</span>':'')
+            +(p.sample?'<span class="text-[9px] text-brand-gray bg-brand-bg px-1.5 py-0.5 rounded font-bold">샘플</span>':'')+'</div>'
+            +'<div class="text-[14px] font-bold text-brand-black truncate">'+_cmpEsc(p.name)+'</div></div>'
+          +'<div class="text-right shrink-0 flex flex-col items-end gap-1.5">'
+            +(badges?'<div class="flex gap-1 flex-wrap justify-end">'+badges+'</div>':'')
+            +'<div class="text-[15px] font-black">'+_won(p.price)+'원</div>'
+            +(p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':'')
+          +'</div></button>';
+      }).join('');
     }
 
     // 우: 변동 사항 (타입별 그룹)
@@ -14757,46 +14834,72 @@ async function importGpagoMigrationData(evt) {
     const body=document.getElementById('cmp-detail-body');
     if(!p||!modal||!body) return;
 
+    const updated = p.updatedAt ? new Date(p.updatedAt).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+    // 메인키워드 영역 — 실데이터는 편집 가능, 샘플은 읽기 전용
+    const kwArea = p.real
+      ? '<div class="mt-2 flex items-center gap-2 flex-wrap">'
+          +'<span class="text-[11px] text-brand-gray">메인키워드</span>'
+          +'<input id="cmp-kw-input" value="'+_cmpEsc(p.mainKeyword||'')+'" class="text-[12px] font-bold bg-brand-bg border border-brand-border rounded-lg px-2.5 py-1 w-44 focus:outline-none focus:border-brand-blue">'
+          +'<button onclick="setCompetitorKeyword(\''+p.id+'\')" class="text-[11px] font-bold text-brand-blue bg-brand-blue-light px-2.5 py-1 rounded-lg hover:opacity-80">순위 재조회</button>'
+          +'<button onclick="refreshCompetitor(\''+p.id+'\')" class="text-[11px] font-bold text-brand-gray bg-brand-bg border border-brand-border px-2.5 py-1 rounded-lg hover:text-brand-black">↻ 갱신</button>'
+          +(updated?'<span class="text-[10px] text-brand-gray">업데이트 '+_cmpEsc(updated)+'</span>':'')
+        +'</div>'
+      : (p.mainKeyword?'<div class="mt-2"><span class="text-[11px] text-brand-gray mr-1.5">메인키워드</span><span class="text-[12px] font-bold text-brand-blue bg-brand-blue-light px-2.5 py-1 rounded-full">'+_cmpEsc(p.mainKeyword)+'</span></div>':'');
+
+    const thumbBig = p.image
+      ? '<img src="'+_cmpEsc(p.image)+'" class="w-14 h-14 rounded-2xl object-cover bg-brand-bg shrink-0" onerror="this.outerHTML=\'<div class=&quot;w-14 h-14 rounded-2xl bg-brand-bg flex items-center justify-center text-3xl shrink-0&quot;>🛍️</div>\'">'
+      : '<div class="w-14 h-14 rounded-2xl bg-brand-bg flex items-center justify-center text-3xl shrink-0">'+(p.emoji||'🛍️')+'</div>';
+
     const header='<div class="flex items-start gap-4 mb-6">'
-      +'<div class="w-14 h-14 rounded-2xl bg-brand-bg flex items-center justify-center text-3xl shrink-0">'+(p.emoji||'🛍️')+'</div>'
+      +thumbBig
       +'<div class="flex-1 min-w-0"><div class="text-[12px] text-brand-gray font-semibold mb-0.5">'+_cmpEsc(p.mall||'')+'</div>'
       +'<div class="text-[1.25rem] font-black text-brand-black leading-snug">'+_cmpEsc(p.name||p.url||'')+'</div>'
-      +(p.mainKeyword?'<div class="mt-2"><span class="text-[11px] text-brand-gray mr-1.5">메인키워드</span><span class="text-[12px] font-bold text-brand-blue bg-brand-blue-light px-2.5 py-1 rounded-full">'+_cmpEsc(p.mainKeyword)+'</span></div>':'')
+      +kwArea
       +'</div>'
       +'<button onclick="closeCompetitorDetail()" class="text-brand-gray hover:text-brand-black text-2xl leading-none shrink-0 px-2">×</button></div>';
 
-    if(p.pending){
-      body.innerHTML=header
-        +'<div class="bg-brand-bg rounded-2xl p-10 text-center text-sm text-brand-gray">데이터 수집 대기 중입니다.<br>순위 · 월매출(재고 추적) · 가격 수집은 다음 단계에서 연결됩니다.<br><span class="text-[11px] break-all">'+_cmpEsc(p.url||'')+'</span></div>'
-        +'<div class="mt-4 text-right"><button onclick="deleteCompetitor(\''+p.id+'\')" class="text-[12px] text-brand-pink font-bold hover:underline">상품 삭제</button></div>';
-      modal.classList.remove('hidden'); return;
-    }
+    // 차트 배열 (real=스냅샷 / sample=내장)
+    const A=_cmpArrays(p);
+    const labels=A.labels||[]; const d0=labels[0]||'-', d1=labels[labels.length-1]||'-';
 
-    // 델타 계산 (기간 첫값 대비 마지막값)
-    const rankImp=_first(p.rank)-_last(p.rank);        // +면 순위 상승(개선)
-    const revD=_last(p.rev)-_first(p.rev);             // +면 매출 증가
-    const priceD=_last(p.priceS)-_first(p.priceS);     // +면 가격 인상
-    const d0=_CMP_DATES[0], d1=_CMP_DATES[_CMP_DATES.length-1];
-
-    function metricCard(label,big,deltaHtml,chart,color){
+    function metricCard(label,big,deltaHtml,chartOrNote,color){
       return '<div class="bg-brand-bg rounded-2xl p-4">'
-        +'<div class="flex items-center justify-between mb-1"><span class="text-[12px] text-brand-gray font-bold">'+label+'</span>'+deltaHtml+'</div>'
+        +'<div class="flex items-center justify-between mb-1"><span class="text-[12px] text-brand-gray font-bold">'+label+'</span>'+(deltaHtml||'')+'</div>'
         +'<div class="text-[1.6rem] font-black text-brand-black mb-2">'+big+'</div>'
-        +'<div class="h-24">'+chart+'</div>'
+        +'<div class="h-24">'+chartOrNote+'</div>'
         +'<div class="flex justify-between text-[10px] text-brand-gray mt-1"><span>'+d0+'</span><span>'+d1+'</span></div></div>';
     }
+    function note(t){ return '<div class="h-full flex items-center justify-center text-[11px] text-brand-gray text-center px-2 leading-relaxed">'+t+'</div>'; }
 
-    const cards='<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">'
-      +metricCard('순위', _last(p.rank)+'위',
-          _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)),
-          _cmpChart(p.rank,C_RANK,true),'purple')
-      +metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적 추정)</span>', _won(_last(p.rev))+'만원',
-          _cmpDelta(_won(Math.abs(revD))+'만원', revD>=0?'green':'pink', revD>0?true:(revD<0?false:null)),
-          _cmpChart(p.rev,C_REV,false),'green')
-      +metricCard('가격', _won(_last(p.priceS))+'원',
-          _cmpDelta(_won(Math.abs(priceD))+'원', priceD>0?'pink':'green', priceD>0?true:(priceD<0?false:null)),
-          _cmpChart(p.priceS,C_PRICE,false),'orange')
-      +'</div>';
+    // 순위
+    const rankNums=(A.rank||[]).filter(v=>typeof v==='number');
+    const rankImp = rankNums.length>=2 ? (rankNums[0]-rankNums[rankNums.length-1]) : 0;
+    const rankChartArr=_cmpRankChartArr(A.rank);
+    const rankCard=metricCard('순위', _cmpRankText(A.rank),
+        rankNums.length>=2 ? _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)) : '',
+        rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(p.real?'순위 데이터 누적 중<br>(메인키워드 100위 안에서 추적)':'순위 데이터 없음'),'purple');
+
+    // 월매출 — sample 은 내장 추정치, real 은 재고 연동 대기
+    let revCard;
+    if(p.real){
+      revCard=metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적)</span>','—','',
+        note('재고 추적 데이터 누적 중<br>재고 수집 연동이 필요합니다<br>(다음 단계)'),'green');
+    } else {
+      const revD=_last(A.rev)-_first(A.rev);
+      revCard=metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적 추정)</span>', _won(_last(A.rev))+'만원',
+        _cmpDelta(_won(Math.abs(revD))+'만원', revD>=0?'green':'pink', revD>0?true:(revD<0?false:null)),
+        _cmpChart(A.rev,C_REV,false),'green');
+    }
+
+    // 가격
+    const priceNums=(A.price||[]).filter(v=>v!=null);
+    const priceChartArr = priceNums.length ? (A.price||[]).map(v=> v==null? priceNums[priceNums.length-1]:v) : null;
+    const priceD = priceNums.length>=2 ? (priceNums[priceNums.length-1]-priceNums[0]) : 0;
+    const priceCard=metricCard('가격', _won(_last(priceNums))+'원',
+        priceNums.length>=2 ? _cmpDelta(_won(Math.abs(priceD))+'원', priceD>0?'pink':'green', priceD>0?true:(priceD<0?false:null)) : '',
+        priceChartArr ? _cmpChart(priceChartArr,C_PRICE,false) : note('가격 데이터 없음'),'orange');
+
+    const cards='<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">'+rankCard+revCard+priceCard+'</div>';
 
     // 변경 내역 타임라인
     let hist='<div class="mb-6"><div class="text-[13px] font-bold mb-3">변경 내역</div>';
@@ -14832,36 +14935,91 @@ async function importGpagoMigrationData(evt) {
   window.saveCompetitorMemo=function(id){
     const inp=document.getElementById('cmp-memo-input');
     if(!inp) return;
-    const memos=_cmpLoadMemos(); memos[id]=inp.value; _cmpSaveMemos(memos);
-    // 추가 상품이면 객체에도 반영
-    const added=_cmpLoadAdded(); const a=added.find(x=>x.id===id); if(a){ a.memo=inp.value; _cmpSaveAdded(added); }
-    if(typeof toast==='function') toast('메모를 저장했습니다');
-    renderCompetitor();
+    const products=_cmpLoadProducts(); const p=products.find(x=>x.id===id);
+    if(p){ p.memo=inp.value; _cmpSaveProducts(products); }
+    else { const memos=_cmpLoadMemos(); memos[id]=inp.value; _cmpSaveMemos(memos); }
+    toast('메모를 저장했습니다');
   };
 
-  window.addCompetitor=function(){
+  // 상품 등록 — URL → 확장으로 실제 정보 수집 + 메인키워드 순위 조회 → 스냅샷 저장
+  window.addCompetitor=async function(){
     const inp=document.getElementById('cmp-url-input');
     if(!inp) return;
     const url=(inp.value||'').trim();
-    if(!url){ if(typeof toast==='function') toast('상품 URL을 입력해 주세요'); return; }
-    if(!/naver\.com|smartstore|shopping/i.test(url)){ if(typeof toast==='function') toast('네이버 쇼핑/스마트스토어 URL을 입력해 주세요'); return; }
-    const idm=url.match(/products\/(\d+)/)||url.match(/(\d{6,})/);
-    const pid=idm?idm[1]:String(Date.now());
-    const added=_cmpLoadAdded();
-    if(added.some(x=>x.id==='u'+pid)){ if(typeof toast==='function') toast('이미 추가된 상품입니다'); return; }
-    added.unshift({ id:'u'+pid, pending:true, url, name:'', addedAt:Date.now() });
-    _cmpSaveAdded(added);
-    inp.value='';
-    if(typeof toast==='function') toast('상품을 추가했습니다 — 데이터 수집은 다음 단계에서 연결됩니다');
+    if(!url){ toast('상품 URL을 입력해 주세요'); return; }
+    if(!/smartstore\.naver\.com|brand\.naver\.com|naver\.com/i.test(url)){ toast('네이버 스마트스토어/쇼핑 상품 URL을 입력해 주세요'); return; }
+    const pid=_cmpPid(url);
+    const products=_cmpLoadProducts();
+    if(pid && products.some(p=>p.productId===pid)){ toast('이미 등록된 상품입니다'); return; }
+    const btn=document.getElementById('cmp-add-btn');
+    const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='수집 중...'; }
+    toast('상품 정보를 수집 중입니다… (확장 팝업, 최대 1분)');
+    try{
+      const res=await _cmpFetchInfo(url);
+      if(!res.ok || !res.data){ toast('수집 실패: '+(res.error||'GPAGO 확장프로그램이 설치·활성화돼 있는지 확인하세요')); return; }
+      const d=res.data;
+      const mainKw=_cmpGuessKeyword(d.title||'');
+      const rank=await _cmpFetchRank(mainKw, pid);
+      const now=new Date().toISOString();
+      const prod={
+        id:'p'+(pid||Date.now()), real:true, url, productId:pid,
+        mall:(d.mallName||d.channelName||d.seller||_cmpMallFromUrl(url)||'스마트스토어'),
+        name:(d.title||'(제목 없음)'), image:(d.image||''), emoji:'🛍️',
+        mainKeyword:mainKw, price:(Number(d.price)||0), reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
+        category:(d.category||''), freeShip:true, badges:[], stock:null,
+        snapshots:[], history:[], memo:'', updatedAt:now,
+      };
+      _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof rank==='number'?rank:(rank===null?null:undefined)) });
+      products.unshift(prod); _cmpSaveProducts(products);
+      inp.value='';
+      toast('상품을 등록했습니다 ✓ (메인키워드: '+mainKw+')');
+      renderCompetitor();
+    } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
+  };
+
+  window.refreshCompetitor=async function(id){
+    const products=_cmpLoadProducts(); const p=products.find(x=>x.id===id);
+    if(!p){ toast('샘플은 갱신할 수 없습니다 — URL로 실제 상품을 등록하세요'); return; }
+    toast('갱신 중…');
+    const ok=await _cmpRefreshOne(p);
+    _cmpSaveProducts(products);
+    toast(ok?'갱신 완료 ✓':'갱신 실패 — 확장프로그램 확인');
     renderCompetitor();
+    const m=document.getElementById('cmp-detail-modal'); if(m && !m.classList.contains('hidden')) openCompetitorDetail(id);
+  };
+  window.refreshAllCompetitors=async function(){
+    const products=_cmpLoadProducts();
+    if(!products.length){ toast('등록된 실제 상품이 없습니다 — URL로 먼저 등록하세요'); return; }
+    const btn=document.getElementById('cmp-refresh-all'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='갱신 중…'; }
+    toast('전체 갱신 중… ('+products.length+'개)');
+    let n=0;
+    for(const p of products){ try{ if(await _cmpRefreshOne(p)) n++; }catch(_){}}
+    _cmpSaveProducts(products);
+    if(btn){ btn.disabled=false; btn.innerHTML=ob; }
+    toast('전체 갱신 완료 — '+n+'/'+products.length+'개');
+    renderCompetitor();
+  };
+  // 메인키워드 변경 → 순위 재조회
+  window.setCompetitorKeyword=async function(id){
+    const inp=document.getElementById('cmp-kw-input'); if(!inp) return;
+    const products=_cmpLoadProducts(); const p=products.find(x=>x.id===id);
+    if(!p){ toast('샘플은 수정할 수 없습니다'); return; }
+    p.mainKeyword=(inp.value||'').trim();
+    toast('순위 재조회 중…');
+    const rank=await _cmpFetchRank(p.mainKeyword, p.productId);
+    const now=new Date().toISOString();
+    _cmpApplyDiff(p,{ t:now, price:p.price, title:p.name, reviewCount:p.reviewCount, category:p.category, stock:null, rank:(typeof rank==='number'?rank:(rank===null?null:undefined)) });
+    _cmpSaveProducts(products);
+    toast('메인키워드 저장 ✓');
+    openCompetitorDetail(id); renderCompetitor();
   };
 
   window.deleteCompetitor=function(id){
-    const added=_cmpLoadAdded().filter(x=>x.id!==id);
-    _cmpSaveAdded(added);
+    const products=_cmpLoadProducts().filter(x=>x.id!==id);
+    _cmpSaveProducts(products);
     const memos=_cmpLoadMemos(); if(memos[id]!=null){ delete memos[id]; _cmpSaveMemos(memos); }
     closeCompetitorDetail();
-    if(typeof toast==='function') toast('상품을 삭제했습니다');
+    toast('상품을 삭제했습니다');
     renderCompetitor();
   };
 
