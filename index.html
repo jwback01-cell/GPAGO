@@ -265,6 +265,7 @@
         <a class="nav-sub text-sm py-1 cursor-pointer" data-src-tab="product">상품명</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-src-tab="tag">검색태그</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-src-tab="namegen">상품명 정제</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="kperf">키워드 성과분석</a>
       </div>
       <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page="prodsrc">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -1838,6 +1839,22 @@ PBT키캡	1180
     </div>
   </div>
 </div>
+
+<!-- ═════════════ 키워드 성과분석 ═════════════ -->
+<div id="page-kperf" class="page">
+  <div class="w-full px-1 md:px-2">
+    <div class="flex items-center gap-2 mb-1">
+      <div class="w-1.5 h-7 bg-brand-green rounded-full"></div>
+      <h1 class="text-[1.5rem] md:text-[1.9rem] font-black tracking-tight">키워드 성과분석</h1>
+      <span class="text-[10px] font-black text-brand-green bg-brand-green-light px-2 py-0.5 rounded-full tracking-wider align-middle">BETA</span>
+    </div>
+    <p class="text-brand-gray text-[13px] md:text-[14px] mb-4 pl-3.5">스마트스토어센터 <b>판매분석 → 판매성과</b>의 키워드별·일별 결제·유입 데이터를 가져와 분석합니다.</p>
+    <!-- 단계 breadcrumb -->
+    <div id="kperf-steps" class="flex items-center gap-1.5 text-[12px] md:text-[13px] mb-5 pl-1 flex-wrap"></div>
+    <!-- 본문 (단계별 렌더) -->
+    <div id="kperf-body"></div>
+  </div>
+</div>
   </main>
 </div>
 
@@ -1867,6 +1884,33 @@ PBT키캡	1180
 <div id="cmp-detail-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeCompetitorDetail()">
   <div class="bg-white rounded-3xl shadow-2xl w-full max-w-[920px] max-h-[92vh] overflow-y-auto">
     <div id="cmp-detail-body" class="p-6 md:p-8"><!-- JS 렌더 --></div>
+  </div>
+</div>
+
+<!-- ═════════════ 키워드 성과분석 — 데이터 가져오기 안내 모달 ═════════════ -->
+<div id="kperf-import-modal" class="hidden fixed inset-0 z-[76] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeKperfImport()">
+  <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6">
+    <div class="flex items-center gap-2 mb-1">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <div class="font-black text-[1.05rem]">데이터 가져오기 안내</div>
+    </div>
+    <p class="text-[13px] text-brand-gray mb-4">어떤 데이터를 가져오는지 알려드려요.</p>
+    <div class="border border-brand-border rounded-2xl p-4 mb-3">
+      <div class="text-[13px] font-bold mb-2">가져오는 데이터</div>
+      <div class="text-[12px] text-brand-gray mb-2">로그인된 스마트스토어센터에서 아래 정보만 가져와요.</div>
+      <ul class="text-[12px] text-brand-black flex flex-col gap-1.5">
+        <li>· 결제·유입 통계 (키워드별·일별)</li>
+        <li>· 스토어·상품 이미지</li>
+        <li>· 스토어명·상품명</li>
+      </ul>
+      <div class="text-[11px] text-brand-gray mt-2">개인정보·로그인 정보는 가져오지 않아요.</div>
+    </div>
+    <div class="bg-brand-green-light/50 border border-brand-green-light rounded-xl px-3 py-2.5 text-[12px] text-brand-green font-bold mb-4 flex items-center gap-1.5">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      데이터는 본인 계정에만 안전하게 저장돼요.
+    </div>
+    <button onclick="kperfStartImport()" class="w-full bg-brand-green text-white py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity mb-1">수집 시작하기</button>
+    <button onclick="closeKperfImport()" class="w-full py-2.5 rounded-xl text-sm font-bold text-brand-gray hover:text-brand-black">취소</button>
   </div>
 </div>
 
@@ -2485,7 +2529,7 @@ if (_supabase) {
 }
 
 // ═════════════ 페이지 전환 ═════════════
-const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords','rtrank','competitor','sourcing','prodsrc'];
+const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords','rtrank','competitor','sourcing','kperf','prodsrc'];
 const SEMI_PAGES = ['analysis','special','archive','tools'];
 const KW_PAGES = ['keywords','rtrank','competitor'];  // v1.7.28+ : 키워드 그룹에 속하는 페이지
 // 반자동 프로그램 그룹 접기/펼치기 + 키워드 분석으로 이동
@@ -2656,14 +2700,19 @@ function goPage(pageId) {
       if (typeof renderCompetitor === 'function') renderCompetitor();
     } catch(e) { console.error('[competitor init]', e); }
   }
+  if (pageId === 'kperf') {
+    try {
+      if (typeof renderKperf === 'function') renderKperf();
+    } catch(e) { console.error('[kperf init]', e); }
+  }
   if (pageId === 'prodsrc') {
     try {
       _prodsrcCurrentCategory = null; // 사이드바 '상품 소싱' 메뉴 클릭 시 폴더 안에서 빠져나와 폴더 목록 표시
       if (typeof _prodsrcRender === 'function') _prodsrcRender();
     } catch(e) { console.error('[prodsrc init]', e); }
   }
-  // 상품 정제 그룹: sourcing 페이지면 펼침 + 부모 active (v1.7.35+)
-  const isSourcing = (pageId === 'sourcing');
+  // 상품 정제 그룹: sourcing/kperf 페이지면 펼침 + 부모 active (v1.7.35+)
+  const isSourcing = (pageId === 'sourcing' || pageId === 'kperf');
   document.querySelectorAll('[data-page-group="sourcing"]').forEach(a => a.classList.toggle('active', isSourcing));
   const sourcingSub = document.getElementById('sourcing-submenu');
   if (isSourcing && sourcingSub) {
@@ -15083,6 +15132,184 @@ async function importGpagoMigrationData(evt) {
 
   // 세션 복원으로 첫 로드 시 이 페이지가 이미 활성일 경우 렌더 (goPage 훅이 늦게 정의되는 케이스 대비)
   try { const pc=document.getElementById('page-competitor'); if(pc && pc.classList.contains('active')) renderCompetitor(); } catch(_){}
+})();
+</script>
+
+<!-- ═════════════ 키워드 성과분석 (UI 골격 + 샘플데이터) ═════════════ -->
+<script>
+(function(){
+  function _kpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function _kpWon(n){return Number(n||0).toLocaleString('ko-KR');}
+
+  const _kp = { step:1, storeId:null, productNo:null, range:'30' };
+
+  // ── 샘플 데이터 ──
+  const _KP_SAMPLE_STORES = [
+    { id:'s1', name:'비스토어마켓', emoji:'🛍️', status:'데이터 최신', savedDays:30, range:'2026-04-27 ~ 2026-05-26',
+      products:[
+        { no:'12754901311', name:'폴바셋 시그니처 블렌드 커피 폴바셋 원두 1kg 콩 로스팅 커피 폴바셋 원두 1kg 생두', image:'', payment:3311761, inflow:171,
+          keywords:[
+            {kw:'폴바셋 원두', inflow:62, payment:1240000, conv:8.1},
+            {kw:'커피 원두 1kg', inflow:45, payment:980000, conv:6.7},
+            {kw:'콩 로스팅 커피', inflow:33, payment:610000, conv:5.2},
+            {kw:'폴바셋 시그니처', inflow:18, payment:331761, conv:9.0},
+            {kw:'원두 생두', inflow:13, payment:150000, conv:3.1},
+          ] },
+        { no:'13489704394', name:'송월 타올 뱀부얀 뱀부 수건 호텔 수건 답례품 수건 벨리움', image:'', payment:0, inflow:99,
+          keywords:[
+            {kw:'호텔 수건', inflow:41, payment:0, conv:0},
+            {kw:'뱀부 수건', inflow:33, payment:0, conv:0},
+            {kw:'답례품 수건', inflow:25, payment:0, conv:0},
+          ] },
+      ] },
+  ];
+
+  function _kpLoadStores(){ try{return JSON.parse(localStorage.getItem('gpago_kperf_stores')||'[]');}catch(_){return[];} }
+  function _kpSaveStores(a){ try{localStorage.setItem('gpago_kperf_stores',JSON.stringify(a));}catch(_){} }
+  function _kpHasReal(){ return _kpLoadStores().length>0; }
+  function _kpStores(){ const r=_kpLoadStores(); return r.length?r:_KP_SAMPLE_STORES; }
+  function _kpStore(id){ return _kpStores().find(s=>s.id===id); }
+  function _kpProduct(store, no){ return store && (store.products||[]).find(p=>p.no===no); }
+
+  const _KP_RANGES={'7':'지난 7일','14':'지난 14일','30':'지난 30일'};
+
+  function _kpBreadcrumb(){
+    const steps=[['스토어 선택',1],['상품번호 선택',2],['분석 기간 선택',3],['키워드 성과분석',4]];
+    return steps.map(([label,n])=>{
+      const active=n===_kp.step, done=n<_kp.step;
+      const cls=active?'text-brand-green font-bold':(done?'text-brand-black font-semibold':'text-brand-gray');
+      const sep=n>1?'<span class="text-brand-gray mx-1">›</span>':'';
+      const clickable=done?` cursor-pointer hover:underline" onclick="kperfGoStep(${n})`:'';
+      return sep+'<span class="'+cls+clickable+'">'+label+'</span>';
+    }).join('');
+  }
+  window.kperfGoStep=function(n){ if(n<_kp.step){ _kp.step=n; renderKperf(); } };
+  window.kperfBack=function(){ if(_kp.step>1){ _kp.step--; renderKperf(); } };
+
+  window.renderKperf=function(){
+    const stepsEl=document.getElementById('kperf-steps'); if(stepsEl) stepsEl.innerHTML=_kpBreadcrumb();
+    const body=document.getElementById('kperf-body'); if(!body) return;
+    if(_kp.step===1) body.innerHTML=_kpRenderStoreStep();
+    else if(_kp.step===2) body.innerHTML=_kpRenderProductStep();
+    else if(_kp.step===3) body.innerHTML=_kpRenderRangeStep();
+    else body.innerHTML=_kpRenderResultStep();
+  };
+
+  // Step 1 — 스토어 선택
+  function _kpRenderStoreStep(){
+    const stores=_kpStores(); const sample=!_kpHasReal();
+    const head='<div class="flex items-center gap-3 mb-5"><div class="w-12 h-12 rounded-2xl bg-brand-green-light flex items-center justify-center text-2xl">🏪</div>'
+      +'<div><div class="text-[1.1rem] font-black">스마트스토어를 선택해주세요</div>'
+      +'<div class="text-[12px] text-brand-gray">분석할 스마트스토어를 고르거나 새로 연결하세요.</div></div></div>';
+    const notice=sample?'<div class="bg-brand-green-light/40 border border-brand-green-light rounded-2xl p-3 text-[12px] text-brand-green text-center mb-4">아직 연결된 스토어가 없어 <b>샘플</b>을 표시합니다. "스토어 추가"로 실제 스마트스토어센터 데이터를 연결하세요.</div>':'';
+    const cards=stores.map(s=>
+      '<button type="button" onclick="kperfSelectStore(\''+s.id+'\')" class="bg-white border-2 border-brand-border rounded-2xl p-5 panel hover:border-brand-green transition-colors text-left flex flex-col gap-3 min-h-[150px]">'
+      +'<div class="w-12 h-12 rounded-2xl bg-brand-green-light flex items-center justify-center text-2xl">'+(s.emoji||'🛍️')+'</div>'
+      +'<div class="font-black text-[15px]">'+_kpEsc(s.name)+(s.sample||sample?' <span class="text-[9px] text-brand-gray bg-brand-bg px-1.5 py-0.5 rounded font-bold align-middle">샘플</span>':'')+'</div>'
+      +'<div class="text-[11px] text-brand-green font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-brand-green inline-block"></span>'+_kpEsc(s.status||'연결됨')+'</div>'
+      +'</button>').join('');
+    const addCard='<button type="button" onclick="openKperfImport()" class="border-2 border-dashed border-brand-border rounded-2xl p-5 hover:border-brand-green hover:bg-brand-green-light/10 transition-colors flex flex-col items-center justify-center gap-2 min-h-[150px] text-brand-gray">'
+      +'<div class="w-10 h-10 rounded-full bg-brand-green-light flex items-center justify-center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>'
+      +'<div class="text-[13px] font-bold">스토어 추가</div><div class="text-[11px]">클릭해서 연결</div></button>';
+    return head+notice+'<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">'+cards+addCard+'</div>';
+  }
+  window.kperfSelectStore=function(id){ _kp.storeId=id; _kp.step=2; renderKperf(); };
+
+  // Step 2 — 상품번호 선택
+  function _kpRenderProductStep(){
+    const s=_kpStore(_kp.storeId); if(!s){ _kp.step=1; return _kpRenderStoreStep(); }
+    const head='<div class="flex items-center justify-between mb-4 flex-wrap gap-2"><div class="flex items-center gap-3">'
+      +'<button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
+      +'<div class="w-10 h-10 rounded-2xl bg-brand-green-light flex items-center justify-center text-xl">'+(s.emoji||'🛍️')+'</div>'
+      +'<div><div class="font-black text-[15px]">'+_kpEsc(s.name)+'</div><div class="text-[12px] text-brand-gray">상품번호를 선택해 주세요.</div></div></div>'
+      +'<div class="text-[12px] text-brand-gray">상품 저장수 '+((s.products||[]).length)+'개</div></div>';
+    const rows=(s.products||[]).map(p=>{
+      const img=p.image?'<img src="'+_kpEsc(p.image)+'" class="w-14 h-14 rounded-xl object-cover bg-brand-bg shrink-0">':'<div class="w-14 h-14 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0">📦</div>';
+      return '<button type="button" onclick="kperfSelectProduct(\''+p.no+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-green transition-colors flex items-center gap-4">'
+        +img
+        +'<div class="flex-1 min-w-0"><div class="text-[12px] text-brand-green font-bold mb-0.5">상품번호 '+_kpEsc(p.no)+'</div>'
+        +'<div class="text-[14px] font-bold text-brand-black truncate">'+_kpEsc(p.name)+'</div></div>'
+        +'<div class="text-right shrink-0"><div class="text-[14px] font-black '+(p.payment>0?'text-brand-black':'text-brand-gray')+'">결제 '+_kpWon(p.payment)+'원</div>'
+        +'<div class="text-[12px] text-brand-gray">유입 '+_kpWon(p.inflow)+'</div></div></button>';
+    }).join('');
+    return head+'<div class="flex flex-col gap-3">'+(rows||'<div class="text-center text-brand-gray text-[13px] py-8">저장된 상품이 없습니다</div>')+'</div>';
+  }
+  window.kperfSelectProduct=function(no){ _kp.productNo=no; _kp.step=3; renderKperf(); };
+
+  // Step 3 — 분석 기간
+  function _kpRenderRangeStep(){
+    const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
+    const head='<div class="flex items-center gap-3 mb-5"><button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
+      +'<div><div class="font-black text-[15px]">분석 기간을 선택하세요</div><div class="text-[12px] text-brand-gray truncate max-w-[70vw]">'+_kpEsc((p&&p.name)||'')+'</div></div></div>';
+    const presets=Object.keys(_KP_RANGES).map(k=>{
+      const active=_kp.range===k;
+      return '<button onclick="kperfSetRange(\''+k+'\')" class="px-5 py-3 rounded-2xl border-2 text-sm font-bold transition-colors '+(active?'border-brand-green bg-brand-green-light text-brand-green':'border-brand-border bg-white text-brand-gray hover:border-brand-green')+'">'+_KP_RANGES[k]+'</button>';
+    }).join('');
+    const rangeText=(s&&s.range)||('최근 '+_kp.range+'일');
+    return head
+      +'<div class="bg-white border border-brand-border rounded-2xl p-6 panel max-w-[640px]">'
+      +'<div class="text-[12px] text-brand-gray mb-2">스마트스토어센터 결제·유입 데이터 저장 범위</div>'
+      +'<div class="text-[1.1rem] font-black text-brand-green mb-5">'+_kpEsc(rangeText)+'</div>'
+      +'<div class="flex gap-3 flex-wrap mb-6">'+presets+'</div>'
+      +'<button onclick="kperfRunAnalysis()" class="bg-brand-green text-white px-6 py-3 rounded-xl text-sm font-bold hover:opacity-90">이 기간으로 분석 →</button>'
+      +'</div>';
+  }
+  window.kperfSetRange=function(k){ _kp.range=k; renderKperf(); };
+  window.kperfRunAnalysis=function(){ _kp.step=4; renderKperf(); };
+
+  // Step 4 — 키워드 성과분석 결과
+  function _kpRenderResultStep(){
+    const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
+    if(!p){ _kp.step=1; return _kpRenderStoreStep(); }
+    const kws=(p.keywords||[]).slice().sort((a,b)=>b.payment-a.payment);
+    const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
+    const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
+    const head='<div class="flex items-center gap-3 mb-5"><button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
+      +'<div class="flex-1 min-w-0"><div class="font-black text-[15px] truncate">'+_kpEsc(p.name)+'</div>'
+      +'<div class="text-[12px] text-brand-gray truncate">'+_kpEsc((s&&s.name)||'')+' · 상품번호 '+_kpEsc(p.no)+' · '+(_KP_RANGES[_kp.range]||'')+'</div></div></div>';
+    const sum='<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">'
+      +_kpSumCard('총 유입수', _kpWon(totalInflow), 'blue')
+      +_kpSumCard('총 결제금액', _kpWon(totalPay)+'원', 'green')
+      +_kpSumCard('유입 키워드', kws.length+'개', 'purple')
+      +'</div>';
+    const maxPay=Math.max.apply(null,kws.map(k=>k.payment||0).concat([1]));
+    const rows=kws.map((k,i)=>{
+      const bar=Math.max(4,Math.round((k.payment||0)/maxPay*100));
+      return '<tr class="border-b border-brand-border last:border-0">'
+        +'<td class="py-3 pl-2 text-[12px] text-brand-gray">'+(i+1)+'</td>'
+        +'<td class="py-3 font-bold text-[13px]">'+_kpEsc(k.kw)+'</td>'
+        +'<td class="py-3 text-right text-[13px]">'+_kpWon(k.inflow)+'</td>'
+        +'<td class="py-3 text-right text-[13px] font-bold">'+_kpWon(k.payment)+'원</td>'
+        +'<td class="py-3 text-right text-[13px] text-brand-gray pr-2">'+(k.conv||0)+'%</td>'
+        +'<td class="py-3 pr-2 w-[160px]"><div class="h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-green rounded-full" style="width:'+bar+'%"></div></div></td>'
+        +'</tr>';
+    }).join('');
+    const table='<div class="bg-white border border-brand-border rounded-2xl p-4 panel overflow-x-auto">'
+      +'<div class="text-[13px] font-bold mb-3">키워드별 성과</div>'
+      +'<table class="w-full min-w-[640px]"><thead><tr class="text-[11px] text-brand-gray border-b border-brand-border">'
+      +'<th class="py-2 pl-2 text-left font-semibold w-8">#</th><th class="py-2 text-left font-semibold">키워드</th>'
+      +'<th class="py-2 text-right font-semibold">유입수</th><th class="py-2 text-right font-semibold">결제금액</th>'
+      +'<th class="py-2 text-right font-semibold pr-2">전환율</th><th class="py-2 text-right font-semibold pr-2">비중</th></tr></thead>'
+      +'<tbody>'+(rows||'<tr><td colspan="6" class="py-8 text-center text-brand-gray text-[13px]">키워드 데이터가 없습니다</td></tr>')+'</tbody></table></div>';
+    const note=!_kpHasReal()?'<div class="text-[11px] text-brand-gray mt-3 text-center">* 샘플 데이터입니다. "스토어 추가 → 수집 시작하기"로 실제 스마트스토어센터 데이터를 연결하면 이 표가 실데이터로 채워집니다.</div>':'';
+    return head+sum+table+note;
+  }
+  function _kpSumCard(label,val,color){
+    const cmap={blue:'text-brand-blue',green:'text-brand-green',purple:'text-brand-purple'};
+    return '<div class="bg-white border border-brand-border rounded-2xl p-4 panel"><div class="text-[11px] text-brand-gray font-semibold mb-1">'+label+'</div>'
+      +'<div class="text-[1.3rem] font-black '+(cmap[color]||'')+'">'+val+'</div></div>';
+  }
+
+  // 데이터 가져오기 모달
+  window.openKperfImport=function(){ const m=document.getElementById('kperf-import-modal'); if(m) m.classList.remove('hidden'); };
+  window.closeKperfImport=function(){ const m=document.getElementById('kperf-import-modal'); if(m) m.classList.add('hidden'); };
+  window.kperfStartImport=function(){
+    closeKperfImport();
+    toast('스마트스토어센터 데이터 수집은 다음 단계에서 연결됩니다 (확장프로그램 작업 필요)');
+  };
+
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('kperf-import-modal'); if(m&&!m.classList.contains('hidden')) closeKperfImport(); } });
+  try { const pk=document.getElementById('page-kperf'); if(pk && pk.classList.contains('active')) renderKperf(); } catch(_){}
 })();
 </script>
 </body>
