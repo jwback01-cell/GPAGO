@@ -15375,11 +15375,16 @@ async function importGpagoMigrationData(evt) {
         +'<div class="text-center mt-4"><button onclick="renderKperf()" class="text-[12px] text-brand-gray hover:text-brand-black font-bold">← 돌아가기</button></div>';
       return;
     }
+    const qp=(url,key)=>{ const out=[]; const re=new RegExp('[?&]'+key+'=([^&]*)','g'); let m; while((m=re.exec(String(url)))){ try{ out.push(decodeURIComponent(m[1])); }catch(_){ out.push(m[1]); } } return out; };
     const rows=caps.map((c)=>{
       const keys=c.truncated?(c.data&&c.data.topKeys):(Array.isArray(c.data)?('array('+c.data.length+')'):Object.keys(c.data||{}).slice(0,30));
       const kstr=Array.isArray(keys)?keys.join(', '):String(keys||'');
-      return '<div class="border-b border-brand-border last:border-0 py-3">'
-        +'<div class="text-[12px] font-bold text-brand-blue break-all">'+_kpEsc(c.url)+'</div>'
+      const useIndex=qp(c.url,'useIndex')[0]||''; const dims=qp(c.url,'dimensions').join('+');
+      const isKw=/keyword|검색|search/i.test(c.url+kstr+dims);
+      const meta=(useIndex||dims)?('<span class="text-brand-purple font-bold">'+_kpEsc(useIndex||'-')+'</span>'+(dims?(' · 차원: '+_kpEsc(dims)):'')):'';
+      return '<div class="border-b border-brand-border last:border-0 py-3'+(isKw?' bg-brand-green-light/30 -mx-2 px-2 rounded':'')+'">'
+        +'<div class="text-[12px] font-bold text-brand-blue break-all">'+(isKw?'⭐ ':'')+_kpEsc(c.url)+'</div>'
+        +(meta?'<div class="text-[11px] mt-0.5">'+meta+'</div>':'')
         +'<div class="text-[11px] text-brand-gray mt-1">키: '+_kpEsc(kstr)+(c.truncated?' (응답이 커서 일부만 저장)':'')+'</div></div>';
     }).join('');
     body.innerHTML='<div class="bg-white border border-brand-border rounded-2xl p-5 panel">'
