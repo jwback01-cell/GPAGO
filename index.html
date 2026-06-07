@@ -14637,7 +14637,8 @@ async function importGpagoMigrationData(evt) {
     try{
       res = await _captureNextExtensionPayload(95000, ()=>{
         const ni=document.getElementById('kw-naver'); if(ni) ni.value=keyword;
-        window.postMessage({ type:'GPAGO_REQUEST_TRIGGER', source:'gpago-page', keyword:keyword, deep:5 }, window.location.origin);
+        // deep:2 (약 160위) — 요청 수를 줄여 네이버 접속 제한(rate limit) 위험 완화
+        window.postMessage({ type:'GPAGO_REQUEST_TRIGGER', source:'gpago-page', keyword:keyword, deep:2 }, window.location.origin);
       });
     }catch(_){ return {rank:undefined, product:null}; }
     const data=(res&&res.data)||res||{}; const tabs=(res&&res.tabs)||{};
@@ -14713,7 +14714,7 @@ async function importGpagoMigrationData(evt) {
     return { rank:p.rank, price:p.priceS, rev:p.rev, labels:_CMP_DATES };
   }
   function _cmpRankChartArr(rank){ const nums=(rank||[]).filter(v=>typeof v==='number'); if(!nums.length) return null; const mx=Math.max.apply(null,nums); return rank.map(v=> v==null? mx+2 : v); }
-  function _cmpRankText(rank){ const last=(rank&&rank.length)?rank[rank.length-1]:undefined; if(typeof last==='number') return last+'위'; if(last===null) return '400위 밖'; return '미조회'; }
+  function _cmpRankText(rank){ const last=(rank&&rank.length)?rank[rank.length-1]:undefined; if(typeof last==='number') return last+'위'; if(last===null) return '순위권 밖'; return '미조회'; }
 
   // ── 변동 타입 색상 ──
   function _cmpTypeStyle(type){
@@ -14908,7 +14909,7 @@ async function importGpagoMigrationData(evt) {
     const rankChartArr=_cmpRankChartArr(A.rank);
     const rankCard=metricCard('순위', _cmpRankText(A.rank),
         rankNums.length>=2 ? _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)) : '',
-        rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(p.real?'순위 미확인<br>(메인키워드 400위 내에서 상품을 못 찾음 — 키워드를 정확히 입력해 보세요)':'순위 데이터 없음'),'purple');
+        rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(p.real?'순위 미확인<br>(키워드 순위권에서 상품을 못 찾았거나 네이버 접속이 제한됨 — 잠시 후 메인키워드 확인하고 재조회)':'순위 데이터 없음'),'purple');
 
     // 월매출 — sample 은 내장 추정치, real 은 재고 연동 대기
     let revCard;
@@ -15024,7 +15025,7 @@ async function importGpagoMigrationData(evt) {
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)) });
       products.unshift(prod); _cmpSaveProducts(products);
       inp.value=''; if(kwInput) kwInput.value='';
-      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'):(sc.rank===null?'400위 밖(키워드 확인)':'순위 미확인');
+      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'):(sc.rank===null?'순위권 밖(키워드 확인)':'순위 미확인(접속제한/확장 확인)');
       toast('상품 등록 완료 ✓ ("'+mainKw+'" · '+rankMsg+')');
       renderCompetitor();
     } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
@@ -15044,9 +15045,12 @@ async function importGpagoMigrationData(evt) {
     const products=_cmpLoadProducts();
     if(!products.length){ toast('등록된 실제 상품이 없습니다 — URL로 먼저 등록하세요'); return; }
     const btn=document.getElementById('cmp-refresh-all'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='갱신 중…'; }
-    toast('전체 갱신 중… ('+products.length+'개)');
+    toast('전체 갱신 중… ('+products.length+'개) — 네이버 제한 방지를 위해 천천히 진행합니다');
     let n=0;
-    for(const p of products){ try{ if(await _cmpRefreshOne(p)) n++; }catch(_){}}
+    for(let i=0;i<products.length;i++){
+      try{ if(await _cmpRefreshOne(products[i])) n++; }catch(_){}
+      if(i<products.length-1) await new Promise(r=>setTimeout(r,5000)); // 상품 간 5초 간격 (rate limit 완화)
+    }
     _cmpSaveProducts(products);
     if(btn){ btn.disabled=false; btn.innerHTML=ob; }
     toast('전체 갱신 완료 — '+n+'/'+products.length+'개');
