@@ -5062,6 +5062,8 @@ async function extractFromKeyword() {
   window.addEventListener('message', ackListener);
   try {
     _extensionTriggerSource = 'tool';  // v1.7.17+ : 키워드 도구 소스 표시
+    // v1+ : 소스가 레이스로 null 이 되어도 tool 로 라우팅되도록 sessionStorage 플래그 보존 (텀즈와 동일 패턴)
+    try { sessionStorage.setItem('_gpago_tool_pending', '1'); } catch(_) {}
     window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
     // 1초 대기 — 확장 ACK 확인
     await new Promise(r => setTimeout(r, 1000));
@@ -5306,8 +5308,12 @@ async function _processExtensionPayload(payload, tabsMap) {
     //   'tool'     = 키워드 도구 페이지로 이동 후 마누태그 추출 (기존 동작)
     //   'rtrank'   = 실시간 순위 추적 — 셀러명 매칭하여 결과 표시
     //   null       = 외부 트리거 (Ctrl+Q) → analysis 기본
-    const source = _extensionTriggerSource || 'analysis';
+    // v1+ : 소스가 레이스로 null 이 되어도 tool 플래그가 있으면 키워드 도구로 라우팅 (마누태그 추출이 키워드 분석으로 튕기던 문제 수정)
+    let _toolPending = '';
+    try { _toolPending = sessionStorage.getItem('_gpago_tool_pending') || ''; } catch(_) {}
+    const source = _extensionTriggerSource || (_toolPending ? 'tool' : 'analysis');
     _extensionTriggerSource = null;
+    try { sessionStorage.removeItem('_gpago_tool_pending'); } catch(_) {}
 
     if (source === 'rtrank') {
       try { _rtrankProcessPayload(payload, tabsMap); } catch (e) { console.error('[rtrank]', e); }
