@@ -5048,6 +5048,8 @@ async function extractFromKeyword() {
   _termsAnalysisPending = false;
   _termsAnalysisInputName = '';
   try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
+  // v1+ : 다중 키워드 분석 잔여 상태 정리 — 남아있으면 마누태그 페이로드가 다중캡처/분석으로 새서 화면이 키워드 분석으로 튕김
+  try { window._multiCaptureActive = false; window._multiCaptureResolve = null; } catch(_) {}
 
   // 확장이 kw-naver 입력란을 읽으므로 키워드 미리 동기화
   const nInput = document.getElementById('kw-naver');
@@ -5255,10 +5257,13 @@ async function _processExtensionPayload(payload, tabsMap) {
   if (!payload || typeof payload !== 'object') return;
   console.log('[GPAGO ext] 데이터 수신 — products:', payload.products?.length, ' query:', payload.query, ' tabs:', tabsMap ? Object.keys(tabsMap).join(',') : 'none');
   // 다중 키워드 분석 모드 — 결과만 보관하고 정상 렌더 흐름은 스킵
-  if (window._multiCaptureActive && typeof window._multiCaptureResolve === 'function') {
-    const cb = window._multiCaptureResolve;
-    window._multiCaptureResolve = null;
-    try { cb({ data: payload, tabs: tabsMap }); } catch (_) {}
+  //   resolver 가 이미 소진됐어도(중복/잔여 페이로드) 분석 라우팅으로 새지 않도록 무조건 return
+  if (window._multiCaptureActive) {
+    if (typeof window._multiCaptureResolve === 'function') {
+      const cb = window._multiCaptureResolve;
+      window._multiCaptureResolve = null;
+      try { cb({ data: payload, tabs: tabsMap }); } catch (_) {}
+    }
     return;
   }
 
