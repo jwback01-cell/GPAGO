@@ -15149,17 +15149,18 @@ async function importGpagoMigrationData(evt) {
       products:[
         { no:'12754901311', name:'폴바셋 시그니처 블렌드 커피 폴바셋 원두 1kg 콩 로스팅 커피 폴바셋 원두 1kg 생두', image:'', payment:3311761, inflow:171,
           keywords:[
-            {kw:'폴바셋 원두', inflow:62, payment:1240000, conv:8.1},
-            {kw:'커피 원두 1kg', inflow:45, payment:980000, conv:6.7},
-            {kw:'콩 로스팅 커피', inflow:33, payment:610000, conv:5.2},
-            {kw:'폴바셋 시그니처', inflow:18, payment:331761, conv:9.0},
-            {kw:'원두 생두', inflow:13, payment:150000, conv:3.1},
+            {kw:'폴바셋원두커피', terms:['폴바셋','원두','커피'], search:30,   rank:'통합 1p', payment:116400, payCnt:1.0, inflow:null},
+            {kw:'폴바셋원두1kg', terms:['폴바셋','원두','1KG'], search:30,   rank:'6.8',     payment:116400, payCnt:3.0, inflow:3},
+            {kw:'폴바셋원두',    terms:['폴바셋','원두'],        search:3690, rank:'5.7',     payment:97231,  payCnt:2.7, inflow:8},
+            {kw:'풀바셋원두',    terms:['풀','바셋','원두'],     search:640,  rank:'통합 1p', payment:29100,  payCnt:1.0, inflow:2},
+            {kw:'원두1kg폴바셋', terms:['원두','1KG','폴바셋'], search:null, rank:'통합 1p', payment:29100,  payCnt:1.0, inflow:1},
+            {kw:'폴바셋시그니처블렌드', terms:['폴바셋','시그니처','블렌드'], search:480, rank:'7.0', payment:29100, payCnt:1.0, inflow:12},
           ] },
         { no:'13489704394', name:'송월 타올 뱀부얀 뱀부 수건 호텔 수건 답례품 수건 벨리움', image:'', payment:0, inflow:99,
           keywords:[
-            {kw:'호텔 수건', inflow:41, payment:0, conv:0},
-            {kw:'뱀부 수건', inflow:33, payment:0, conv:0},
-            {kw:'답례품 수건', inflow:25, payment:0, conv:0},
+            {kw:'호텔수건',   terms:['호텔','수건'],   search:1200, rank:'8.2',     payment:0, payCnt:0, inflow:41},
+            {kw:'뱀부수건',   terms:['뱀부','수건'],   search:320,  rank:'통합 2p', payment:0, payCnt:0, inflow:33},
+            {kw:'답례품수건', terms:['답례품','수건'], search:210,  rank:'11.0',    payment:0, payCnt:0, inflow:25},
           ] },
       ] },
   ];
@@ -15261,36 +15262,52 @@ async function importGpagoMigrationData(evt) {
   function _kpRenderResultStep(){
     const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
     if(!p){ _kp.step=1; return _kpRenderStoreStep(); }
-    const kws=(p.keywords||[]).slice().sort((a,b)=>b.payment-a.payment);
+    const kws=(p.keywords||[]).slice().sort((a,b)=>(b.payment||0)-(a.payment||0));
     const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
     const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
+    const totalCnt=kws.reduce((x,k)=>x+(k.payCnt||0),0);
     const head='<div class="flex items-center gap-3 mb-5"><button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
       +'<div class="flex-1 min-w-0"><div class="font-black text-[15px] truncate">'+_kpEsc(p.name)+'</div>'
-      +'<div class="text-[12px] text-brand-gray truncate">'+_kpEsc((s&&s.name)||'')+' · 상품번호 '+_kpEsc(p.no)+' · '+(_KP_RANGES[_kp.range]||'')+'</div></div></div>';
+      +'<div class="text-[12px] text-brand-gray truncate">'+_kpEsc((s&&s.name)||'')+' · 상품번호 '+_kpEsc(p.no)+' · '+(_KP_RANGES[_kp.range]||'')+'</div></div>'
+      +'<button onclick="kperfExportToast()" class="shrink-0 text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80 inline-flex items-center gap-1"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Excel 다운로드</button></div>';
     const sum='<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">'
-      +_kpSumCard('총 유입수', _kpWon(totalInflow), 'blue')
       +_kpSumCard('총 결제금액', _kpWon(totalPay)+'원', 'green')
-      +_kpSumCard('유입 키워드', kws.length+'개', 'purple')
+      +_kpSumCard('총 결제수', totalCnt.toFixed(1), 'blue')
+      +_kpSumCard('총 유입수', _kpWon(totalInflow), 'purple')
       +'</div>';
-    const maxPay=Math.max.apply(null,kws.map(k=>k.payment||0).concat([1]));
+    const chip=t=>'<span class="inline-block bg-brand-blue-light text-brand-blue text-[10px] font-bold px-1.5 py-0.5 rounded mr-0.5 mb-0.5">'+_kpEsc(t)+'</span>';
+    const dash='<span class="text-brand-gray">—</span>';
+    const cntFmt=v=>(v==null?dash:Number(v).toFixed(1));
+    const totalRow='<tr class="border-b-2 border-brand-border bg-brand-bg/60 font-bold">'
+      +'<td class="py-3 pl-2"></td><td class="py-3 text-[13px]">총합</td><td class="py-3"></td>'
+      +'<td class="py-3 text-right text-[13px]"></td><td class="py-3 text-right text-[13px]"></td>'
+      +'<td class="py-3 text-right text-[13px] text-brand-green">'+_kpWon(totalPay)+'원</td>'
+      +'<td class="py-3 text-right text-[13px]">'+totalCnt.toFixed(1)+'</td>'
+      +'<td class="py-3 text-right text-[13px] pr-2">'+_kpWon(totalInflow)+'</td></tr>';
     const rows=kws.map((k,i)=>{
-      const bar=Math.max(4,Math.round((k.payment||0)/maxPay*100));
-      return '<tr class="border-b border-brand-border last:border-0">'
+      return '<tr class="border-b border-brand-border last:border-0 hover:bg-brand-bg/40">'
         +'<td class="py-3 pl-2 text-[12px] text-brand-gray">'+(i+1)+'</td>'
-        +'<td class="py-3 font-bold text-[13px]">'+_kpEsc(k.kw)+'</td>'
-        +'<td class="py-3 text-right text-[13px]">'+_kpWon(k.inflow)+'</td>'
-        +'<td class="py-3 text-right text-[13px] font-bold">'+_kpWon(k.payment)+'원</td>'
-        +'<td class="py-3 text-right text-[13px] text-brand-gray pr-2">'+(k.conv||0)+'%</td>'
-        +'<td class="py-3 pr-2 w-[160px]"><div class="h-2 bg-brand-bg rounded-full overflow-hidden"><div class="h-full bg-brand-green rounded-full" style="width:'+bar+'%"></div></div></td>'
+        +'<td class="py-3 font-bold text-[13px] whitespace-nowrap">'+_kpEsc(k.kw)+'</td>'
+        +'<td class="py-3 pr-3 max-w-[180px]">'+((k.terms||[]).map(chip).join('')||dash)+'</td>'
+        +'<td class="py-3 text-right text-[13px]">'+(k.search==null?dash:_kpWon(k.search))+'</td>'
+        +'<td class="py-3 text-right text-[13px] text-brand-gray">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
+        +'<td class="py-3 text-right text-[13px] font-bold text-brand-green">'+_kpWon(k.payment)+'원</td>'
+        +'<td class="py-3 text-right text-[13px]">'+cntFmt(k.payCnt)+'</td>'
+        +'<td class="py-3 text-right text-[13px] pr-2">'+(k.inflow==null?dash:_kpWon(k.inflow))+'</td>'
         +'</tr>';
     }).join('');
     const table='<div class="bg-white border border-brand-border rounded-2xl p-4 panel overflow-x-auto">'
       +'<div class="text-[13px] font-bold mb-3">키워드별 성과</div>'
-      +'<table class="w-full min-w-[640px]"><thead><tr class="text-[11px] text-brand-gray border-b border-brand-border">'
-      +'<th class="py-2 pl-2 text-left font-semibold w-8">#</th><th class="py-2 text-left font-semibold">키워드</th>'
-      +'<th class="py-2 text-right font-semibold">유입수</th><th class="py-2 text-right font-semibold">결제금액</th>'
-      +'<th class="py-2 text-right font-semibold pr-2">전환율</th><th class="py-2 text-right font-semibold pr-2">비중</th></tr></thead>'
-      +'<tbody>'+(rows||'<tr><td colspan="6" class="py-8 text-center text-brand-gray text-[13px]">키워드 데이터가 없습니다</td></tr>')+'</tbody></table></div>';
+      +'<table class="w-full min-w-[820px]"><thead><tr class="text-[11px] text-brand-gray border-b border-brand-border">'
+      +'<th class="py-2 pl-2 text-left font-semibold w-8">#</th>'
+      +'<th class="py-2 text-left font-semibold">키워드</th>'
+      +'<th class="py-2 text-left font-semibold">텀즈</th>'
+      +'<th class="py-2 text-right font-semibold">월간검색량</th>'
+      +'<th class="py-2 text-right font-semibold">평균노출순위</th>'
+      +'<th class="py-2 text-right font-semibold">결제금액</th>'
+      +'<th class="py-2 text-right font-semibold">결제수</th>'
+      +'<th class="py-2 text-right font-semibold pr-2">유입수</th></tr></thead>'
+      +'<tbody>'+totalRow+(rows||'<tr><td colspan="8" class="py-8 text-center text-brand-gray text-[13px]">키워드 데이터가 없습니다</td></tr>')+'</tbody></table></div>';
     const note=!_kpHasReal()?'<div class="text-[11px] text-brand-gray mt-3 text-center">* 샘플 데이터입니다. "스토어 추가 → 수집 시작하기"로 실제 스마트스토어센터 데이터를 연결하면 이 표가 실데이터로 채워집니다.</div>':'';
     return head+sum+table+note;
   }
@@ -15307,6 +15324,7 @@ async function importGpagoMigrationData(evt) {
     closeKperfImport();
     toast('스마트스토어센터 데이터 수집은 다음 단계에서 연결됩니다 (확장프로그램 작업 필요)');
   };
+  window.kperfExportToast=function(){ toast('Excel 다운로드는 실데이터 연결 단계에서 제공됩니다'); };
 
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('kperf-import-modal'); if(m&&!m.classList.contains('hidden')) closeKperfImport(); } });
   try { const pk=document.getElementById('page-kperf'); if(pk && pk.classList.contains('active')) renderKperf(); } catch(_){}
