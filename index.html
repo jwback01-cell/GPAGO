@@ -1807,7 +1807,8 @@ PBT키캡	1180
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="text-[12px] font-bold whitespace-nowrap">상품 등록</span>
       </div>
-      <input id="cmp-url-input" type="text" placeholder="네이버 쇼핑 / 스마트스토어 상품 URL 붙여넣기" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-blue" onkeydown="if(event.key==='Enter') addCompetitor()">
+      <input id="cmp-url-input" type="text" placeholder="스마트스토어 상품 URL 붙여넣기" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-blue" onkeydown="if(event.key==='Enter') addCompetitor()">
+      <input id="cmp-kw-add-input" type="text" placeholder="메인키워드 (예: 버즈4 프로 케이스)" class="w-full sm:w-64 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-blue shrink-0" onkeydown="if(event.key==='Enter') addCompetitor()">
       <button type="button" id="cmp-add-btn" onclick="addCompetitor()" class="bg-brand-black text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#333] transition-colors whitespace-nowrap shrink-0">+ 추가</button>
     </div>
 
@@ -14614,9 +14615,12 @@ async function importGpagoMigrationData(evt) {
   function _cmpPid(url){ const m=String(url||'').match(/products\/(\d+)/)||String(url||'').match(/(\d{7,})/); return m?m[1]:''; }
   function _cmpMallFromUrl(url){ const m=String(url||'').match(/(?:smartstore|brand)\.naver\.com\/([^/?#]+)/); return m?decodeURIComponent(m[1]):''; }
   function _cmpGuessKeyword(title){
-    const toks=String(title||'').replace(/[\[\](){}:|]/g,' ').split(/\s+/).filter(Boolean).filter(t=>/^[가-힣]{2,}$/.test(t));
-    if(!toks.length) return (String(title||'').split(/\s+/)[0]||'');
-    return toks.slice().sort((a,b)=>b.length-a.length)[0];
+    // 콜론/파이프 뒤 스토어명 suffix 제거 ("… : 신지몰스토어")
+    let t=String(title||'').split(/\s*[:|]\s*/)[0];
+    const toks=t.replace(/[\[\](){}+]/g,' ').split(/\s+/).filter(Boolean).filter(x=>/^[가-힣]{2,}$/.test(x));
+    if(!toks.length) return '';
+    // 카테고리성 단어(케이스/머신/청소기/필름 등 끝단어)가 메인키워드일 확률이 높음 → 마지막 토큰
+    return toks[toks.length-1];
   }
   function _cmpMD(iso){ return String(iso||'').slice(5,10).replace('-','/'); }  // 2026-06-07.. → 06/07
 
@@ -14978,26 +14982,39 @@ async function importGpagoMigrationData(evt) {
     const pid=_cmpPid(url);
     const products=_cmpLoadProducts();
     if(pid && products.some(p=>p.productId===pid)){ toast('이미 등록된 상품입니다'); return; }
+    const kwInput=document.getElementById('cmp-kw-add-input');
+    let mainKw=(kwInput&&kwInput.value||'').trim();
     const btn=document.getElementById('cmp-add-btn');
     const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='수집 중...'; }
     try{
-      // 1) 스마트스토어 기본 정보 (제목/이미지/카테고리) — 키워드 무관
-      toast('상품 정보를 수집 중입니다… (확장 팝업, 최대 1분)');
-      const res=await _cmpFetchInfo(url);
-      const d=(res&&res.ok&&res.data)?res.data:{};
-      const title=d.title||'';
-      const mainKw=_cmpGuessKeyword(title||_cmpMallFromUrl(url));
-      // 2) 실제 네이버 쇼핑 스크랩으로 정확한 순위 + 가격/리뷰
-      toast('순위·가격 조회 중… (네이버 쇼핑 스크랩)');
+      let d={};
+      // 메인키워드 미입력 시 — 스마트스토어 정보로 제목을 받아 자동 추정
+      if(!mainKw){
+        toast('메인키워드 자동 추정을 위해 상품 정보 수집 중…');
+        const res=await _cmpFetchInfo(url);
+        d=(res&&res.ok&&res.data)?res.data:{};
+        mainKw=_cmpGuessKeyword(d.title||'');
+        if(!mainKw){ toast('메인키워드를 입력해 주세요 (자동 추정 실패)'); return; }
+        toast('메인키워드 추정: "'+mainKw+'" — 정확하지 않으면 등록 후 수정하세요');
+      }
+      // 실제 네이버 쇼핑 스크랩으로 정확한 순위 + 가격/리뷰/제목/이미지
+      toast('순위·가격 조회 중… (네이버 쇼핑 스크랩, 보안확인 뜨면 풀어주세요)');
       const sc=await _cmpScrapeProduct(mainKw, pid);
       const sp=sc.product;
-      if(!title && !(sp&&sp.title)){ toast('정보 수집 실패 — GPAGO 확장프로그램 설치/활성화를 확인하세요'); return; }
+      // 제목/이미지: 스크랩 우선, 없으면 스마트스토어 정보로 보완
+      let title=(sp&&sp.title)||d.title||'';
+      let image=(sp&&sp.image)||d.image||'';
+      if(!title){
+        const res2=await _cmpFetchInfo(url); const d2=(res2&&res2.ok&&res2.data)?res2.data:{};
+        title=d2.title||''; image=image||d2.image||''; if(!d.category) d.category=d2.category||''; if(d2.price&&!(sp&&sp.price)) d.price=d2.price; if(d2.reviewCount!=null) d.reviewCount=d2.reviewCount;
+      }
+      if(!title){ toast('정보 수집 실패 — GPAGO 확장프로그램 설치/활성화를 확인하세요'); return; }
       const now=new Date().toISOString();
       const prod={
         id:'p'+(pid||Date.now()), real:true, url, productId:pid,
         mall:(sp&&sp.mall)||d.mallName||_cmpMallFromUrl(url)||'스마트스토어',
-        name: title || (sp&&sp.title) || '(제목 없음)',
-        image: d.image || (sp&&sp.image) || '', emoji:'🛍️',
+        name: title,
+        image: image, emoji:'🛍️',
         mainKeyword:mainKw,
         price:(sp&&sp.price!=null)?sp.price:(Number(d.price)||0),
         reviewCount:(sp&&sp.reviewCount!=null)?sp.reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
@@ -15006,9 +15023,9 @@ async function importGpagoMigrationData(evt) {
       };
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)) });
       products.unshift(prod); _cmpSaveProducts(products);
-      inp.value='';
-      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'):(sc.rank===null?'400위 밖':'순위 미확인');
-      toast('상품 등록 완료 ✓ (메인키워드 "'+mainKw+'" · '+rankMsg+')');
+      inp.value=''; if(kwInput) kwInput.value='';
+      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'):(sc.rank===null?'400위 밖(키워드 확인)':'순위 미확인');
+      toast('상품 등록 완료 ✓ ("'+mainKw+'" · '+rankMsg+')');
       renderCompetitor();
     } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
   };
