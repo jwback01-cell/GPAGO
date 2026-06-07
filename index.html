@@ -15141,7 +15141,7 @@ async function importGpagoMigrationData(evt) {
   function _kpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function _kpWon(n){return Number(n||0).toLocaleString('ko-KR');}
 
-  const _kp = { step:1, storeId:null, productNo:null, range:'30' };
+  const _kp = { step:1, storeId:null, productNo:null, range:'7' };
 
   // ── 샘플 데이터 ──
   const _KP_SAMPLE_STORES = [
@@ -15172,7 +15172,15 @@ async function importGpagoMigrationData(evt) {
   function _kpStore(id){ return _kpStores().find(s=>s.id===id); }
   function _kpProduct(store, no){ return store && (store.products||[]).find(p=>p.no===no); }
 
-  const _KP_RANGES={'7':'지난 7일','14':'지난 14일','30':'지난 30일'};
+  const _KP_RANGES={'1':'최근 1일','2':'최근 2일','7':'최근 7일','30':'최근 30일'};
+  function _kpRangeDates(days){
+    try{
+      const end=new Date('2026-05-26T00:00:00');
+      const start=new Date(end); start.setDate(end.getDate()-(Math.max(1,days)-1));
+      const f=d=>d.getFullYear()+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getDate()).padStart(2,'0');
+      return f(start)+' ~ '+f(end);
+    }catch(_){ return ''; }
+  }
 
   function _kpBreadcrumb(){
     const steps=[['스토어 선택',1],['상품번호 선택',2],['분석 기간 선택',3],['키워드 성과분석',4]];
@@ -15266,55 +15274,72 @@ async function importGpagoMigrationData(evt) {
     const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
     const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
     const totalCnt=kws.reduce((x,k)=>x+(k.payCnt||0),0);
-    const head='<div class="flex items-center gap-3 mb-5"><button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
-      +'<div class="flex-1 min-w-0"><div class="font-black text-[15px] truncate">'+_kpEsc(p.name)+'</div>'
-      +'<div class="text-[12px] text-brand-gray truncate">'+_kpEsc((s&&s.name)||'')+' · 상품번호 '+_kpEsc(p.no)+' · '+(_KP_RANGES[_kp.range]||'')+'</div></div>'
-      +'<button onclick="kperfExportToast()" class="shrink-0 text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80 inline-flex items-center gap-1"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Excel 다운로드</button></div>';
-    const sum='<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">'
-      +_kpSumCard('총 결제금액', _kpWon(totalPay)+'원', 'green')
-      +_kpSumCard('총 결제수', totalCnt.toFixed(1), 'blue')
-      +_kpSumCard('총 유입수', _kpWon(totalInflow), 'purple')
+    // 상단 헤더 (뒤로 + 타이틀 + Excel)
+    const head='<div class="flex items-center justify-between mb-4 flex-wrap gap-2">'
+      +'<div class="flex items-center gap-3"><button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
+      +'<div><div class="font-black text-[1.05rem]">키워드 성과분석</div><div class="text-[12px] text-brand-gray">키워드별로 성과를 분석해 주세요.</div></div></div>'
+      +'<button onclick="kperfExportToast()" class="shrink-0 text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3.5 py-2 rounded-xl hover:opacity-80 inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Excel 다운로드</button></div>';
+
+    // 상품 헤더 카드 (썸네일 + 상품번호 + 상품명 하이라이트)
+    const thumb=p.image?'<img src="'+_kpEsc(p.image)+'" class="w-12 h-12 rounded-xl object-cover bg-brand-bg shrink-0">':'<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0">📦</div>';
+    const prodCard='<div class="bg-white border border-brand-border rounded-2xl p-4 panel mb-4">'
+      +'<div class="flex items-center gap-3 mb-3">'+thumb
+      +'<div class="min-w-0"><div class="text-[12px] text-brand-green font-bold">상품번호: '+_kpEsc(p.no)+'</div>'
+      +'<div class="text-[12px] text-brand-gray mt-0.5"><span class="text-brand-blue font-bold bg-brand-blue-light px-1.5 py-0.5 rounded mr-1">선택된 기간</span>에 노출된 상품명입니다.</div></div></div>'
+      +'<div class="bg-brand-green-light/50 border border-brand-green-light rounded-xl px-4 py-3 flex items-center gap-2">'
+      +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="3" class="shrink-0"><polyline points="20 6 9 17 4 12"/></svg>'
+      +'<span class="text-[13px] font-bold text-brand-black flex-1 min-w-0">상품명: '+_kpEsc(p.name)+'</span>'
+      +'<span class="text-[10px] font-bold text-brand-gray bg-white border border-brand-border px-2 py-0.5 rounded-full shrink-0">최근 상품명</span></div></div>';
+
+    // 기간 선택 버튼 + 날짜 범위
+    const pbtns=Object.keys(_KP_RANGES).map(k=>{
+      const a=_kp.range===k;
+      return '<button onclick="kperfSetRange(\''+k+'\')" class="px-3.5 py-1.5 rounded-lg text-[13px] font-bold transition-colors '+(a?'bg-brand-green text-white shadow-sm':'text-brand-gray hover:text-brand-black')+'">'+_KP_RANGES[k]+'</button>';
+    }).join('');
+    const periodBar='<div class="flex items-center justify-between gap-2 mb-4 flex-wrap">'
+      +'<div class="flex items-center gap-1 bg-brand-bg rounded-xl p-1">'+pbtns
+      +'<span class="w-px h-5 bg-brand-border mx-1"></span>'
+      +'<button onclick="kperfExportToast()" class="px-3 py-1.5 rounded-lg text-[13px] font-bold text-brand-gray hover:text-brand-black inline-flex items-center gap-1"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>직접 선택</button></div>'
+      +'<div class="text-[13px] font-black text-brand-blue inline-flex items-center gap-2"><span class="text-brand-gray cursor-default">‹</span>'+_kpEsc(_kpRangeDates(Number(_kp.range)))+'<span class="text-brand-gray cursor-default">›</span></div>'
       +'</div>';
+
     const chip=t=>'<span class="inline-block bg-brand-blue-light text-brand-blue text-[10px] font-bold px-1.5 py-0.5 rounded mr-0.5 mb-0.5">'+_kpEsc(t)+'</span>';
     const dash='<span class="text-brand-gray">—</span>';
     const cntFmt=v=>(v==null?dash:Number(v).toFixed(1));
-    const totalRow='<tr class="border-b-2 border-brand-border bg-brand-bg/60 font-bold">'
-      +'<td class="py-3 pl-2"></td><td class="py-3 text-[13px]">총합</td><td class="py-3"></td>'
-      +'<td class="py-3 text-right text-[13px]"></td><td class="py-3 text-right text-[13px]"></td>'
-      +'<td class="py-3 text-right text-[13px] text-brand-green">'+_kpWon(totalPay)+'원</td>'
-      +'<td class="py-3 text-right text-[13px]">'+totalCnt.toFixed(1)+'</td>'
-      +'<td class="py-3 text-right text-[13px] pr-2">'+_kpWon(totalInflow)+'</td></tr>';
+    const totalRow='<tr class="bg-brand-bg/70 font-bold">'
+      +'<td class="py-3.5 pl-4 rounded-l-xl"></td><td class="py-3.5 text-[13px]">총합</td><td class="py-3.5"></td>'
+      +'<td class="py-3.5 text-right text-[13px]"></td><td class="py-3.5 text-right text-[13px]"></td>'
+      +'<td class="py-3.5 text-right text-[13px] text-brand-green">'+_kpWon(totalPay)+'원</td>'
+      +'<td class="py-3.5 text-right text-[13px]">'+totalCnt.toFixed(1)+'</td>'
+      +'<td class="py-3.5 text-right text-[13px] pr-4 rounded-r-xl">'+_kpWon(totalInflow)+'</td></tr>';
     const rows=kws.map((k,i)=>{
-      return '<tr class="border-b border-brand-border last:border-0 hover:bg-brand-bg/40">'
-        +'<td class="py-3 pl-2 text-[12px] text-brand-gray">'+(i+1)+'</td>'
-        +'<td class="py-3 font-bold text-[13px] whitespace-nowrap">'+_kpEsc(k.kw)+'</td>'
-        +'<td class="py-3 pr-3 max-w-[180px]">'+((k.terms||[]).map(chip).join('')||dash)+'</td>'
-        +'<td class="py-3 text-right text-[13px]">'+(k.search==null?dash:_kpWon(k.search))+'</td>'
-        +'<td class="py-3 text-right text-[13px] text-brand-gray">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
-        +'<td class="py-3 text-right text-[13px] font-bold text-brand-green">'+_kpWon(k.payment)+'원</td>'
-        +'<td class="py-3 text-right text-[13px]">'+cntFmt(k.payCnt)+'</td>'
-        +'<td class="py-3 text-right text-[13px] pr-2">'+(k.inflow==null?dash:_kpWon(k.inflow))+'</td>'
+      return '<tr class="border-b border-brand-border last:border-0 hover:bg-brand-bg/40 transition-colors">'
+        +'<td class="py-3.5 pl-4 text-[12px] text-brand-gray">'+(i+1)+'</td>'
+        +'<td class="py-3.5 font-bold text-[13px] whitespace-nowrap pr-4">'+_kpEsc(k.kw)+'</td>'
+        +'<td class="py-3.5 pr-4 max-w-[200px]">'+((k.terms||[]).map(chip).join('')||dash)+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+(k.search==null?dash:_kpWon(k.search))+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] text-brand-gray tabular-nums">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] font-bold text-brand-green tabular-nums">'+_kpWon(k.payment)+'원</td>'
+        +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+cntFmt(k.payCnt)+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] pr-4 tabular-nums">'+(k.inflow==null?dash:_kpWon(k.inflow))+'</td>'
         +'</tr>';
     }).join('');
-    const table='<div class="bg-white border border-brand-border rounded-2xl p-4 panel overflow-x-auto">'
-      +'<div class="text-[13px] font-bold mb-3">키워드별 성과</div>'
-      +'<table class="w-full min-w-[820px]"><thead><tr class="text-[11px] text-brand-gray border-b border-brand-border">'
-      +'<th class="py-2 pl-2 text-left font-semibold w-8">#</th>'
-      +'<th class="py-2 text-left font-semibold">키워드</th>'
-      +'<th class="py-2 text-left font-semibold">텀즈</th>'
-      +'<th class="py-2 text-right font-semibold">월간검색량</th>'
-      +'<th class="py-2 text-right font-semibold">평균노출순위</th>'
-      +'<th class="py-2 text-right font-semibold">결제금액</th>'
-      +'<th class="py-2 text-right font-semibold">결제수</th>'
-      +'<th class="py-2 text-right font-semibold pr-2">유입수</th></tr></thead>'
+    const th=(label,extra)=>'<th class="py-3 '+(extra||'')+' text-[12px] font-bold text-brand-gray">'+label+'</th>';
+    const arrow='<span class="text-brand-green ml-0.5">↓</span>';
+    const table='<div class="bg-white border border-brand-border rounded-2xl px-2 py-1 panel overflow-x-auto">'
+      +'<table class="w-full min-w-[860px]"><thead><tr class="border-b border-brand-border">'
+      +th('#','pl-4 text-left w-10')
+      +th('키워드','text-left pr-4')
+      +th('텀즈','text-left pr-4')
+      +th('월간검색량'+arrow,'text-right')
+      +th('평균노출순위'+arrow,'text-right')
+      +th('결제금액'+arrow,'text-right')
+      +th('결제수'+arrow,'text-right')
+      +th('유입수'+arrow,'text-right pr-4')
+      +'</tr></thead>'
       +'<tbody>'+totalRow+(rows||'<tr><td colspan="8" class="py-8 text-center text-brand-gray text-[13px]">키워드 데이터가 없습니다</td></tr>')+'</tbody></table></div>';
     const note=!_kpHasReal()?'<div class="text-[11px] text-brand-gray mt-3 text-center">* 샘플 데이터입니다. "스토어 추가 → 수집 시작하기"로 실제 스마트스토어센터 데이터를 연결하면 이 표가 실데이터로 채워집니다.</div>':'';
-    return head+sum+table+note;
-  }
-  function _kpSumCard(label,val,color){
-    const cmap={blue:'text-brand-blue',green:'text-brand-green',purple:'text-brand-purple'};
-    return '<div class="bg-white border border-brand-border rounded-2xl p-4 panel"><div class="text-[11px] text-brand-gray font-semibold mb-1">'+label+'</div>'
-      +'<div class="text-[1.3rem] font-black '+(cmap[color]||'')+'">'+val+'</div></div>';
+    return head+prodCard+periodBar+table+note;
   }
 
   // 데이터 가져오기 모달
