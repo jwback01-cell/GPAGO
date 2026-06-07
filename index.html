@@ -15345,6 +15345,67 @@ async function importGpagoMigrationData(evt) {
   // 데이터 가져오기 모달
   window.openKperfImport=function(){ const m=document.getElementById('kperf-import-modal'); if(m) m.classList.remove('hidden'); };
   window.closeKperfImport=function(){ const m=document.getElementById('kperf-import-modal'); if(m) m.classList.add('hidden'); };
+
+  // ── 비즈어드바이저 캡처 → 실데이터 파싱 ──
+  function _kpDecodeJwt(jwt){ try{ const p=String(jwt).split('.')[1]; const s=atob(p.replace(/-/g,'+').replace(/_/g,'/')); return JSON.parse(decodeURIComponent(escape(s))); }catch(_){ return null; } }
+  function _kpParsePartialArray(sample){
+    if(!sample) return [];
+    let s=String(sample).trim();
+    if(s.charAt(0)!=='[') return [];
+    const last=s.lastIndexOf('}');
+    if(last<0) return [];
+    try{ return JSON.parse(s.slice(0,last+1)+']'); }catch(_){}
+    try{ const l2=s.lastIndexOf('},'); if(l2>0) return JSON.parse(s.slice(0,l2+1)+']'); }catch(_){}
+    return [];
+  }
+  function _kpExtractRows(cap){
+    if(!cap) return [];
+    if(cap.truncated) return _kpParsePartialArray(cap.data&&cap.data.sample);
+    return Array.isArray(cap.data)?cap.data:[];
+  }
+  function _kpFindKeywordReport(caps){
+    let best=null, bestScore=-1;
+    for(const c of caps){
+      const rows=_kpExtractRows(c);
+      if(!rows.length || !rows[0] || !('ref_keyword' in rows[0])) continue; // 행에 ref_keyword 있으면 키워드 리포트
+      let score=rows.length;
+      if(!c.truncated) score+=1000000;            // 잘리지 않은 응답 최우선
+      if('pay_amount' in rows[0]) score+=500000;  // 실제 결제금액 보유
+      else if('attribution_pay_amount' in rows[0]) score+=100000;
+      if(score>bestScore){ bestScore=score; best=rows; }
+    }
+    return best;
+  }
+  function _kpBuildStoreFromCaptures(caps){
+    if(!Array.isArray(caps)) return null;
+    const kwRows=_kpFindKeywordReport(caps);
+    if(!kwRows) return null;
+    let mi='', siteId='';
+    for(const c of caps){ if(/createToken|delegate/i.test(c.url) && Array.isArray(c.data)){ siteId=c.data[1]||siteId; const pl=_kpDecodeJwt(c.data[0]); if(pl&&pl.mi) mi=pl.mi; } }
+    const keywords=kwRows
+      .filter(r=>r && r.ref_keyword && r.ref_keyword!=='(검색어 없음)')
+      .map(r=>({
+        kw:String(r.ref_keyword),
+        terms:String(r.ref_keyword).split(/\s+/).filter(Boolean),
+        search:null, rank:null,
+        payment:Math.round((r.pay_amount!=null?r.pay_amount:(r.attribution_pay_amount||0))||0),
+        payCnt:(r.num_purchase!=null?r.num_purchase:(r.attribution_num_purchase!=null?r.attribution_num_purchase:0)),
+        inflow:(r.num_interaction!=null?r.num_interaction:(r.simple_num_users!=null?r.simple_num_users:null)),
+      }))
+      .sort((a,b)=>(b.payment||0)-(a.payment||0));
+    if(!keywords.length) return null;
+    const totalPay=keywords.reduce((x,k)=>x+(k.payment||0),0);
+    const totalInflow=keywords.reduce((x,k)=>x+(k.inflow||0),0);
+    let range='';
+    for(const c of caps){ const m=String(c.url).match(/startDate=([\d-]+)&endDate=([\d-]+)/); if(m){ range=m[1]+' ~ '+m[2]; break; } }
+    return {
+      id:'rs_'+(siteId||'store'),
+      name:(mi?('스마트스토어 ('+mi+')'):'내 스마트스토어'),
+      emoji:'🛍️', status:'데이터 수집됨', range:range, real:true, collectedAt:Date.now(), siteId:siteId,
+      products:[ { no:'전체', name:'전체 스토어 키워드 성과', image:'', payment:totalPay, inflow:totalInflow, keywords:keywords } ],
+    };
+  }
+
   window.kperfStartImport=function(){
     closeKperfImport();
     let received=false;
@@ -15357,8 +15418,20 @@ async function importGpagoMigrationData(evt) {
       try{ localStorage.setItem('gpago_biz_captures', JSON.stringify(caps)); }catch(_){}
       console.log('[GPAGO kperf] 비즈어드바이저 캡처:', caps);
       if(!e.data.ok){ toast('수집 실패: '+(e.data.error||'확장프로그램 확인')); return; }
-      toast(caps.length+'개 API 응답 수집됨 — 형식 확인 화면 표시');
-      _kpRenderDiscovery(caps);
+      // 키워드 리포트 파싱 → 실제 스토어 생성
+      const store=_kpBuildStoreFromCaptures(caps);
+      if(store){
+        const stores=_kpLoadStores();
+        const idx=stores.findIndex(s=>s.id===store.id);
+        if(idx>=0) stores[idx]=store; else stores.unshift(store);
+        _kpSaveStores(stores);
+        const n=(store.products[0]&&store.products[0].keywords.length)||0;
+        toast('실데이터 연결 완료 ✓ 키워드 '+n+'개 수집');
+        _kp.step=1; _kp.storeId=null; _kp.productNo=null; renderKperf();
+      } else {
+        toast(caps.length+'개 응답 수집 — 키워드 리포트를 못 찾아 형식 확인 화면을 표시합니다');
+        _kpRenderDiscovery(caps);
+      }
     };
     window.addEventListener('message',handler);
     window.postMessage({source:'gpago-page', type:'GPAGO_REQUEST_BIZADVISOR'}, window.location.origin);
