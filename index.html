@@ -254,6 +254,7 @@
         <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="trend">순위 변동 추이</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-page="rtrank">실시간 순위추적</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="track">순위 추적</a>
+        <a class="nav-sub text-sm py-1 cursor-pointer" data-page="competitor">경쟁사 상품 분석</a>
         <a class="nav-sub text-sm py-1 cursor-pointer" data-kw-tab="settings">설정</a>
       </div>
       <a class="nav-item flex items-center gap-3.5 px-4 py-3.5 rounded-full font-medium text-[15px] cursor-pointer" data-page-group="sourcing" onclick="toggleSourcingGroup(event)">
@@ -1788,6 +1789,49 @@ PBT키캡	1180
         <div class="text-xs text-brand-gray">잠시만 기다려주세요</div>
       </section>
 </div>
+
+<!-- ═════════════ 경쟁사 상품 분석 ═════════════ -->
+<div id="page-competitor" class="page">
+  <div class="max-w-[1320px] mx-auto w-full">
+    <!-- 헤더 -->
+    <div class="flex items-center gap-2 mb-1">
+      <div class="w-1.5 h-7 bg-brand-blue rounded-full"></div>
+      <h1 class="text-[1.5rem] md:text-[1.9rem] font-black tracking-tight">경쟁사 상품 분석</h1>
+      <span class="text-[10px] font-black text-brand-blue bg-brand-blue-light px-2 py-0.5 rounded-full tracking-wider align-middle">BETA</span>
+    </div>
+    <p class="text-brand-gray text-[13px] md:text-[14px] mb-5 pl-3.5">경쟁사 상품을 등록하면 순위 · 월매출(재고 추적) · 가격 변동을 한눈에 추적합니다.</p>
+
+    <!-- 상품 등록 (URL 붙여넣기) -->
+    <div class="bg-white border border-brand-border rounded-2xl p-3 mb-5 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center panel">
+      <div class="flex items-center gap-2 px-2 text-brand-gray shrink-0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="text-[12px] font-bold whitespace-nowrap">상품 등록</span>
+      </div>
+      <input id="cmp-url-input" type="text" placeholder="네이버 쇼핑 / 스마트스토어 상품 URL 붙여넣기" class="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-blue" onkeydown="if(event.key==='Enter') addCompetitor()">
+      <button type="button" onclick="addCompetitor()" class="bg-brand-black text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#333] transition-colors whitespace-nowrap shrink-0">+ 추가</button>
+    </div>
+
+    <!-- 요약 카드 5개 -->
+    <div id="cmp-summary" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6"></div>
+
+    <!-- 본문: 경쟁사 비교 (좌) + 변동 사항 (우) -->
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5">
+      <!-- 좌: 경쟁사 비교 -->
+      <div>
+        <div class="flex items-center justify-between mb-3 px-1">
+          <h2 class="text-[1.05rem] font-bold">경쟁사 비교</h2>
+          <span id="cmp-count" class="text-[12px] text-brand-gray font-medium">0개 추적 중</span>
+        </div>
+        <div id="cmp-list" class="flex flex-col gap-3"></div>
+      </div>
+      <!-- 우: 변동 사항 -->
+      <div>
+        <h2 class="text-[1.05rem] font-bold mb-3 px-1">변동 사항</h2>
+        <div id="cmp-changes" class="bg-white border border-brand-border rounded-2xl p-4 panel flex flex-col gap-4 max-h-[70vh] overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+</div>
   </main>
 </div>
 
@@ -1811,6 +1855,13 @@ PBT키캡	1180
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
     폴더 삭제
   </button>
+</div>
+
+<!-- ═════════════ 경쟁사 상품 상세 모달 ═════════════ -->
+<div id="cmp-detail-modal" class="hidden fixed inset-0 z-[75] flex items-center justify-center bg-black/40 p-4" onclick="if(event.target===this)closeCompetitorDetail()">
+  <div class="bg-white rounded-3xl shadow-2xl w-full max-w-[920px] max-h-[92vh] overflow-y-auto">
+    <div id="cmp-detail-body" class="p-6 md:p-8"><!-- JS 렌더 --></div>
+  </div>
 </div>
 
 <!-- 로그인 / 회원가입 모달 -->
@@ -2428,9 +2479,9 @@ if (_supabase) {
 }
 
 // ═════════════ 페이지 전환 ═════════════
-const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords','rtrank','sourcing','prodsrc'];
+const PAGES = ['dashboard','scrap','analysis','special','archive','tools','keywords','rtrank','competitor','sourcing','prodsrc'];
 const SEMI_PAGES = ['analysis','special','archive','tools'];
-const KW_PAGES = ['keywords','rtrank'];  // v1.7.28+ : 키워드 그룹에 속하는 페이지
+const KW_PAGES = ['keywords','rtrank','competitor'];  // v1.7.28+ : 키워드 그룹에 속하는 페이지
 // 반자동 프로그램 그룹 접기/펼치기 + 키워드 분석으로 이동
 function toggleSemiGroup(e) {
   if (e) e.preventDefault();
@@ -2593,6 +2644,11 @@ function goPage(pageId) {
     try {
       if (typeof initSourcingPage === 'function') initSourcingPage();
     } catch(e) { console.error('[sourcing init]', e); }
+  }
+  if (pageId === 'competitor') {
+    try {
+      if (typeof renderCompetitor === 'function') renderCompetitor();
+    } catch(e) { console.error('[competitor init]', e); }
   }
   if (pageId === 'prodsrc') {
     try {
@@ -14460,6 +14516,360 @@ async function importGpagoMigrationData(evt) {
     ver.textContent = 'v3 · 순서고정-셀단위';
     document.body.appendChild(ver);
   } catch(_) {}
+})();
+</script>
+
+<!-- ═════════════ 경쟁사 상품 분석 (UI 골격 + 샘플데이터) ═════════════ -->
+<script>
+(function(){
+  function _cmpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function _won(n){ return Number(n||0).toLocaleString('ko-KR'); }
+  function _first(a){ return a && a.length ? a[0] : 0; }
+  function _last(a){ return a && a.length ? a[a.length-1] : 0; }
+
+  // 차트 색상
+  const C_RANK='#7C3AED', C_REV='#00C853', C_PRICE='#FF9800';
+  const _CMP_DATES=['5/14','5/15','5/16','5/17','5/18','5/19','5/20','5/21','5/22','5/23','5/24','5/25','5/26','5/27'];
+
+  // ── 샘플 데이터 (디자인 확정용 — 실데이터 연결은 다음 단계) ──
+  const _CMP_SAMPLE=[
+    { id:'c1', sample:true, mall:'네스프레소 코리아', emoji:'☕',
+      name:'네스프레소 버츄오 팝 커피머신 에스프레소 캡슐머신 정품', mainKeyword:'캡슐커피머신',
+      price:149000, freeShip:true, badges:['가격인하','정보변경'], stock:320,
+      rank:[5,5,4,4,3,4,3,2,3,2,3,3,2,3],
+      rev:[400,408,415,422,430,425,438,445,452,448,460,455,448,440],
+      priceS:[158000,158000,153100,153100,153100,151000,151000,149000,149000,149000,149000,149000,149000,149000],
+      history:[
+        {type:'정보변경', date:'5/17', text:'상품명 변경: 버츄오 팝 → 버츄오 팝 V2 한정판\n옵션 변경: 레드 추가, 블루 추가'},
+        {type:'가격인하', date:'5/17', text:'가격 인하 — 153,100원 → 149,000원'},
+        {type:'가격인하', date:'5/14', text:'가격 인하 — 158,000원 → 153,100원'},
+        {type:'순위상승', date:'5/12', text:'순위 상승 — 5위 → 3위'} ],
+      memo:'가격 인하 후 3위 진입, 추이 주시' },
+    { id:'c2', sample:true, mall:'테팔 공식몰', emoji:'🍳',
+      name:'테팔 에어프라이어 이지프라이 Plus 4.2L 프리미엄', mainKeyword:'에어프라이어',
+      price:89000, freeShip:true, badges:['정보변경'], stock:540,
+      rank:[8,8,7,9,7,6,7,7,6,7,6,5,6,6],
+      rev:[210,215,208,220,225,230,222,235,240,238,245,250,242,248],
+      priceS:[89000,89000,89000,89000,89000,89000,89000,89000,89000,89000,89000,89000,89000,89000],
+      history:[ {type:'정보변경', date:'5/16', text:'상품명 변경: 이지프라이 → 이지프라이 Plus\n옵션: 그레이 삭제, 민트 추가'} ],
+      memo:'' },
+    { id:'c3', sample:true, mall:'다이슨 코리아', emoji:'🌀',
+      name:'다이슨 V15 디텍트 컴플리트 무선청소기 SV22 정품', mainKeyword:'무선청소기',
+      price:798000, freeShip:true, badges:['가격인상'], stock:180,
+      rank:[3,3,2,3,4,3,2,2,3,4,3,2,3,3],
+      rev:[520,540,560,545,530,560,580,600,575,560,590,610,600,620],
+      priceS:[769000,769000,769000,769000,798000,798000,798000,798000,798000,798000,798000,798000,798000,798000],
+      history:[ {type:'가격인상', date:'5/18', text:'가격 인상 — 769,000원 → 798,000원'},
+        {type:'순위상승', date:'5/15', text:'순위 상승 — 4위 → 2위'} ],
+      memo:'가격 올렸는데도 순위 유지 — 브랜드 파워' },
+    { id:'c4', sample:true, mall:'삼성전자 공식몰', emoji:'✨',
+      name:'삼성 비스포크 제트 AI 청소기 VS20CB95923H', mainKeyword:'무선청소기',
+      price:1290000, freeShip:true, badges:['정보변경','가격인하'], stock:95,
+      rank:[6,6,7,6,5,6,5,4,5,6,5,5,4,5],
+      rev:[800,820,810,830,850,840,860,880,870,860,890,900,885,910],
+      priceS:[1390000,1390000,1390000,1290000,1290000,1290000,1290000,1290000,1290000,1290000,1290000,1290000,1290000,1290000],
+      history:[ {type:'가격인하', date:'5/17', text:'가격 인하 — 1,390,000원 → 1,290,000원'},
+        {type:'정보변경', date:'5/16', text:'옵션 변경: 클린스테이션 색상 추가'} ],
+      memo:'' },
+    { id:'c5', sample:true, mall:'발뮤다 코리아', emoji:'📦',
+      name:'발뮤다 더 토스터 K05A-SE 시즌 에디션', mainKeyword:'토스터',
+      price:429000, freeShip:true, badges:[], stock:210,
+      rank:[10,10,9,11,10,9,10,11,10,9,10,10,9,10],
+      rev:[150,148,152,149,155,150,148,153,151,149,152,150,148,150],
+      priceS:[429000,429000,429000,429000,429000,429000,429000,429000,429000,429000,429000,429000,429000,429000],
+      history:[],
+      memo:'' },
+    { id:'c6', sample:true, mall:'브레빌 코리아', emoji:'☕',
+      name:'브레빌 바리스타 익스프레스 BES870BS', mainKeyword:'에스프레소머신',
+      price:689000, freeShip:false, badges:['가격인상'], stock:130,
+      rank:[7,7,8,7,6,7,8,7,6,7,6,7,6,7],
+      rev:[300,310,305,315,320,318,325,330,328,335,340,338,332,345],
+      priceS:[659000,659000,659000,659000,659000,659000,689000,689000,689000,689000,689000,689000,689000,689000],
+      history:[ {type:'가격인상', date:'5/20', text:'가격 인상 — 659,000원 → 689,000원'} ],
+      memo:'' },
+  ];
+
+  // ── 사용자 추가 상품 / 메모 오버라이드 (localStorage) ──
+  function _cmpLoadAdded(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_added')||'[]'); }catch(_){ return []; } }
+  function _cmpSaveAdded(a){ try{ localStorage.setItem('gpago_cmp_added', JSON.stringify(a)); }catch(_){} }
+  function _cmpLoadMemos(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_memo')||'{}'); }catch(_){ return {}; } }
+  function _cmpSaveMemos(m){ try{ localStorage.setItem('gpago_cmp_memo', JSON.stringify(m)); }catch(_){} }
+
+  // 전체 상품 = 샘플 + 추가 (메모 오버라이드 병합)
+  function _cmpAll(){
+    const memos=_cmpLoadMemos();
+    const list=_CMP_SAMPLE.concat(_cmpLoadAdded());
+    return list.map(p=> (memos[p.id]!=null ? {...p, memo:memos[p.id]} : p));
+  }
+  function _cmpGet(id){ return _cmpAll().find(p=>p.id===id); }
+
+  // ── 변동 타입 색상 ──
+  function _cmpTypeStyle(type){
+    if(type==='가격인하') return {dot:'#00C853', chip:'text-brand-green bg-brand-green-light'};
+    if(type==='가격인상') return {dot:'#E91E63', chip:'text-brand-pink bg-brand-pink-light'};
+    if(type==='정보변경') return {dot:'#7C3AED', chip:'text-brand-purple bg-brand-purple-light'};
+    if(type==='순위상승') return {dot:'#2196F3', chip:'text-brand-blue bg-brand-blue-light'};
+    return {dot:'#8E8E93', chip:'text-brand-gray bg-brand-bg'};
+  }
+  function _cmpBadge(type){
+    const s=_cmpTypeStyle(type);
+    return `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${s.chip}">${_cmpEsc(type)}</span>`;
+  }
+  function _cmpDelta(text,color,up){
+    const map={green:'text-brand-green bg-brand-green-light',pink:'text-brand-pink bg-brand-pink-light',blue:'text-brand-blue bg-brand-blue-light',gray:'text-brand-gray bg-brand-bg'};
+    const arrow= up===true?'▲':up===false?'▼':'–';
+    return `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${map[color]||map.gray}">${arrow} ${_cmpEsc(text)}</span>`;
+  }
+
+  // ── SVG 부드러운 영역 차트 ──
+  function _cmpSmoothPath(pts){
+    if(!pts.length) return '';
+    if(pts.length<2) return 'M'+pts[0][0]+','+pts[0][1];
+    let d='M'+pts[0][0]+','+pts[0][1];
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||p2;
+      const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+      const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+      d+=' C'+c1x+','+c1y+' '+c2x+','+c2y+' '+p2[0]+','+p2[1];
+    }
+    return d;
+  }
+  let _cmpGradSeq=0;
+  function _cmpChart(values,color,invert){
+    const W=320,H=110,padX=6,padTop=12,padBot=8;
+    const vals=(values||[]).slice();
+    if(!vals.length) return '';
+    let mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+    if(mn===mx){ mn-=1; mx+=1; }
+    const n=vals.length;
+    const X=i=> padX+(W-2*padX)*(n===1?0.5:i/(n-1));
+    const Y=v=>{ const norm=(v-mn)/(mx-mn); const t=invert?norm:(1-norm); return padTop+(H-padTop-padBot)*t; };
+    const pts=vals.map((v,i)=>[X(i),Y(v)]);
+    const line=_cmpSmoothPath(pts);
+    const area=line+' L'+X(n-1)+','+H+' L'+X(0)+','+H+' Z';
+    const gid='cmpg'+(++_cmpGradSeq);
+    const lp=pts[pts.length-1];
+    return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" class="w-full h-full" style="display:block">'
+      +'<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
+      +'<stop offset="0%" stop-color="'+color+'" stop-opacity="0.22"/>'
+      +'<stop offset="100%" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'
+      +'<path d="'+area+'" fill="url(#'+gid+')"/>'
+      +'<path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>'
+      +'<circle cx="'+lp[0]+'" cy="'+lp[1]+'" r="3.5" fill="#fff" stroke="'+color+'" stroke-width="2.5" vector-effect="non-scaling-stroke"/>'
+      +'</svg>';
+  }
+
+  // ── 요약 카드 ──
+  function _cmpSummaryCard(icon,label,big,sub,color){
+    const cmap={blue:'text-brand-blue bg-brand-blue-light',purple:'text-brand-purple bg-brand-purple-light',green:'text-brand-green bg-brand-green-light',pink:'text-brand-pink bg-brand-pink-light',orange:'text-brand-orange bg-brand-orange-light'};
+    return '<div class="bg-white border border-brand-border rounded-2xl p-4 panel flex items-center gap-3">'
+      +'<div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 '+(cmap[color]||cmap.blue)+'">'+icon+'</div>'
+      +'<div class="min-w-0"><div class="text-[11px] text-brand-gray font-semibold">'+_cmpEsc(label)+'</div>'
+      +'<div class="text-[1.05rem] font-black text-brand-black leading-tight truncate">'+big+'</div>'
+      +(sub?'<div class="text-[10px] text-brand-gray">'+_cmpEsc(sub)+'</div>':'')+'</div></div>';
+  }
+
+  // ── 메인 렌더 ──
+  window.renderCompetitor=function(){
+    const all=_cmpAll();
+    const data=all.filter(p=>!p.pending);
+    // 집계
+    const totalRev=data.reduce((s,p)=>s+_last(p.rev),0);
+    const priceDown=data.filter(p=>(p.badges||[]).includes('가격인하')).length;
+    const priceUp=data.filter(p=>(p.badges||[]).includes('가격인상')).length;
+    const infoChg=data.filter(p=>(p.badges||[]).includes('정보변경')).length;
+    const changed=data.filter(p=>(p.badges||[]).length>0).length;
+
+    const ic=(p)=>'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">'+p+'</svg>';
+    const sumEl=document.getElementById('cmp-summary');
+    if(sumEl){ sumEl.innerHTML=[
+      _cmpSummaryCard(ic('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),'추적 상품','총 '+_won(totalRev)+'만원',all.length+'개', 'blue'),
+      _cmpSummaryCard(ic('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),'변동 사항',changed+'건','감지','purple'),
+      _cmpSummaryCard(ic('<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>'),'가격 인하',priceDown+'개','인하','green'),
+      _cmpSummaryCard(ic('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'),'가격 인상',priceUp+'개','인상','pink'),
+      _cmpSummaryCard(ic('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'),'정보 변경',infoChg+'개','변경','orange'),
+    ].join(''); }
+
+    const cntEl=document.getElementById('cmp-count');
+    if(cntEl) cntEl.textContent=all.length+'개 추적 중';
+
+    // 좌: 경쟁사 비교 리스트
+    const listEl=document.getElementById('cmp-list');
+    if(listEl){
+      if(!all.length){
+        listEl.innerHTML='<div class="bg-white border border-dashed border-brand-border rounded-2xl p-10 text-center text-sm text-brand-gray">등록된 경쟁사 상품이 없습니다. 위에 상품 URL을 붙여넣어 추가하세요.</div>';
+      } else {
+        listEl.innerHTML=all.map(p=>{
+          if(p.pending){
+            return '<div class="w-full bg-white border border-brand-border rounded-2xl p-4 panel flex items-center gap-4">'
+              +'<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center shrink-0"><div class="w-5 h-5 rounded-full border-2 border-brand-bg border-t-brand-blue animate-spin"></div></div>'
+              +'<div class="flex-1 min-w-0"><div class="text-[11px] text-brand-gray font-semibold mb-0.5">추가됨</div>'
+              +'<div class="text-[13px] font-bold text-brand-black truncate">'+_cmpEsc(p.name||p.url)+'</div>'
+              +'<div class="text-[11px] text-brand-orange mt-0.5">데이터 수집 대기 — 다음 단계에서 연결</div></div>'
+              +'<button onclick="deleteCompetitor(\''+p.id+'\')" class="text-brand-gray hover:text-brand-pink text-lg px-2 shrink-0" title="삭제">×</button></div>';
+          }
+          const badges=(p.badges||[]).map(_cmpBadge).join(' ');
+          return '<button type="button" onclick="openCompetitorDetail(\''+p.id+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-blue/50 transition-colors flex items-center gap-4">'
+            +'<div class="w-12 h-12 rounded-xl bg-brand-bg flex items-center justify-center text-2xl shrink-0">'+(p.emoji||'🛍️')+'</div>'
+            +'<div class="flex-1 min-w-0">'
+              +'<div class="flex items-center gap-1.5 mb-0.5"><span class="text-[11px] text-brand-gray font-semibold">'+_cmpEsc(p.mall)+'</span>'
+              +(p.sample?'<span class="text-[9px] text-brand-gray bg-brand-bg px-1.5 py-0.5 rounded font-bold">샘플</span>':'')+'</div>'
+              +'<div class="text-[14px] font-bold text-brand-black truncate">'+_cmpEsc(p.name)+'</div></div>'
+            +'<div class="text-right shrink-0 flex flex-col items-end gap-1.5">'
+              +(badges?'<div class="flex gap-1 flex-wrap justify-end">'+badges+'</div>':'')
+              +'<div class="text-[15px] font-black">'+_won(p.price)+'원</div>'
+              +(p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':'')
+            +'</div></button>';
+        }).join('');
+      }
+    }
+
+    // 우: 변동 사항 (타입별 그룹)
+    const chEl=document.getElementById('cmp-changes');
+    if(chEl){
+      const groups=[
+        {type:'정보변경'}, {type:'가격인하'}, {type:'가격인상'}, {type:'순위상승'},
+      ];
+      let html='';
+      groups.forEach(g=>{
+        const items=[];
+        data.forEach(p=> (p.history||[]).forEach(h=>{ if(h.type===g.type) items.push({p,h}); }));
+        if(!items.length) return;
+        const s=_cmpTypeStyle(g.type);
+        html+='<div><div class="flex items-center gap-2 mb-2"><span class="w-2 h-2 rounded-full" style="background:'+s.dot+'"></span>'
+          +'<span class="text-[12px] font-bold">'+_cmpEsc(g.type)+'</span><span class="text-[11px] text-brand-gray">'+items.length+'건</span></div>'
+          +'<div class="flex flex-col gap-2 pl-4">';
+        items.forEach(({p,h})=>{
+          html+='<button type="button" onclick="openCompetitorDetail(\''+p.id+'\')" class="text-left w-full hover:bg-brand-bg rounded-lg px-2 py-1.5 -mx-2 transition-colors">'
+            +'<div class="text-[12px] font-bold text-brand-black truncate">'+_cmpEsc(p.name)+'</div>'
+            +'<div class="text-[11px] text-brand-gray mt-0.5 whitespace-pre-line">'+_cmpEsc(h.text)+'</div></button>';
+        });
+        html+='</div></div>';
+      });
+      chEl.innerHTML= html || '<div class="text-[12px] text-brand-gray text-center py-6">감지된 변동 사항이 없습니다</div>';
+    }
+  };
+
+  // ── 상세 모달 ──
+  window.openCompetitorDetail=function(id){
+    const p=_cmpGet(id);
+    const modal=document.getElementById('cmp-detail-modal');
+    const body=document.getElementById('cmp-detail-body');
+    if(!p||!modal||!body) return;
+
+    const header='<div class="flex items-start gap-4 mb-6">'
+      +'<div class="w-14 h-14 rounded-2xl bg-brand-bg flex items-center justify-center text-3xl shrink-0">'+(p.emoji||'🛍️')+'</div>'
+      +'<div class="flex-1 min-w-0"><div class="text-[12px] text-brand-gray font-semibold mb-0.5">'+_cmpEsc(p.mall||'')+'</div>'
+      +'<div class="text-[1.25rem] font-black text-brand-black leading-snug">'+_cmpEsc(p.name||p.url||'')+'</div>'
+      +(p.mainKeyword?'<div class="mt-2"><span class="text-[11px] text-brand-gray mr-1.5">메인키워드</span><span class="text-[12px] font-bold text-brand-blue bg-brand-blue-light px-2.5 py-1 rounded-full">'+_cmpEsc(p.mainKeyword)+'</span></div>':'')
+      +'</div>'
+      +'<button onclick="closeCompetitorDetail()" class="text-brand-gray hover:text-brand-black text-2xl leading-none shrink-0 px-2">×</button></div>';
+
+    if(p.pending){
+      body.innerHTML=header
+        +'<div class="bg-brand-bg rounded-2xl p-10 text-center text-sm text-brand-gray">데이터 수집 대기 중입니다.<br>순위 · 월매출(재고 추적) · 가격 수집은 다음 단계에서 연결됩니다.<br><span class="text-[11px] break-all">'+_cmpEsc(p.url||'')+'</span></div>'
+        +'<div class="mt-4 text-right"><button onclick="deleteCompetitor(\''+p.id+'\')" class="text-[12px] text-brand-pink font-bold hover:underline">상품 삭제</button></div>';
+      modal.classList.remove('hidden'); return;
+    }
+
+    // 델타 계산 (기간 첫값 대비 마지막값)
+    const rankImp=_first(p.rank)-_last(p.rank);        // +면 순위 상승(개선)
+    const revD=_last(p.rev)-_first(p.rev);             // +면 매출 증가
+    const priceD=_last(p.priceS)-_first(p.priceS);     // +면 가격 인상
+    const d0=_CMP_DATES[0], d1=_CMP_DATES[_CMP_DATES.length-1];
+
+    function metricCard(label,big,deltaHtml,chart,color){
+      return '<div class="bg-brand-bg rounded-2xl p-4">'
+        +'<div class="flex items-center justify-between mb-1"><span class="text-[12px] text-brand-gray font-bold">'+label+'</span>'+deltaHtml+'</div>'
+        +'<div class="text-[1.6rem] font-black text-brand-black mb-2">'+big+'</div>'
+        +'<div class="h-24">'+chart+'</div>'
+        +'<div class="flex justify-between text-[10px] text-brand-gray mt-1"><span>'+d0+'</span><span>'+d1+'</span></div></div>';
+    }
+
+    const cards='<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">'
+      +metricCard('순위', _last(p.rank)+'위',
+          _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)),
+          _cmpChart(p.rank,C_RANK,true),'purple')
+      +metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적 추정)</span>', _won(_last(p.rev))+'만원',
+          _cmpDelta(_won(Math.abs(revD))+'만원', revD>=0?'green':'pink', revD>0?true:(revD<0?false:null)),
+          _cmpChart(p.rev,C_REV,false),'green')
+      +metricCard('가격', _won(_last(p.priceS))+'원',
+          _cmpDelta(_won(Math.abs(priceD))+'원', priceD>0?'pink':'green', priceD>0?true:(priceD<0?false:null)),
+          _cmpChart(p.priceS,C_PRICE,false),'orange')
+      +'</div>';
+
+    // 변경 내역 타임라인
+    let hist='<div class="mb-6"><div class="text-[13px] font-bold mb-3">변경 내역</div>';
+    if((p.history||[]).length){
+      hist+='<div class="flex flex-col gap-3">';
+      p.history.forEach(h=>{
+        const s=_cmpTypeStyle(h.type);
+        hist+='<div class="flex gap-3"><span class="w-2 h-2 rounded-full mt-1.5 shrink-0" style="background:'+s.dot+'"></span>'
+          +'<div class="flex-1"><div class="flex items-center gap-2 mb-0.5">'+_cmpBadge(h.type)+'<span class="text-[11px] text-brand-gray">'+_cmpEsc(h.date)+'</span></div>'
+          +'<div class="text-[12px] text-brand-black whitespace-pre-line leading-relaxed">'+_cmpEsc(h.text)+'</div></div></div>';
+      });
+      hist+='</div>';
+    } else { hist+='<div class="text-[12px] text-brand-gray">변경 내역이 없습니다</div>'; }
+    hist+='</div>';
+
+    // 메모
+    const memo='<div><div class="text-[13px] font-bold mb-2">메모</div>'
+      +'<div class="bg-brand-orange-light/40 border border-brand-orange-light rounded-xl p-3 flex gap-2 items-start">'
+      +'<span class="text-base shrink-0">📝</span>'
+      +'<textarea id="cmp-memo-input" rows="2" class="flex-1 bg-transparent text-[13px] resize-none focus:outline-none placeholder:text-brand-gray" placeholder="이 상품에 대한 메모를 입력하세요">'+_cmpEsc(p.memo||'')+'</textarea>'
+      +'<button onclick="saveCompetitorMemo(\''+p.id+'\')" class="text-[12px] font-bold text-brand-blue hover:underline shrink-0 mt-0.5">저장</button></div></div>'
+      +(p.sample?'':'<div class="mt-4 text-right"><button onclick="deleteCompetitor(\''+p.id+'\')" class="text-[12px] text-brand-pink font-bold hover:underline">상품 삭제</button></div>');
+
+    body.innerHTML=header+cards+hist+memo;
+    modal.classList.remove('hidden');
+  };
+
+  window.closeCompetitorDetail=function(){
+    const m=document.getElementById('cmp-detail-modal');
+    if(m) m.classList.add('hidden');
+  };
+
+  window.saveCompetitorMemo=function(id){
+    const inp=document.getElementById('cmp-memo-input');
+    if(!inp) return;
+    const memos=_cmpLoadMemos(); memos[id]=inp.value; _cmpSaveMemos(memos);
+    // 추가 상품이면 객체에도 반영
+    const added=_cmpLoadAdded(); const a=added.find(x=>x.id===id); if(a){ a.memo=inp.value; _cmpSaveAdded(added); }
+    if(typeof toast==='function') toast('메모를 저장했습니다');
+    renderCompetitor();
+  };
+
+  window.addCompetitor=function(){
+    const inp=document.getElementById('cmp-url-input');
+    if(!inp) return;
+    const url=(inp.value||'').trim();
+    if(!url){ if(typeof toast==='function') toast('상품 URL을 입력해 주세요'); return; }
+    if(!/naver\.com|smartstore|shopping/i.test(url)){ if(typeof toast==='function') toast('네이버 쇼핑/스마트스토어 URL을 입력해 주세요'); return; }
+    const idm=url.match(/products\/(\d+)/)||url.match(/(\d{6,})/);
+    const pid=idm?idm[1]:String(Date.now());
+    const added=_cmpLoadAdded();
+    if(added.some(x=>x.id==='u'+pid)){ if(typeof toast==='function') toast('이미 추가된 상품입니다'); return; }
+    added.unshift({ id:'u'+pid, pending:true, url, name:'', addedAt:Date.now() });
+    _cmpSaveAdded(added);
+    inp.value='';
+    if(typeof toast==='function') toast('상품을 추가했습니다 — 데이터 수집은 다음 단계에서 연결됩니다');
+    renderCompetitor();
+  };
+
+  window.deleteCompetitor=function(id){
+    const added=_cmpLoadAdded().filter(x=>x.id!==id);
+    _cmpSaveAdded(added);
+    const memos=_cmpLoadMemos(); if(memos[id]!=null){ delete memos[id]; _cmpSaveMemos(memos); }
+    closeCompetitorDetail();
+    if(typeof toast==='function') toast('상품을 삭제했습니다');
+    renderCompetitor();
+  };
+
+  // ESC 로 모달 닫기
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('cmp-detail-modal'); if(m&&!m.classList.contains('hidden')) closeCompetitorDetail(); } });
+
+  // 세션 복원으로 첫 로드 시 이 페이지가 이미 활성일 경우 렌더 (goPage 훅이 늦게 정의되는 케이스 대비)
+  try { const pc=document.getElementById('page-competitor'); if(pc && pc.classList.contains('active')) renderCompetitor(); } catch(_){}
 })();
 </script>
 </body>
