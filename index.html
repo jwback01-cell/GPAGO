@@ -15347,8 +15347,57 @@ async function importGpagoMigrationData(evt) {
   window.closeKperfImport=function(){ const m=document.getElementById('kperf-import-modal'); if(m) m.classList.add('hidden'); };
   window.kperfStartImport=function(){
     closeKperfImport();
-    toast('스마트스토어센터 데이터 수집은 다음 단계에서 연결됩니다 (확장프로그램 작업 필요)');
+    let received=false;
+    const handler=(e)=>{
+      if(e.source!==window) return;
+      if(!e.data||e.data.source!=='gpago-extension'||e.data.type!=='GPAGO_BIZADVISOR_RESULT') return;
+      received=true; window.removeEventListener('message',handler);
+      const caps=e.data.captures||[];
+      window._bizCaptures=caps;
+      try{ localStorage.setItem('gpago_biz_captures', JSON.stringify(caps)); }catch(_){}
+      console.log('[GPAGO kperf] 비즈어드바이저 캡처:', caps);
+      if(!e.data.ok){ toast('수집 실패: '+(e.data.error||'확장프로그램 확인')); return; }
+      toast(caps.length+'개 API 응답 수집됨 — 형식 확인 화면 표시');
+      _kpRenderDiscovery(caps);
+    };
+    window.addEventListener('message',handler);
+    window.postMessage({source:'gpago-page', type:'GPAGO_REQUEST_BIZADVISOR'}, window.location.origin);
+    toast('스마트스토어센터를 엽니다… 팝업에서 [데이터분석 ▸ 판매분석 ▸ 판매성과] 화면을 보면 자동 수집됩니다 (최대 2분)');
+    setTimeout(()=>{ if(!received){ window.removeEventListener('message',handler); toast('수집 응답이 없습니다 — GPAGO 확장프로그램(1.7.43+) 설치·활성화를 확인하세요'); } }, 140000);
   };
+
+  // 수집된 API 응답 형식 확인용 디스커버리 패널 (실데이터 파서 연결 전 단계)
+  function _kpRenderDiscovery(caps){
+    const stepsEl=document.getElementById('kperf-steps'); if(stepsEl) stepsEl.innerHTML='';
+    const body=document.getElementById('kperf-body'); if(!body) return;
+    if(!caps.length){
+      body.innerHTML='<div class="bg-white border border-brand-border rounded-2xl p-10 text-center text-sm text-brand-gray">수집된 API 응답이 없습니다.<br>셀러센터에서 <b>데이터분석 ▸ 판매분석 ▸ 판매성과(검색채널)</b> 화면을 한 번 열어 데이터가 보이게 한 뒤 다시 시도하세요.</div>'
+        +'<div class="text-center mt-4"><button onclick="renderKperf()" class="text-[12px] text-brand-gray hover:text-brand-black font-bold">← 돌아가기</button></div>';
+      return;
+    }
+    const rows=caps.map((c)=>{
+      const keys=c.truncated?(c.data&&c.data.topKeys):(Array.isArray(c.data)?('array('+c.data.length+')'):Object.keys(c.data||{}).slice(0,30));
+      const kstr=Array.isArray(keys)?keys.join(', '):String(keys||'');
+      return '<div class="border-b border-brand-border last:border-0 py-3">'
+        +'<div class="text-[12px] font-bold text-brand-blue break-all">'+_kpEsc(c.url)+'</div>'
+        +'<div class="text-[11px] text-brand-gray mt-1">키: '+_kpEsc(kstr)+(c.truncated?' (응답이 커서 일부만 저장)':'')+'</div></div>';
+    }).join('');
+    body.innerHTML='<div class="bg-white border border-brand-border rounded-2xl p-5 panel">'
+      +'<div class="flex items-center justify-between mb-2 flex-wrap gap-2"><div class="font-black text-[1rem]">수집된 API 응답 '+caps.length+'개 <span class="text-[11px] font-medium text-brand-gray">(형식 확인용)</span></div>'
+      +'<button onclick="kperfCopyCaptures()" class="text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80">전체 JSON 복사</button></div>'
+      +'<div class="text-[12px] text-brand-gray mb-3">이 중 <b>키워드별 결제·유입</b> 데이터가 담긴 응답을 찾아 표에 연결합니다. <b>전체 JSON 복사</b>를 눌러 전달해 주시면 정확히 파싱해 드립니다.</div>'
+      +rows+'</div>'
+      +'<div class="text-center mt-4"><button onclick="renderKperf()" class="text-[12px] text-brand-gray hover:text-brand-black font-bold">← 분석 화면으로 돌아가기</button></div>';
+  }
+  window.kperfCopyCaptures=function(){
+    const t=JSON.stringify(window._bizCaptures||[], null, 2);
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(()=>toast('복사됨 ✓ 개발자에게 붙여넣어 주세요')).catch(()=>_kpFallbackCopy(t)); }
+      else _kpFallbackCopy(t);
+    }catch(_){ _kpFallbackCopy(t); }
+  };
+  function _kpFallbackCopy(t){ try{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('복사됨 ✓'); }catch(_){ toast('복사 실패 — F12 콘솔에서 window._bizCaptures 확인'); } }
+
   window.kperfExportToast=function(){ toast('Excel 다운로드는 실데이터 연결 단계에서 제공됩니다'); };
 
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('kperf-import-modal'); if(m&&!m.classList.contains('hidden')) closeKperfImport(); } });
