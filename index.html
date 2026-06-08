@@ -15311,12 +15311,17 @@ async function importGpagoMigrationData(evt) {
       +'<div class="flex items-center gap-1 bg-brand-bg rounded-xl p-1">'+pbtns
       +'<span class="w-px h-5 bg-brand-border mx-1"></span>'
       +'<button onclick="kperfExportToast()" class="px-3 py-1.5 rounded-lg text-[13px] font-bold text-brand-gray hover:text-brand-black inline-flex items-center gap-1"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>직접 선택</button></div>'
+      +'<div class="flex items-center gap-2">'
+      +(p.real?'<button onclick="kperfFetchVolumes()" class="text-[12px] font-bold text-brand-blue border border-brand-blue-light bg-brand-blue-light/40 px-3 py-1.5 rounded-lg hover:opacity-80">월간검색량 조회</button>':'')
       +'<div class="text-[13px] font-black text-brand-blue inline-flex items-center gap-2"><span class="text-brand-gray cursor-default">‹</span>'+_kpEsc(_kpRangeDates(Number(_kp.range)))+'<span class="text-brand-gray cursor-default">›</span></div>'
-      +'</div>';
+      +'</div></div>';
 
     const chip=t=>'<span class="inline-block bg-brand-blue-light text-brand-blue text-[10px] font-bold px-1.5 py-0.5 rounded mr-0.5 mb-0.5">'+_kpEsc(t)+'</span>';
     const dash='<span class="text-brand-gray">—</span>';
     const cntFmt=v=>(v==null?dash:Number(v).toFixed(1));
+    // 월간검색량 — GPAGO 검색광고 API 캐시 재사용
+    const _volCache=(typeof _loadKwVolume==='function')?(_loadKwVolume()||{}):{};
+    const volTxt=(kw)=>{ const v=_volCache[kw]; if(!v||v.error||v.total==null) return dash; return (typeof v.total==='number'?_kpWon(v.total):_kpEsc(String(v.total))); };
     const totalRow='<tr class="bg-brand-bg/70 font-bold">'
       +'<td class="py-3.5 pl-4 rounded-l-xl"></td><td class="py-3.5 text-[13px]">총합</td><td class="py-3.5"></td>'
       +'<td class="py-3.5 text-right text-[13px]"></td><td class="py-3.5 text-right text-[13px]"></td>'
@@ -15328,7 +15333,7 @@ async function importGpagoMigrationData(evt) {
         +'<td class="py-3.5 pl-4 text-[12px] text-brand-gray">'+(i+1)+'</td>'
         +'<td class="py-3.5 font-bold text-[13px] whitespace-nowrap pr-4">'+_kpEsc(k.kw)+'</td>'
         +'<td class="py-3.5 pr-4 max-w-[200px]">'+((k.terms||[]).map(chip).join('')||dash)+'</td>'
-        +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+(k.search==null?dash:_kpWon(k.search))+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+(p.real?volTxt(k.kw):(k.search==null?dash:_kpWon(k.search)))+'</td>'
         +'<td class="py-3.5 text-right text-[13px] text-brand-gray tabular-nums">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
         +'<td class="py-3.5 text-right text-[13px] font-bold text-brand-green tabular-nums">'+_kpWon(k.payment)+'원</td>'
         +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+cntFmt(k.payCnt)+'</td>'
@@ -15491,6 +15496,25 @@ async function importGpagoMigrationData(evt) {
   function _kpFallbackCopy(t){ try{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('복사됨 ✓'); }catch(_){ toast('복사 실패 — F12 콘솔에서 window._bizCaptures 확인'); } }
 
   window.kperfExportToast=function(){ toast('Excel 다운로드는 실데이터 연결 단계에서 제공됩니다'); };
+
+  // 월간검색량 채우기 — GPAGO 검색광고 API(_fetchAndCacheKwVolumeBatch) 재사용
+  window.kperfFetchVolumes=async function(){
+    if(typeof _kwHasSaKey==='function' && !_kwHasSaKey()){ toast('검색광고 API 키를 먼저 등록하세요 (키워드 순위 → 설정)'); return; }
+    if(typeof _fetchAndCacheKwVolumeBatch!=='function'){ toast('검색량 조회 기능을 찾을 수 없습니다'); return; }
+    const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
+    if(!p) return;
+    const cache=(typeof _loadKwVolume==='function')?(_loadKwVolume()||{}):{};
+    // 아직 캐시에 없는 키워드만, 결제금액 높은 순 상위 60개까지 (rate-limit 보호)
+    const kws=(p.keywords||[]).map(k=>k.kw).filter(Boolean).filter(kw=>!cache[kw]).slice(0,60);
+    if(!kws.length){ toast('이미 조회된 검색량입니다'); renderKperf(); return; }
+    toast('월간검색량 조회 중… ('+kws.length+'개, 잠시만요)');
+    for(let i=0;i<kws.length;i+=5){
+      try{ await _fetchAndCacheKwVolumeBatch(kws.slice(i,i+5)); }catch(_){}
+      await new Promise(r=>setTimeout(r,300));
+    }
+    toast('월간검색량 조회 완료 ✓');
+    renderKperf();
+  };
 
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('kperf-import-modal'); if(m&&!m.classList.contains('hidden')) closeKperfImport(); } });
   try { const pk=document.getElementById('page-kperf'); if(pk && pk.classList.contains('active')) renderKperf(); } catch(_){}
