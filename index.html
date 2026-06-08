@@ -15152,6 +15152,45 @@ async function importGpagoMigrationData(evt) {
   function _kpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function _kpWon(n){return Number(n||0).toLocaleString('ko-KR');}
 
+  // ── 텀즈 분해 (도메인 사전 기반 그리디 longest-match) ──
+  //   네이버 NLU 대신 로컬 사전으로 키워드를 단어 단위로 쪼갬 (재수집 없이 렌더 시 적용)
+  const _KP_DICT = ([
+    // 이어폰/버즈/에어팟 모델 (긴 것 우선)
+    '갤럭시버즈프로4','갤럭시버즈4프로','갤럭시버즈라이브','갤럭시버즈2프로','갤럭시버즈4','갤럭시버즈3','갤럭시버즈2','갤럭시버즈프로','갤럭시버즈',
+    '버즈4프로','버즈프로4','버즈2프로','버즈프로','버즈라이브','버즈4','버즈3','버즈2','버즈fe','버즈',
+    '에어팟프로3','에어팟프로2','에어팟프로','에어팟4세대','에어팟3세대','에어팟2세대','에어팟맥스','에어팟3','에어팟2','에어팟',
+    '오픈핏프로','오픈핏','샥즈','t921','t010',
+    // 키보드/키캡
+    '기계식키보드키캡','키보드키캡','기계식키보드','풀배열키캡','독거미키캡','측각키캡','그라데이션키캡','이중사출','커스텀키캡','데스크세트',
+    '키보드','키캡','풀배열','측각','그라데이션','펑션키','무각','독거미','커스텀','책상꾸미기','저소음',
+    // 청소기/커피/생활
+    '무선청소기','청소기','캡슐커피머신','에스프레소머신','커피머신','로스팅','에스프레소','시그니처','블렌드','원두','커피','생두',
+    '에어프라이어','토스터','수건','타올','뱀부','벨리움','답례품',
+    // 카테고리/부속
+    '커피머신','케이스','케이스','커버','파우치','케이블','충전기','거치대','그립톡','보호필름','필름','머신','키링','카라비너','가방','케틀',
+    // 브랜드/셀러
+    '삼성','애플','갤럭시','다이슨','테팔','발뮤다','브레빌','네스프레소','폴바셋','송월','다올랜드','다올','빅픽','미아크','신지모루','신지몰스토어',
+    // 수식어/속성
+    '미끄럼','방지','튼튼한','단단한','심플한','커플','남친선물','여친선물','생일선물','선물','가성비','잠금','일체형','투명','색감좋은','한정판','시즌에디션','에디션','정품','호텔',
+    '블랙','화이트','옐로우','핑크','그린','레드','블루','민트','그레이','네이비','퍼플',
+    // 영문/소재
+    'tpu','pbt','oem','led','case','keycap',
+  ]).filter((v,i,a)=>a.indexOf(v)===i).sort((a,b)=>b.length-a.length);
+  function _kpSplitTerms(kw){
+    const s = String(kw||'').replace(/\s+/g,'');
+    if(!s) return [];
+    const out=[]; let i=0, buf='';
+    const flush=()=>{ if(buf){ out.push(buf); buf=''; } };
+    while(i<s.length){
+      let m=null;
+      for(let d=0; d<_KP_DICT.length; d++){ const t=_KP_DICT[d]; if(t && s.startsWith(t,i)){ m=t; break; } }
+      if(m){ flush(); out.push(m); i+=m.length; }
+      else { buf+=s[i]; i++; }
+    }
+    flush();
+    return out;
+  }
+
   const _kp = { step:1, storeId:null, productNo:null, range:'7' };
 
   // ── 샘플 데이터 ──
@@ -15332,7 +15371,7 @@ async function importGpagoMigrationData(evt) {
       return '<tr class="border-b border-brand-border last:border-0 hover:bg-brand-bg/40 transition-colors">'
         +'<td class="py-3.5 pl-4 text-[12px] text-brand-gray">'+(i+1)+'</td>'
         +'<td class="py-3.5 font-bold text-[13px] whitespace-nowrap pr-4">'+_kpEsc(k.kw)+'</td>'
-        +'<td class="py-3.5 pr-4 max-w-[200px]">'+((k.terms||[]).map(chip).join('')||dash)+'</td>'
+        +'<td class="py-3.5 pr-4 max-w-[240px]">'+(((k.terms&&k.terms.length>1)?k.terms:_kpSplitTerms(k.kw)).map(chip).join('')||dash)+'</td>'
         +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+(p.real?volTxt(k.kw):(k.search==null?dash:_kpWon(k.search)))+'</td>'
         +'<td class="py-3.5 text-right text-[13px] text-brand-gray tabular-nums">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
         +'<td class="py-3.5 text-right text-[13px] font-bold text-brand-green tabular-nums">'+_kpWon(k.payment)+'원</td>'
