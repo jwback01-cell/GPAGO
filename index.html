@@ -15426,8 +15426,11 @@ async function importGpagoMigrationData(evt) {
       received=true; window.removeEventListener('message',handler);
       const caps=e.data.captures||[];
       window._bizCaptures=caps;
+      window._bizRequests=e.data.requests||[];
       try{ localStorage.setItem('gpago_biz_captures', JSON.stringify(caps)); }catch(_){}
+      try{ localStorage.setItem('gpago_biz_requests', JSON.stringify(window._bizRequests)); }catch(_){}
       console.log('[GPAGO kperf] 비즈어드바이저 캡처:', caps);
+      console.log('[GPAGO kperf] 비즈어드바이저 요청(인증 헤더 포함):', window._bizRequests);
       if(!e.data.ok){ toast('수집 실패: '+(e.data.error||'확장프로그램 확인')); return; }
       // 키워드 리포트 파싱 → 실제 스토어 생성
       const store=_kpBuildStoreFromCaptures(caps);
