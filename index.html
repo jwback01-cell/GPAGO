@@ -15378,7 +15378,7 @@ async function importGpagoMigrationData(evt) {
     let best=null, bestScore=-1;
     for(const c of caps){
       const rows=_kpExtractRows(c);
-      if(!rows.length || !rows[0] || !('ref_keyword' in rows[0])) continue; // 행에 ref_keyword 있으면 키워드 리포트
+      if(!rows.length || !rows[0] || typeof rows[0]!=='object' || !('ref_keyword' in rows[0])) continue; // 객체 행에 ref_keyword 있으면 키워드 리포트 (토큰 등 문자열 캡처 건너뜀)
       let score=rows.length;
       if(!c.truncated) score+=1000000;            // 잘리지 않은 응답 최우선
       if('pay_amount' in rows[0]) score+=500000;  // 실제 결제금액 보유
