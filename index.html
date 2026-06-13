@@ -14688,6 +14688,19 @@ async function importGpagoMigrationData(evt) {
     if(typeof _fetchSmartstoreViaExtension!=='function') return {ok:false,error:'확장프로그램 함수 없음'};
     try{ return await _fetchSmartstoreViaExtension(url, 95000, ''); }catch(e){ return {ok:false,error:String(e&&e.message||e)}; }
   }
+  // 셀하 캐시 조회 — 사용자가 그 상품 페이지를 (셀하 켠 채) 방문하면 확장이 productId 별로 저장해 둠
+  function _cmpGetCachedSellha(productId){
+    return new Promise((resolve)=>{
+      if(!productId) return resolve(null);
+      const reqId='shq_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+      let done=false;
+      const h=(e)=>{ if(e.source!==window) return; const d=e.data; if(!d||d.source!=='gpago-extension'||d.type!=='GPAGO_SELLHA_RESULT'||d.reqId!==reqId) return; done=true; window.removeEventListener('message',h); resolve(d.sellha||null); };
+      window.addEventListener('message',h);
+      try{ window.postMessage({source:'gpago-page', type:'GPAGO_GET_SELLHA', productId:String(productId), reqId}, window.location.origin); }catch(_){}
+      setTimeout(()=>{ if(!done){ window.removeEventListener('message',h); resolve(null); } }, 2500);
+    });
+  }
+  function _cmpSellhaFresh(cs){ return !!(cs && (cs.deliver7d!=null||cs.revenue7d!=null) && (!cs.at || (Date.now()-cs.at) < 21*86400000)); }
   // 확장으로 실제 네이버 쇼핑 스크랩(deep=5, 약 400위) → productId 매칭으로 정확한 순위 + 가격/리뷰
   //   (Open API 정렬은 실제 쇼핑 순위와 달라 사용하지 않음 — 기존 '순위 추적'과 동일하게 실제 페이지 스크랩)
   //   반환 rank: number=순위 / null=400위 밖(검색됐으나 미발견) / undefined=확장 미응답·오류
@@ -14818,6 +14831,8 @@ async function importGpagoMigrationData(evt) {
         }
       }catch(_){}
     }
+    // 셀하 캐시 우선 반영 (백그라운드 창엔 셀하가 안 떠서, 사용자가 평소 본 페이지에서 저장된 값을 사용)
+    try{ const cs=await _cmpGetCachedSellha(p.productId); if(_cmpSellhaFresh(cs)) p.sellha=cs; }catch(_){}
     if(sc.rank===undefined && !prod) return false; // 확장 미응답·완전 실패
     const now=new Date().toISOString();
     if(prod){ if(prod.image && !p.image) p.image=prod.image; if(prod.mall) p.mall=prod.mall; }
@@ -15109,7 +15124,7 @@ async function importGpagoMigrationData(evt) {
           chartOrNote,'green');
       } else {
         revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정)</span>','—','',
-          note('판매량 데이터 누적 중<br>셀하 설치 시 즉시 표시,<br>없으면 ↻ 갱신 2회+ 시 리뷰 증가로 추정'),'green');
+          note('셀하 값을 가져오려면<br>상품명(↗)을 눌러 그 페이지를 셀하 켠 채 한 번 연 뒤<br>다시 ↻ 갱신하세요'+(p.url?'':'')+'<br><span class="text-brand-gray/70">(셀하 없으면 갱신 2회+ 시 리뷰 증가로 추정)</span>'),'green');
       }
     } else {
       const revD=_last(A.rev)-_first(A.rev);
@@ -15225,6 +15240,7 @@ async function importGpagoMigrationData(evt) {
         registDate:(d.registDate||''), sellha:(d.sellha||null),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
+      try{ const cs=await _cmpGetCachedSellha(pid); if(_cmpSellhaFresh(cs)) prod.sellha=cs; }catch(_){}
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource });
       products.unshift(prod); _cmpSaveProducts(products);
       inp.value=''; if(kwInput) kwInput.value='';
