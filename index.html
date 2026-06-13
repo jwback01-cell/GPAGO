@@ -15846,8 +15846,12 @@ async function importGpagoMigrationData(evt) {
   function _kpBuildPerProduct(caps){
     // (상품필드 + ref_keyword) 행을 가진 모든 캡처를 합침 — 결제는 한 응답, 유입은 다른 응답에 있을 수 있음
     let rows=[];
-    const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
-    if(ppCap){ const r=_kpExtractRows(ppCap); if(r&&r.length) rows=rows.concat(r); }
+    // 전용 캡처(결제·유입) 먼저
+    for(const pref of ['__gpago_perproduct__','__gpago_ppinflow__']){
+      const cap=(caps||[]).find(c=>String(c&&c.url||'').startsWith(pref));
+      if(cap){ const r=_kpExtractRows(cap); if(r&&r.length) rows=rows.concat(r); }
+    }
+    // passive 캡처 중 (상품필드 + ref_keyword) 행을 가진 응답도 합침
     for(const c of (caps||[])){
       if(String(c&&c.url||'').startsWith('__gpago_')) continue;
       const r=_kpExtractRows(c);
