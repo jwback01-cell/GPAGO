@@ -15565,7 +15565,9 @@ async function importGpagoMigrationData(evt) {
       +'<button onclick="kperfBack()" class="text-brand-gray hover:text-brand-black text-xl leading-none">‹</button>'
       +'<div class="w-10 h-10 rounded-2xl bg-brand-green-light flex items-center justify-center text-xl">'+(s.emoji||'🛍️')+'</div>'
       +'<div><div class="font-black text-[15px]">'+_kpEsc(s.name)+'</div><div class="text-[12px] text-brand-gray">상품번호를 선택해 주세요.</div></div></div>'
-      +'<div class="text-[12px] text-brand-gray">상품 저장수 '+((s.products||[]).length)+'개</div></div>';
+      +'<div class="flex items-center gap-2">'
+      +(s.real?'<button id="kp-perproduct-btn" onclick="kperfFetchPerProduct()" class="text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80">'+(s.perProduct?'↻ 상품별 새로고침':'상품별 불러오기')+'</button>':'')
+      +'<div class="text-[12px] text-brand-gray">상품 저장수 '+((s.products||[]).length)+'개</div></div></div>';
     const rows=(s.products||[]).map(p=>{
       const img=p.image?'<img src="'+_kpEsc(p.image)+'" class="w-14 h-14 rounded-xl object-cover bg-brand-bg shrink-0">':'<div class="w-14 h-14 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0">📦</div>';
       return '<button type="button" onclick="kperfSelectProduct(\''+p.no+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-green transition-colors flex items-center gap-4">'
@@ -15625,6 +15627,89 @@ async function importGpagoMigrationData(evt) {
       +'<div class="text-center text-[14px] font-bold text-brand-blue mb-4">'+_kpEsc(rangeStr)+'</div>'
       +'<div class="flex gap-6 flex-wrap justify-center">'+months.map(monthGrid).join('')+'</div></div>';
   }
+  // ── 상품별 데이터 (비즈어드바이저 리포트 재요청으로 상품 차원 분리) ──
+  function _kpLoadBizRequests(){ try{ return JSON.parse(localStorage.getItem('gpago_biz_requests')||'[]'); }catch(_){ return []; } }
+  function _kpReportTemplate(){
+    const reqs=_kpLoadBizRequests();
+    return reqs.find(r=>/dimensions=[^&]*ref_keyword/i.test(String(r&&r.url||'')))
+        || reqs.find(r=>/useIndex=[^&]*revenue-search-channel/i.test(String(r&&r.url||'')))
+        || reqs.find(r=>/\/report\b/i.test(String(r&&r.url||'')))
+        || null;
+  }
+  function _kpSetParam(url, key, val){ const re=new RegExp('([?&]'+key+'=)[^&]*','i'); if(re.test(url)) return url.replace(re,'$1'+encodeURIComponent(val)); return url+(url.includes('?')?'&':'?')+key+'='+encodeURIComponent(val); }
+  function _kpReplay(url, tmpl){
+    return new Promise((resolve)=>{
+      const reqId='bzr_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+      let done=false;
+      const h=(e)=>{ if(e.source!==window) return; const d=e.data; if(!d||d.source!=='gpago-extension'||d.type!=='GPAGO_BIZ_REPLAY_RESULT'||d.reqId!==reqId) return; done=true; window.removeEventListener('message',h); resolve(d); };
+      window.addEventListener('message',h);
+      try{ window.postMessage({source:'gpago-page', type:'GPAGO_BIZ_REPLAY', url, method:(tmpl&&tmpl.method)||'GET', headers:(tmpl&&tmpl.headers)||{}, body:(tmpl&&tmpl.body)||null, reqId}, window.location.origin); }catch(_){}
+      setTimeout(()=>{ if(!done){ window.removeEventListener('message',h); resolve({ok:false,error:'timeout'}); } }, 30000);
+    });
+  }
+  function _kpRows(res){ const d=res&&res.data; if(Array.isArray(d)) return d; if(d&&Array.isArray(d.rows)) return d.rows; if(d&&Array.isArray(d.data)) return d.data; return null; }
+  function _kpProdKey(row){
+    for(const k of ['mall_product_id','origin_product_no','product_no','mall_product_no','product_id','nv_mid','mid']) if(k in row && row[k]!=null) return k;
+    for(const k in row){ if(/product/i.test(k)&&/(id|no)$/i.test(k)) return k; }
+    return null;
+  }
+  function _kpProdName(row){
+    for(const k of ['mall_product_name','product_name','origin_product_name','product_title']) if(k in row && row[k]) return k;
+    for(const k in row){ if(/product/i.test(k)&&/(name|title)/i.test(k)) return k; }
+    return null;
+  }
+  window.kperfFetchPerProduct=async function(){
+    const tmpl=_kpReportTemplate();
+    if(!tmpl){ toast('상품별 조회용 인증정보가 없습니다 — 먼저 "스토어 추가/수집"을 해주세요'); return; }
+    const btn=document.getElementById('kp-perproduct-btn'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='불러오는 중…'; }
+    toast('상품별 데이터 불러오는 중… (비즈어드바이저 재조회)');
+    try{
+      const dimsTry=['mall_product_id,ref_keyword','origin_product_no,ref_keyword','product_no,ref_keyword'];
+      let rows=null, used='';
+      for(const dims of dimsTry){
+        const res=await _kpReplay(_kpSetParam(tmpl.url,'dimensions',dims), tmpl);
+        console.log('[kperf 상품별] dims='+dims+' →', res);
+        const r=_kpRows(res);
+        if(r && r.length && _kpProdKey(r[0]) && ('ref_keyword' in r[0])){ rows=r; used=dims; break; }
+      }
+      if(!rows){ toast('상품별 데이터를 못 받았습니다 (인증 만료/형식 상이). F12 콘솔 로그를 공유해 주시면 맞추겠습니다'); return; }
+      // 상품명 매핑 (별도 차원 조회)
+      const nameMap={};
+      try{
+        for(const nd of ['mall_product_id,mall_product_name','origin_product_no,origin_product_name','mall_product_id,product_name']){
+          const res=await _kpReplay(_kpSetParam(tmpl.url,'dimensions',nd), tmpl);
+          const r=_kpRows(res); if(!r||!r.length) continue;
+          const pk=_kpProdKey(r[0]), nk=_kpProdName(r[0]);
+          if(pk&&nk){ for(const row of r) nameMap[String(row[pk])]=String(row[nk]); break; }
+        }
+      }catch(_){}
+      // 그룹화
+      const pidKey=_kpProdKey(rows[0]); const groups={};
+      for(const row of rows){
+        const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
+        const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
+        (groups[pid]=groups[pid]||[]).push({
+          kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null,
+          payment:Math.round((row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount||0))||0),
+          payCnt:(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:0)),
+          inflow:(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:null)),
+        });
+      }
+      const products=Object.keys(groups).map(pid=>{
+        const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0));
+        return { no:pid, name:(nameMap[pid]||('상품번호 '+pid)), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
+      }).sort((a,b)=>(b.payment||0)-(a.payment||0));
+      if(!products.length){ toast('상품별 키워드 데이터가 비어 있습니다'); return; }
+      const stores=_kpLoadStores(); const s=stores.find(x=>x.id===_kp.storeId);
+      if(s){
+        const total=(s.products||[]).find(p=>p.no==='전체');
+        s.products=(total?[total]:[]).concat(products);
+        s.perProduct=true; _kpSaveStores(stores);
+      }
+      toast('상품별 데이터 연결 완료 ✓ '+products.length+'개 상품');
+      renderKperf();
+    } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
+  };
   window.kperfSelectProduct=function(no){ _kp.productNo=no; _kp.step=3; renderKperf(); };
 
   // Step 3 — 분석 기간
