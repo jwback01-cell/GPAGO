@@ -15518,7 +15518,7 @@ async function importGpagoMigrationData(evt) {
   }
 
   function _kpBreadcrumb(){
-    const steps=[['스토어 선택',1],['상품번호 선택',2],['분석 기간 선택',3],['키워드 성과분석',4]];
+    const steps=[['스토어 선택',1],['상품번호 선택',2],['키워드 성과분석',4]];
     return steps.map(([label,n])=>{
       const active=n===_kp.step, done=n<_kp.step;
       const cls=active?'text-brand-green font-bold':(done?'text-brand-black font-semibold':'text-brand-gray');
@@ -15528,15 +15528,14 @@ async function importGpagoMigrationData(evt) {
     }).join('');
   }
   window.kperfGoStep=function(n){ if(n<_kp.step){ _kp.step=n; renderKperf(); } };
-  window.kperfBack=function(){ if(_kp.step>1){ _kp.step--; renderKperf(); } };
+  window.kperfBack=function(){ if(_kp.step===4){ _kp.step=2; } else if(_kp.step>1){ _kp.step--; } renderKperf(); }; // 분석기간 단계 제거 → 4↔2
 
   window.renderKperf=function(){
     const stepsEl=document.getElementById('kperf-steps'); if(stepsEl) stepsEl.innerHTML=_kpBreadcrumb();
     const body=document.getElementById('kperf-body'); if(!body) return;
     if(_kp.step===1) body.innerHTML=_kpRenderStoreStep();
     else if(_kp.step===2) body.innerHTML=_kpRenderProductStep();
-    else if(_kp.step===3) body.innerHTML=_kpRenderRangeStep();
-    else body.innerHTML=_kpRenderResultStep();
+    else body.innerHTML=_kpRenderResultStep(); // 분석기간(step3) 제거 — 상품 선택 시 바로 결과
   };
 
   // Step 1 — 스토어 선택
@@ -15764,7 +15763,7 @@ async function importGpagoMigrationData(evt) {
       renderKperf();
     } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
   };
-  window.kperfSelectProduct=function(no){ _kp.productNo=no; _kp.step=3; renderKperf(); };
+  window.kperfSelectProduct=function(no){ _kp.productNo=no; _kp.step=4; renderKperf(); }; // 분석기간 단계 건너뛰고 바로 결과
 
   // Step 3 — 분석 기간
   function _kpRenderRangeStep(){
