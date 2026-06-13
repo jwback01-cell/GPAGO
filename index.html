@@ -6068,6 +6068,7 @@ async function _naverShopSearch(query, start, display, clientId, clientSecret) {
     items: (data.items || []).map(it => ({
       title: it.title || '',
       link: it.link || '',
+      image: it.image || it.imageUrl || '',
       productId: it.productId || '',
       productUrl: it.link || '',
       lprice: it.price || 0,
@@ -15568,8 +15569,10 @@ async function importGpagoMigrationData(evt) {
       +'<div class="flex items-center gap-2">'
       +(s.real?'<button id="kp-perproduct-btn" onclick="kperfFetchPerProduct()" class="text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80">'+(s.perProduct?'↻ 상품별 새로고침':'상품별 불러오기')+'</button>':'')
       +'<div class="text-[12px] text-brand-gray">상품 저장수 '+((s.products||[]).length)+'개</div></div></div>';
+    const _thumbs=_kpLoadThumbs();
     const rows=(s.products||[]).map(p=>{
-      const img=p.image?'<img src="'+_kpEsc(p.image)+'" class="w-14 h-14 rounded-xl object-cover bg-brand-bg shrink-0">':'<div class="w-14 h-14 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0">📦</div>';
+      const tu=p.image || ((_thumbs[p.name] && _thumbs[p.name]!=='__none__')?_thumbs[p.name]:'');
+      const img=tu?'<img src="'+_kpEsc(tu)+'" class="w-14 h-14 rounded-xl object-cover bg-brand-bg shrink-0" onerror="this.outerHTML=\'<div class=&quot;w-14 h-14 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0&quot;>📦</div>\'">':'<div class="w-14 h-14 rounded-xl bg-brand-bg flex items-center justify-center text-xl shrink-0">📦</div>';
       return '<button type="button" onclick="kperfSelectProduct(\''+p.no+'\')" class="w-full text-left bg-white border border-brand-border rounded-2xl p-4 panel hover:border-brand-green transition-colors flex items-center gap-4">'
         +img
         +'<div class="flex-1 min-w-0"><div class="text-[12px] text-brand-green font-bold mb-0.5">상품번호 '+_kpEsc(p.no)+'</div>'
@@ -15577,7 +15580,28 @@ async function importGpagoMigrationData(evt) {
         +'<div class="text-right shrink-0"><div class="text-[14px] font-black '+(p.payment>0?'text-brand-black':'text-brand-gray')+'">결제 '+_kpWon(p.payment)+'원</div>'
         +'<div class="text-[12px] text-brand-gray">유입 '+_kpWon(p.inflow)+'</div></div></button>';
     }).join('');
+    if(s.real) setTimeout(_kpAutoThumbs, 80); // 상품 썸네일 자동 로드 (공식 API 검색 이미지)
     return head+'<div class="flex flex-col gap-3">'+(rows||'<div class="text-center text-brand-gray text-[13px] py-8">저장된 상품이 없습니다</div>')+'</div>'+_kpRenderDataCalendar(s)+((s.real&&!s.perProduct)?_kpRenderPerProductDiag():'');
+  }
+  // 상품 썸네일 — 상품명으로 네이버 쇼핑 공식 API 검색 → 첫 결과 이미지 (캐시)
+  function _kpLoadThumbs(){ try{ return JSON.parse(localStorage.getItem('gpago_kperf_thumbs')||'{}'); }catch(_){ return {}; } }
+  function _kpSaveThumbs(m){ try{ localStorage.setItem('gpago_kperf_thumbs', JSON.stringify(m)); }catch(_){} }
+  let _kpThumbBusy=false;
+  async function _kpAutoThumbs(){
+    if(_kpThumbBusy) return;
+    const api=(typeof _getApi==='function')?_getApi():{}; if(!api.id||!api.secret) return;
+    const s=_kpStore(_kp.storeId); if(!s||!s.real) return;
+    const thumbs=_kpLoadThumbs();
+    const need=(s.products||[]).filter(p=>p && p.no!=='전체' && !p.image && !(p.name in thumbs)).slice(0,15);
+    if(!need.length) return;
+    _kpThumbBusy=true; let got=0;
+    for(const p of need){
+      try{ const r=await _naverShopSearch(p.name,1,1,api.id,api.secret); const it=r&&r.items&&r.items[0]; thumbs[p.name]=(it&&it.image)?it.image:'__none__'; if(it&&it.image) got++; }
+      catch(_){ thumbs[p.name]='__none__'; }
+      await new Promise(r=>setTimeout(r,250));
+    }
+    _kpSaveThumbs(thumbs); _kpThumbBusy=false;
+    if(got && _kp.step===2) renderKperf();
   }
   // 상품별 수집 진단 박스 (개발용 — 실패 원인 파악) — 화면에 표시해 캡처만 하면 됨
   function _kpRenderPerProductDiag(){
