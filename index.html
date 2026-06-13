@@ -15727,6 +15727,8 @@ async function importGpagoMigrationData(evt) {
     const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
     if(!p){ _kp.step=1; return _kpRenderStoreStep(); }
     const kws=(p.keywords||[]).slice().sort((a,b)=>(b.payment||0)-(a.payment||0));
+    // 렌더 보강: 저장된 상품데이터에 결제수/유입이 비어 있으면 검색채널 리포트로 채움 (재빌드 불필요)
+    if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; }); }catch(_){} }
     const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
     const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
     const totalCnt=kws.reduce((x,k)=>x+(k.payCnt||0),0);
@@ -15841,6 +15843,17 @@ async function importGpagoMigrationData(evt) {
     return best;
   }
   // 상품별 키워드 데이터 빌드 (bizadvisor 아이프레임에서 능동 조회해 저장한 __gpago_perproduct__ 캡처 사용)
+  // 키워드→유입수/결제수 맵 (검색채널 키워드 리포트에서) — 렌더 시 보강용 (저장된 상품데이터에 0이어도 채움)
+  function _kpKwMaps(){
+    let caps=[]; try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
+    if((!caps||!caps.length)&&Array.isArray(window._bizCaptures)) caps=window._bizCaptures;
+    const inflow={}, cnt={};
+    const numByRe=(row,reArr)=>{ for(const re of reArr){ for(const k in row){ if(re.test(k)&&row[k]!=null&&!isNaN(Number(row[k]))) return Number(row[k]); } } return null; };
+    const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/inflow/i,/num_users/i,/num_visit/i,/^pv$/i,/num_click/i]))); return v!=null?Number(v):null; };
+    const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):null; };
+    for(const c of (caps||[])){ if(String(c&&c.url||'').startsWith('__gpago_')) continue; const r=_kpExtractRows(c); if(!r||!r.length||!r[0]||typeof r[0]!=='object'||!('ref_keyword' in r[0])) continue; for(const row of r){ const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue; const iv=infOf(row); if(iv!=null&&iv>0&&(inflow[kw]==null||iv>inflow[kw])) inflow[kw]=iv; const cv=cntOf(row); if(cv!=null&&cv>0&&(cnt[kw]==null||cv>cnt[kw])) cnt[kw]=cv; } }
+    return {inflow, cnt};
+  }
   function _kpBuildPerProduct(caps){
     // (상품필드 + ref_keyword) 행을 가진 모든 캡처를 합침 — 결제는 한 응답, 유입은 다른 응답에 있을 수 있음
     let rows=[];
