@@ -14723,6 +14723,45 @@ async function importGpagoMigrationData(evt) {
     return { rank:(products.length?null:undefined), product:null };
   }
 
+  // 확장 스크랩이 네이버 안티봇(418/캡차)에 막혔을 때 — 공식 Open API 로 순위/가격 근사 조회.
+  //   (공식 API 는 차단과 무관. 단 정렬이 실제 쇼핑 노출순위와 다를 수 있어 '근사'로 표기)
+  //   반환: {rank, source:'api', product} — rank: number=근사순위 / null=200위내 미발견 / undefined=키없음·오류
+  async function _cmpApiRank(keyword, productId, url, name){
+    const api=(typeof _getApi==='function')?_getApi():{};
+    if(!api.id || !api.secret) return {rank:undefined, source:'api', product:null, noKey:true};
+    const pids=(typeof _extractProductIds==='function')?_extractProductIds(url||''):[];
+    if(productId) pids.unshift(String(productId));
+    const want=[...new Set(pids.filter(Boolean))];
+    const all=[];
+    for(let start=1; start<=101; start+=100){ // 최대 200위까지 (deep:2 와 유사)
+      let resp;
+      try{ resp=await _naverShopSearch(keyword, start, 100, api.id, api.secret); }
+      catch(e){ if(start===1) return {rank:undefined, source:'api', product:null, error:String(e&&e.message||e)}; break; }
+      const items=(resp&&resp.items)||[];
+      for(const it of items) all.push(it);
+      if(items.length<100) break;
+    }
+    if(!all.length) return {rank:undefined, source:'api', product:null};
+    const prodFrom=(it,idx)=>({ rank:idx+1, source:'api', product:{
+      price:Number(it.lprice||0)||null,
+      reviewCount:(it.reviewCount!=null && Number(it.reviewCount)>0)?Number(it.reviewCount):null,
+      title:String(it.title||'').replace(/<[^>]+>/g,''),
+      image:'', mall:it.mallName||'',
+    }});
+    // 1차: productId 링크 매칭 (신뢰도 높음)
+    if(want.length){
+      for(let i=0;i<all.length;i++){
+        const it=all[i]; const link=(it.link||'')+' '+(it.productId||'')+' '+(it.productUrl||'');
+        if(want.some(pid=>link.includes(pid))) return prodFrom(it,i);
+      }
+    }
+    // 2차: 상품명 정확 매칭 (id 못 찾았을 때 — 공식 API 의 productId 가 nvMid 라 다른 경우 대비)
+    if(name && typeof _matchItem==='function'){
+      for(let i=0;i<all.length;i++){ if(_matchItem(all[i], name, [])) return prodFrom(all[i],i); }
+    }
+    return { rank:null, source:'api', product:null }; // 검색됨, 200위 내 미발견
+  }
+
   // 새 스냅샷을 적용 — 직전 대비 변동을 감지해 history/badges 갱신, 같은 날이면 덮어쓰기
   function _cmpApplyDiff(p, snap){
     p.history=p.history||[]; p.snapshots=p.snapshots||[];
@@ -14749,7 +14788,15 @@ async function importGpagoMigrationData(evt) {
     if(snap.category) p.category=snap.category;
   }
   async function _cmpRefreshOne(p){
-    const sc=await _cmpScrapeProduct(p.mainKeyword, p.productId);
+    let sc=await _cmpScrapeProduct(p.mainKeyword, p.productId);
+    let rankSource='scrape';
+    // 확장 스크랩이 막혔으면(순위 미응답) 공식 Open API 로 순위 근사 조회
+    if(sc.rank===undefined){
+      try{
+        const apiR=await _cmpApiRank(p.mainKeyword, p.productId, p.url, p.name);
+        if(apiR && apiR.rank!==undefined){ sc={rank:apiR.rank, product:apiR.product||sc.product}; rankSource='api'; }
+      }catch(_){}
+    }
     let prod=sc.product;
     // 순위를 못 잡았거나 가격이 없으면(또는 등록일 미확보 시) 스마트스토어 상품정보로 가격/제목/리뷰/등록일 보완
     if((!prod || prod.price==null || !p.registDate) && p.url){
@@ -14778,6 +14825,7 @@ async function importGpagoMigrationData(evt) {
       category:(p.category||''),
       stock:null,
       rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)),
+      rankSource:rankSource,
     });
     p.updatedAt=now; return true;
   }
@@ -15023,9 +15071,18 @@ async function importGpagoMigrationData(evt) {
     const rankNums=(A.rank||[]).filter(v=>typeof v==='number');
     const rankImp = rankNums.length>=2 ? (rankNums[0]-rankNums[rankNums.length-1]) : 0;
     const rankChartArr=_cmpRankChartArr(A.rank);
-    const rankCard=metricCard('순위', _cmpRankText(A.rank),
+    const _lastSnap=(p.snapshots||[])[ (p.snapshots||[]).length-1 ];
+    const rankApprox = !!(_lastSnap && _lastSnap.rankSource==='api');
+    const rankLabel = '순위'+(rankApprox?' <span class="text-[9px] text-brand-gray font-normal">(API 근사)</span>':'');
+    const _hasApiKey = (typeof _getApi==='function') && !!(_getApi().id && _getApi().secret);
+    const rankNote = p.real
+      ? (_hasApiKey
+          ? '순위 미확인<br>(키워드 200위 내에서 상품을 못 찾음 — 메인키워드를 확인하고 재조회)'
+          : '순위 미확인<br>실시간 스크랩이 네이버 접속제한(보안확인)에 막힐 수 있어요.<br><b>설정 → 네이버 API</b> 키를 등록하면 차단 없이 순위를 조회합니다')
+      : '순위 데이터 없음';
+    const rankCard=metricCard(rankLabel, _cmpRankText(A.rank),
         rankNums.length>=2 ? _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)) : '',
-        rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(p.real?'순위 미확인<br>(키워드 순위권에서 상품을 못 찾았거나 네이버 접속이 제한됨 — 잠시 후 메인키워드 확인하고 재조회)':'순위 데이터 없음'),'purple');
+        rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(rankNote),'purple');
 
     // 월 판매량 / 월매출 — real 은 리뷰 증가량 기반 추정, sample 은 내장 추정치
     let revCard;
@@ -15132,7 +15189,12 @@ async function importGpagoMigrationData(evt) {
       }
       // 실제 네이버 쇼핑 스크랩으로 정확한 순위 + 가격/리뷰/제목/이미지
       toast('순위·가격 조회 중… (네이버 쇼핑 스크랩, 보안확인 뜨면 풀어주세요)');
-      const sc=await _cmpScrapeProduct(mainKw, pid);
+      let sc=await _cmpScrapeProduct(mainKw, pid);
+      let rankSource='scrape';
+      if(sc.rank===undefined){
+        // 스크랩 차단 시 공식 Open API 로 순위 근사 조회
+        try{ const apiR=await _cmpApiRank(mainKw, pid, url, (sc.product&&sc.product.title)||d.title||''); if(apiR && apiR.rank!==undefined){ sc={rank:apiR.rank, product:apiR.product||sc.product}; rankSource='api'; } }catch(_){}
+      }
       const sp=sc.product;
       // 제목/이미지: 스크랩 우선, 없으면 스마트스토어 정보로 보완
       let title=(sp&&sp.title)||d.title||'';
@@ -15155,10 +15217,11 @@ async function importGpagoMigrationData(evt) {
         registDate:(d.registDate||''),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
-      _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)) });
+      _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource });
       products.unshift(prod); _cmpSaveProducts(products);
       inp.value=''; if(kwInput) kwInput.value='';
-      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'):(sc.rank===null?'순위권 밖(키워드 확인)':'순위 미확인(접속제한/확장 확인)');
+      const _via=(rankSource==='api')?' · 공식 API 근사':'';
+      const rankMsg = typeof sc.rank==='number'?(sc.rank+'위'+_via):(sc.rank===null?'순위권 밖(키워드 확인)':'순위 미확인(접속제한/확장 확인)');
       toast('상품 등록 완료 ✓ ("'+mainKw+'" · '+rankMsg+')');
       renderCompetitor();
     } finally { if(btn){ btn.disabled=false; btn.innerHTML=ob; } }
@@ -15170,7 +15233,9 @@ async function importGpagoMigrationData(evt) {
     toast('갱신 중…');
     const ok=await _cmpRefreshOne(p);
     _cmpSaveProducts(products);
-    toast(ok?'갱신 완료 ✓':'갱신 실패 — 확장프로그램 확인');
+    const _ls=(p.snapshots||[]).slice(-1)[0];
+    const _via=_ls && _ls.rankSource==='api' ? ' (순위는 공식 API 근사)' : '';
+    toast(ok?('갱신 완료 ✓'+_via):'갱신 실패 — 확장프로그램 확인');
     renderCompetitor();
     const m=document.getElementById('cmp-detail-modal'); if(m && !m.classList.contains('hidden')) openCompetitorDetail(id);
   };
@@ -15198,7 +15263,9 @@ async function importGpagoMigrationData(evt) {
     toast('순위 재조회 중… (네이버 쇼핑 스크랩)');
     const ok=await _cmpRefreshOne(p);
     _cmpSaveProducts(products);
-    toast(ok?'메인키워드 저장 ✓ 순위 갱신 완료':'순위 조회 실패 — 확장프로그램 확인');
+    const _ls=(p.snapshots||[]).slice(-1)[0];
+    const _via=_ls && _ls.rankSource==='api' ? ' (공식 API 근사)' : '';
+    toast(ok?('메인키워드 저장 ✓ 순위 갱신 완료'+_via):'순위 조회 실패 — 확장프로그램 확인');
     openCompetitorDetail(id); renderCompetitor();
   };
 
