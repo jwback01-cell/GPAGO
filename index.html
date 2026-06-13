@@ -14821,6 +14821,8 @@ async function importGpagoMigrationData(evt) {
         if(d){
           if(!p.registDate && d.registDate) p.registDate=d.registDate; // 판매량 추정용 (등록일~현재 역산)
           if(d.sellha) p.sellha=d.sellha; // 셀하 최근 판매(7일) — 가장 정확한 판매량
+          if(d.recentReviews) p.recentReviews=d.recentReviews; // 최근 리뷰수(7/30일) — 헤드리스 판매 추정
+          if(d.deliveryFee!=null){ p.deliveryFee=d.deliveryFee; p.freeShip=(Number(d.deliveryFee)===0); } // 택배비
           if(d.price!=null || d.title){
             if(!prod) prod={};
             if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
@@ -14880,6 +14882,15 @@ async function importGpagoMigrationData(evt) {
       else if(sh.revenue7d!=null) revenue=Math.round(sh.revenue7d/7*30);
       else revenue=(price!=null?monthlyUnits*price:null);
       return {ok:true, monthlyUnits, revenue, basis:'sellha', series, price, week:{d:sh.deliver7d, r:sh.revenue7d}};
+    }
+    // 0.5) 최근 리뷰 수(헤드리스) — 셀하 없이도 최근 30일 리뷰로 월 판매 추정
+    const rr=p.recentReviews;
+    if(rr && (rr.reviews30d>0 || rr.reviews7d>0)){
+      let monthlyUnits;
+      if(rr.reviews30d>0) monthlyUnits=Math.round(rr.reviews30d/CMP_REVIEW_RATE);
+      else monthlyUnits=Math.round((rr.reviews7d/CMP_REVIEW_RATE)/7*30);
+      const revenue=(price!=null? monthlyUnits*price : null);
+      return {ok:true, monthlyUnits, revenue, basis:'recent', series, price, rr};
     }
     // 1) 리뷰 증가량 (서로 다른 날 2회 이상 갱신 시) — 최근 판매 속도 반영
     const snaps=(p.snapshots||[]).filter(s=> s && s.reviewCount!=null && s.t);
@@ -15009,7 +15020,9 @@ async function importGpagoMigrationData(evt) {
           +'<div class="text-right shrink-0 flex flex-col items-end gap-1.5">'
             +(badges?'<div class="flex gap-1 flex-wrap justify-end">'+badges+'</div>':'')
             +'<div class="text-[15px] font-black">'+_won(p.price)+'원</div>'
-            +(p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':'')
+            +((p.deliveryFee!=null)
+               ? (Number(p.deliveryFee)===0?'<div class="text-[10px] text-brand-green font-bold">무료배송</div>':'<div class="text-[10px] text-brand-gray">택배비 '+_won(p.deliveryFee)+'원</div>')
+               : (p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':''))
           +'</div></button>';
       }).join('');
     }
@@ -15111,20 +15124,22 @@ async function importGpagoMigrationData(evt) {
         const big='약 '+_won(est.monthlyUnits)+'개';
         const revTxt = est.revenue!=null ? ('월매출 ≈ '+_won(Math.max(0,Math.round(est.revenue/10000)))+'만원') : '가격 미확인';
         const ser=est.series||[];
-        const isSellha = est.basis==='sellha';
-        const label = isSellha
-          ? '월 판매량 <span class="text-[9px] text-brand-gray font-normal">(셀하 최근7일 기준)</span>'
-          : '월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정·리뷰 증가)</span>';
-        const noteTxt = isSellha
-          ? ('셀하 최근 7일 판매 '+_won((est.week&&est.week.d)||Math.round(est.monthlyUnits/30*7))+'건 기준<br>월 약 '+_won(est.monthlyUnits)+'개')
-          : ('리뷰 증가 속도 기반<br>월 약 '+_won(est.monthlyUnits)+'개');
-        const chartOrNote = ser.length>=2 ? _cmpChart(ser,C_REV,false) : note(noteTxt);
+        const labelByBasis = {
+          sellha:'(셀하 최근7일 기준)', recent:'(최근30일 리뷰 기반)', delta:'(추정·리뷰 증가)'
+        };
+        const label = '월 판매량 <span class="text-[9px] text-brand-gray font-normal">'+(labelByBasis[est.basis]||'(추정)')+'</span>';
+        const noteByBasis = {
+          sellha: '셀하 최근 7일 판매 '+_won((est.week&&est.week.d)||Math.round(est.monthlyUnits/30*7))+'건 기준<br>월 약 '+_won(est.monthlyUnits)+'개',
+          recent: '최근 30일 리뷰 '+_won((est.rr&&est.rr.reviews30d)||0)+'건 기반<br>월 약 '+_won(est.monthlyUnits)+'개',
+          delta:  '리뷰 증가 속도 기반<br>월 약 '+_won(est.monthlyUnits)+'개'
+        };
+        const chartOrNote = ser.length>=2 ? _cmpChart(ser,C_REV,false) : note(noteByBasis[est.basis]||('월 약 '+_won(est.monthlyUnits)+'개'));
         revCard=metricCard(label, big,
           '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full text-brand-green bg-brand-green-light">'+_cmpEsc(revTxt)+'</span>',
           chartOrNote,'green');
       } else {
         revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정)</span>','—','',
-          note('셀하 값을 가져오려면<br>상품명(↗)을 눌러 그 페이지를 셀하 켠 채 한 번 연 뒤<br>다시 ↻ 갱신하세요'+(p.url?'':'')+'<br><span class="text-brand-gray/70">(셀하 없으면 갱신 2회+ 시 리뷰 증가로 추정)</span>'),'green');
+          note('판매량 집계 중<br>↻ 갱신하면 최근 리뷰로 자동 계산됩니다<br><span class="text-brand-gray/70">(리뷰 0건 신상품이면 데이터가 쌓일 때까지 표시 안 됨)</span>'),'green');
       }
     } else {
       const revD=_last(A.rev)-_first(A.rev);
@@ -15137,7 +15152,11 @@ async function importGpagoMigrationData(evt) {
     const priceNums=(A.price||[]).filter(v=>v!=null);
     const priceChartArr = priceNums.length ? (A.price||[]).map(v=> v==null? priceNums[priceNums.length-1]:v) : null;
     const priceD = priceNums.length>=2 ? (priceNums[priceNums.length-1]-priceNums[0]) : 0;
-    const priceCard=metricCard('가격', _won(_last(priceNums))+'원',
+    const shipTxt = (p.deliveryFee!=null)
+      ? (Number(p.deliveryFee)===0?'무료배송':'택배비 '+_won(p.deliveryFee)+'원')
+      : (p.freeShip?'무료배송':'');
+    const priceBig = _won(_last(priceNums))+'원'+(shipTxt?' <span class="text-[12px] font-bold '+(/무료/.test(shipTxt)?'text-brand-green':'text-brand-gray')+' align-middle">'+_cmpEsc(shipTxt)+'</span>':'');
+    const priceCard=metricCard('가격', priceBig,
         priceNums.length>=2 ? _cmpDelta(_won(Math.abs(priceD))+'원', priceD>0?'pink':'green', priceD>0?true:(priceD<0?false:null)) : '',
         priceChartArr ? _cmpChart(priceChartArr,C_PRICE,false) : note('가격 데이터 없음'),'orange');
 
@@ -15236,8 +15255,8 @@ async function importGpagoMigrationData(evt) {
         mainKeyword:mainKw,
         price:(sp&&sp.price!=null)?sp.price:(Number(d.price)||0),
         reviewCount:(sp&&sp.reviewCount!=null)?sp.reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
-        category:(d.category||''), freeShip:true, badges:[], stock:null,
-        registDate:(d.registDate||''), sellha:(d.sellha||null),
+        category:(d.category||''), freeShip:(d.deliveryFee!=null?Number(d.deliveryFee)===0:true), deliveryFee:(d.deliveryFee!=null?Number(d.deliveryFee):null), badges:[], stock:null,
+        registDate:(d.registDate||''), sellha:(d.sellha||null), recentReviews:(d.recentReviews||null),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
       try{ const cs=await _cmpGetCachedSellha(pid); if(_cmpSellhaFresh(cs)) prod.sellha=cs; }catch(_){}
