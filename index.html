@@ -15026,7 +15026,7 @@ async function importGpagoMigrationData(evt) {
             +'<div class="text-[15px] font-black">'+_won(p.price)+'원</div>'
             +((p.deliveryFee!=null)
                ? (Number(p.deliveryFee)===0?'<div class="text-[10px] text-brand-green font-bold">무료배송</div>':'<div class="text-[10px] text-brand-gray">택배비 '+_won(p.deliveryFee)+'원</div>')
-               : (p.freeShip?'<div class="text-[10px] text-brand-gray">무료배송</div>':''))
+               : '')
           +'</div></button>';
       }).join('');
     }
@@ -15158,7 +15158,7 @@ async function importGpagoMigrationData(evt) {
     const priceD = priceNums.length>=2 ? (priceNums[priceNums.length-1]-priceNums[0]) : 0;
     const shipTxt = (p.deliveryFee!=null)
       ? (Number(p.deliveryFee)===0?'무료배송':'택배비 '+_won(p.deliveryFee)+'원')
-      : (p.freeShip?'무료배송':'');
+      : ''; // 배송비 미확인 시 표시 안 함 (잘못된 '무료배송' 방지)
     const priceBig = _won(_last(priceNums))+'원'+(shipTxt?' <span class="text-[12px] font-bold '+(/무료/.test(shipTxt)?'text-brand-green':'text-brand-gray')+' align-middle">'+_cmpEsc(shipTxt)+'</span>':'');
     const priceCard=metricCard('가격', priceBig,
         priceNums.length>=2 ? _cmpDelta(_won(Math.abs(priceD))+'원', priceD>0?'pink':'green', priceD>0?true:(priceD<0?false:null)) : '',
