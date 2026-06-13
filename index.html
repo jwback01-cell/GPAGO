@@ -14788,6 +14788,25 @@ async function importGpagoMigrationData(evt) {
       }
       if(snap.title && prev.title && snap.title!==prev.title){ badges.add('정보변경'); p.history.unshift({type:'정보변경',date:md,text:'상품명 변경: '+prev.title+' → '+snap.title}); }
       if(snap.category && prev.category && snap.category!==prev.category){ badges.add('정보변경'); p.history.unshift({type:'정보변경',date:md,text:'카테고리 변경: '+prev.category+' → '+snap.category}); }
+      // 옵션 변경 (추가/삭제) — 둘 다 비어있지 않을 때만 비교(추출 실패 시 오탐 방지)
+      if(Array.isArray(prev.options)&&prev.options.length && Array.isArray(snap.options)&&snap.options.length){
+        const oldS=new Set(prev.options), newS=new Set(snap.options);
+        const added=snap.options.filter(o=>!oldS.has(o));
+        const removed=prev.options.filter(o=>!newS.has(o));
+        if(added.length||removed.length){
+          badges.add('정보변경');
+          const parts=[];
+          if(added.length) parts.push('추가 '+added.length+'개: '+added.slice(0,8).join(', ')+(added.length>8?' 외':''));
+          if(removed.length) parts.push('삭제 '+removed.length+'개: '+removed.slice(0,8).join(', ')+(removed.length>8?' 외':''));
+          p.history.unshift({type:'정보변경',date:md,text:'옵션 변경 — '+parts.join(' / ')});
+        }
+      }
+      // 배송비 변경
+      if(snap.deliveryFee!=null && prev.deliveryFee!=null && Number(snap.deliveryFee)!==Number(prev.deliveryFee)){
+        badges.add('정보변경');
+        const f=(v)=> Number(v)===0?'무료배송':_won(v)+'원';
+        p.history.unshift({type:'정보변경',date:md,text:'배송비 변경: '+f(prev.deliveryFee)+' → '+f(snap.deliveryFee)});
+      }
       if(typeof snap.rank==='number' && typeof prev.rank==='number' && snap.rank<prev.rank){ p.history.unshift({type:'순위상승',date:md,text:'순위 상승 — '+prev.rank+'위 → '+snap.rank+'위'}); }
     }
     if(prev && prev.t.slice(0,10)===snap.t.slice(0,10)){ p.snapshots[p.snapshots.length-1]=snap; }
@@ -14799,6 +14818,8 @@ async function importGpagoMigrationData(evt) {
     if(snap.title) p.name=snap.title;
     if(snap.reviewCount!=null) p.reviewCount=snap.reviewCount;
     if(snap.category) p.category=snap.category;
+    if(Array.isArray(snap.options)&&snap.options.length) p.options=snap.options;
+    if(snap.deliveryFee!=null) p.deliveryFee=snap.deliveryFee;
   }
   async function _cmpRefreshOne(p){
     // 순위 조회 — 공식 Open API 우선(캡차/팝업 없음). 키 없거나 API 미발견 시 실시간 스크랩으로 폴백.
@@ -14823,6 +14844,8 @@ async function importGpagoMigrationData(evt) {
           if(d.sellha) p.sellha=d.sellha; // 셀하 최근 판매(7일) — 가장 정확한 판매량
           if(d.recentReviews) p.recentReviews=d.recentReviews; // 최근 리뷰수(7/30일) — 헤드리스 판매 추정
           if(d.deliveryFee!=null){ p.deliveryFee=d.deliveryFee; p.freeShip=(Number(d.deliveryFee)===0); } // 택배비
+          if(Array.isArray(d.options) && d.options.length) p.options=d.options; // 옵션(변경 추적)
+          if(d.category) p.category=d.category;
           if(d.price!=null || d.title){
             if(!prod) prod={};
             if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
@@ -14851,6 +14874,8 @@ async function importGpagoMigrationData(evt) {
       stock:null,
       rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)),
       rankSource:rankSource,
+      options:(Array.isArray(p.options)?p.options:undefined),
+      deliveryFee:(p.deliveryFee!=null?p.deliveryFee:undefined),
     });
     p.updatedAt=now; return true;
   }
@@ -15261,12 +15286,13 @@ async function importGpagoMigrationData(evt) {
         reviewCount:(sp&&sp.reviewCount!=null)?sp.reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
         category:(d.category||''), freeShip:(d.deliveryFee!=null?Number(d.deliveryFee)===0:true), deliveryFee:(d.deliveryFee!=null?Number(d.deliveryFee):null), badges:[], stock:null,
         registDate:(d.registDate||''), sellha:(d.sellha||null), recentReviews:(d.recentReviews||null),
+        options:(Array.isArray(d.options)&&d.options.length?d.options:null),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
       try{ const cs=await _cmpGetCachedSellha(pid); if(_cmpSellhaFresh(cs)) prod.sellha=cs; }catch(_){}
       // 가격 0이면 셀하 예상매출÷배송건수로 단가 역산
       if((prod.price==null||prod.price===0) && prod.sellha && prod.sellha.revenue7d>0 && prod.sellha.deliver7d>0){ const u=Math.round(prod.sellha.revenue7d/prod.sellha.deliver7d); if(u>0) prod.price=u; }
-      _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource });
+      _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource, options:(Array.isArray(prod.options)?prod.options:undefined), deliveryFee:(prod.deliveryFee!=null?prod.deliveryFee:undefined) });
       products.unshift(prod); _cmpSaveProducts(products);
       inp.value=''; if(kwInput) kwInput.value='';
       const _via=(rankSource==='api')?' · 공식 API 근사':'';
