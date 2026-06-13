@@ -16059,6 +16059,8 @@ async function importGpagoMigrationData(evt) {
     if(tr&&tr.start){ toast('스마트스토어센터를 엽니다 — 판매성과/검색채널 화면에서 조회기간을 '+tr.start+' ~ '+tr.end+' 로 맞춘 뒤 [상품/검색채널]과 [마케팅분석 검색채널]을 보면 그 기간으로 수집됩니다'); }
     else { toast('스마트스토어센터를 엽니다… 팝업에서 ①판매분석 ▸ 상품/검색채널 ②마케팅분석 ▸ 검색채널 두 화면을 보면 자동 수집됩니다 (최대 2분)'); }
     window._kpTargetRange=null;
+    // 확장 새로고침 후 이 페이지를 안 고치면 content script 가 무효화되어 창이 안 열림 → 8초 내 무반응 시 안내
+    setTimeout(()=>{ if(!received) toast('⚠️ 창이 안 열리면: 확장(chrome://extensions)을 새로고침한 뒤 이 페이지도 Ctrl+Shift+R 로 새로고침하세요'); }, 8000);
     setTimeout(()=>{ if(!received){ window.removeEventListener('message',handler); toast('수집 응답이 없습니다 — GPAGO 확장프로그램(1.7.43+) 설치·활성화를 확인하세요'); } }, 140000);
   };
 
