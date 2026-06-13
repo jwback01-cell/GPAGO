@@ -15726,6 +15726,7 @@ async function importGpagoMigrationData(evt) {
   function _kpRenderResultStep(){
     const s=_kpStore(_kp.storeId); const p=_kpProduct(s,_kp.productNo);
     if(!p){ _kp.step=1; return _kpRenderStoreStep(); }
+    if(!p.real && s && s.real) p.real=true; // 실스토어의 상품인데 real 플래그 누락된 기존 데이터 보정
     const kws=(p.keywords||[]).slice().sort((a,b)=>(b.payment||0)-(a.payment||0));
     // 렌더 보강: 저장된 상품데이터에 결제수/유입이 비어 있으면 검색채널 리포트로 채움 (재빌드 불필요)
     if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; }); }catch(_){} }
@@ -15904,7 +15905,7 @@ async function importGpagoMigrationData(evt) {
     }
     const products=Object.keys(map).map(pid=>{
       const kws=Object.keys(map[pid]).map(kw=>({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:map[pid][kw].payment||0, payCnt:(map[pid][kw].payCnt!=null&&map[pid][kw].payCnt>0?map[pid][kw].payCnt:(kwCnt[kw]!=null?kwCnt[kw]:0)), inflow:(map[pid][kw].inflow!=null?map[pid][kw].inflow:(kwInflow[kw]!=null?kwInflow[kw]:null)) })).sort((a,b)=>(b.payment||0)-(a.payment||0));
-      return { no:pid, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
+      return { no:pid, real:true, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
     }).sort((a,b)=>(b.payment||0)-(a.payment||0));
     return products.length?products:null;
   }
@@ -15930,7 +15931,7 @@ async function importGpagoMigrationData(evt) {
     const totalInflow=keywords.reduce((x,k)=>x+(k.inflow||0),0);
     let range='';
     for(const c of caps){ const m=String(c.url).match(/startDate=([\d-]+)&endDate=([\d-]+)/); if(m){ range=m[1]+' ~ '+m[2]; break; } }
-    const totalProduct={ no:'전체', name:'전체 스토어 키워드 성과', image:'', payment:totalPay, inflow:totalInflow, keywords:keywords };
+    const totalProduct={ no:'전체', real:true, name:'전체 스토어 키워드 성과', image:'', payment:totalPay, inflow:totalInflow, keywords:keywords };
     const pp=_kpBuildPerProduct(caps); // 상품별 자동 분리 (있으면)
     return {
       id:'rs_'+(siteId||'store'),
