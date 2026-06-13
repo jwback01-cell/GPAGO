@@ -15568,6 +15568,7 @@ async function importGpagoMigrationData(evt) {
       +'<div><div class="font-black text-[15px]">'+_kpEsc(s.name)+'</div><div class="text-[12px] text-brand-gray">상품번호를 선택해 주세요.</div></div></div>'
       +'<div class="flex items-center gap-2">'
       +(s.real?'<button id="kp-perproduct-btn" onclick="kperfFetchPerProduct()" class="text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3 py-1.5 rounded-lg hover:opacity-80">'+(s.perProduct?'↻ 상품별 새로고침':'상품별 불러오기')+'</button>':'')
+      +(s.real?'<button onclick="kperfReloadThumbs()" class="text-[12px] font-bold text-brand-gray border border-brand-border bg-white px-3 py-1.5 rounded-lg hover:text-brand-black" title="상품 썸네일 다시 불러오기">🖼 썸네일</button>':'')
       +'<div class="text-[12px] text-brand-gray">상품 저장수 '+((s.products||[]).length)+'개</div></div></div>';
     const _thumbs=_kpLoadThumbs();
     const rows=(s.products||[]).map(p=>{
@@ -15586,6 +15587,21 @@ async function importGpagoMigrationData(evt) {
   // 상품 썸네일 — 상품명으로 네이버 쇼핑 공식 API 검색 → 첫 결과 이미지 (캐시)
   function _kpLoadThumbs(){ try{ return JSON.parse(localStorage.getItem('gpago_kperf_thumbs')||'{}'); }catch(_){ return {}; } }
   function _kpSaveThumbs(m){ try{ localStorage.setItem('gpago_kperf_thumbs', JSON.stringify(m)); }catch(_){} }
+  function _kpNorm(s){ return String(s||'').replace(/<[^>]+>/g,'').replace(/[^0-9a-z가-힣]/gi,'').toLowerCase(); }
+  // 검색결과 중 상품명이 가장 일치하는 항목의 이미지 선택 (엉뚱한 첫 결과 방지)
+  function _kpBestImageMatch(name, items){
+    const toks=String(name||'').split(/\s+/).map(_kpNorm).filter(t=>t.length>=2);
+    let best=null, bestScore=-1;
+    for(const it of (items||[])){
+      if(!it||!it.image) continue;
+      const t=_kpNorm(it.title);
+      let score=0; for(const tk of toks){ if(tk && t.includes(tk)) score++; }
+      if(score>bestScore){ bestScore=score; best=it; }
+    }
+    // 토큰이 충분히 겹칠 때만 채택 (아니면 엉뚱한 이미지 방지 → __none__)
+    const need=Math.min(3, Math.max(2, Math.ceil(toks.length*0.4)));
+    return (best && bestScore>=need) ? best.image : null;
+  }
   let _kpThumbBusy=false;
   async function _kpAutoThumbs(){
     if(_kpThumbBusy) return;
@@ -15596,13 +15612,15 @@ async function importGpagoMigrationData(evt) {
     if(!need.length) return;
     _kpThumbBusy=true; let got=0;
     for(const p of need){
-      try{ const r=await _naverShopSearch(p.name,1,1,api.id,api.secret); const it=r&&r.items&&r.items[0]; thumbs[p.name]=(it&&it.image)?it.image:'__none__'; if(it&&it.image) got++; }
+      try{ const r=await _naverShopSearch(p.name,1,10,api.id,api.secret); const img=_kpBestImageMatch(p.name,(r&&r.items)||[]); thumbs[p.name]=img||'__none__'; if(img) got++; }
       catch(_){ thumbs[p.name]='__none__'; }
       await new Promise(r=>setTimeout(r,250));
     }
     _kpSaveThumbs(thumbs); _kpThumbBusy=false;
     if(got && _kp.step===2) renderKperf();
   }
+  // 잘못 잡힌 썸네일 다시 받기 (캐시 비우고 재조회)
+  window.kperfReloadThumbs=function(){ try{ localStorage.removeItem('gpago_kperf_thumbs'); }catch(_){} _kpThumbBusy=false; renderKperf(); toast('썸네일을 다시 불러옵니다'); };
   // 상품별 수집 진단 박스 (개발용 — 실패 원인 파악) — 화면에 표시해 캡처만 하면 됨
   function _kpRenderPerProductDiag(){
     let caps=[]; try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
