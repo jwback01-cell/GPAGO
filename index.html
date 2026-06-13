@@ -15834,6 +15834,7 @@ async function importGpagoMigrationData(evt) {
       if(String(c&&c.url||'').startsWith('__gpago_')) continue; // 상품별 능동조회 캡처는 '전체' 집계에서 제외
       const rows=_kpExtractRows(c);
       if(!rows.length || !rows[0] || typeof rows[0]!=='object' || !('ref_keyword' in rows[0])) continue; // 객체 행에 ref_keyword 있으면 키워드 리포트 (토큰 등 문자열 캡처 건너뜀)
+      if(_kpProdKey(rows[0])) continue; // 상품 차원(product_name 등) 포함된 per-product 리포트는 '전체' 집계에서 제외
       let score=rows.length;
       if(!c.truncated) score+=1000000;            // 잘리지 않은 응답 최우선
       if('pay_amount' in rows[0]) score+=500000;  // 실제 결제금액 보유
@@ -15868,6 +15869,13 @@ async function importGpagoMigrationData(evt) {
     const payOf=(row)=>{ const v=(row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount!=null?row.attribution_pay_amount:numByRe(row,[/pay_amount/i]))); return v!=null?Math.round(Number(v)):null; };
     const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):null; };
     const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/num_inflow/i,/inflow/i,/num_users/i,/num_visit/i,/^pv$/i,/num_click/i]))); return v!=null?Number(v):null; };
+    // 키워드→유입수 맵 (마케팅분석 검색채널 등 store-wide 키워드 리포트에서 — 상품 차원 없이 ref_keyword+유입 보유)
+    const kwInflow={};
+    for(const c of (caps||[])){
+      if(String(c&&c.url||'').startsWith('__gpago_')) continue;
+      const r=_kpExtractRows(c); if(!r||!r.length||!r[0]||typeof r[0]!=='object'||!('ref_keyword' in r[0])) continue;
+      for(const row of r){ const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue; const iv=infOf(row); if(iv!=null&&iv>0&&(kwInflow[kw]==null||iv>kwInflow[kw])) kwInflow[kw]=iv; }
+    }
     // (상품, 키워드) 단위로 여러 캡처의 metric 을 병합
     const map={}; // pid -> kw -> {payment,payCnt,inflow}
     for(const row of rows){
@@ -15881,7 +15889,7 @@ async function importGpagoMigrationData(evt) {
       const iv=infOf(row); if(iv!=null && (cell.inflow==null || iv>cell.inflow)) cell.inflow=iv;
     }
     const products=Object.keys(map).map(pid=>{
-      const kws=Object.keys(map[pid]).map(kw=>({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:map[pid][kw].payment||0, payCnt:map[pid][kw].payCnt||0, inflow:map[pid][kw].inflow })).sort((a,b)=>(b.payment||0)-(a.payment||0));
+      const kws=Object.keys(map[pid]).map(kw=>({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:map[pid][kw].payment||0, payCnt:map[pid][kw].payCnt||0, inflow:(map[pid][kw].inflow!=null?map[pid][kw].inflow:(kwInflow[kw]!=null?kwInflow[kw]:null)) })).sort((a,b)=>(b.payment||0)-(a.payment||0));
       return { no:pid, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
     }).sort((a,b)=>(b.payment||0)-(a.payment||0));
     return products.length?products:null;
