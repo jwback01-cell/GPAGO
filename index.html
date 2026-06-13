@@ -15667,7 +15667,10 @@ async function importGpagoMigrationData(evt) {
     const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
     const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
     console.log('[kperf 상품별] perproduct 캡처:', !!ppCap, 'prodname 캡처:', !!pnCap, '총 캡처', (caps||[]).length);
-    if(!ppCap){ toast('상품별 데이터가 아직 없습니다 — "스토어 추가"로 다시 수집하면 상품별이 함께 수집됩니다 (확장 1.7.59+)'); return; }
+    if(!ppCap){
+      try{ const dg=(caps||[]).filter(c=>String(c&&c.url||'').startsWith('__gpago_ppdiag__')).map(c=>c&&c.data); if(dg.length) console.log('[kperf 상품별] 진단(상세):', JSON.stringify(dg)); else console.log('[kperf 상품별] 진단 캡처 없음 — 능동조회가 실행되지 않음(ref_keyword 요청 미포착 가능)'); }catch(_){}
+      toast('상품별 데이터가 아직 없습니다 — F12 콘솔의 "[kperf 상품별] 진단(상세)" 내용을 공유해 주세요'); return;
+    }
     const btn=document.getElementById('kp-perproduct-btn'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='처리 중…'; }
     try{
       const products=_kpBuildPerProduct(caps);
@@ -15895,7 +15898,7 @@ async function importGpagoMigrationData(evt) {
       console.log('[GPAGO kperf] 비즈어드바이저 요청(인증 헤더 포함):', window._bizRequests);
       try{ console.log('[GPAGO kperf] report 요청 URL들:', (window._bizRequests||[]).map(r=>r&&r.url).filter(u=>/\/biz_iframe\/api\/|\/report/i.test(String(u||'')))); }catch(_){}
       try{ console.log('[GPAGO kperf] 상품별 캡처 존재?', caps.some(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'))); }catch(_){}
-      try{ const dg=caps.filter(c=>String(c&&c.url||'').startsWith('__gpago_ppdiag__')); if(dg.length) console.log('[GPAGO kperf] 상품별 진단:', dg.map(c=>c.data)); }catch(_){}
+      try{ const dg=caps.filter(c=>String(c&&c.url||'').startsWith('__gpago_ppdiag__')); if(dg.length) console.log('[GPAGO kperf] 상품별 진단:', JSON.stringify(dg.map(c=>c.data))); }catch(_){}
       if(!e.data.ok){ toast('수집 실패: '+(e.data.error||'확장프로그램 확인')); return; }
       // 키워드 리포트 파싱 → 실제 스토어 생성
       const store=_kpBuildStoreFromCaptures(caps);
