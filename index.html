@@ -15664,12 +15664,16 @@ async function importGpagoMigrationData(evt) {
   }
   function _kpRows(res){ const d=res&&res.data; if(Array.isArray(d)) return d; if(d&&Array.isArray(d.rows)) return d.rows; if(d&&Array.isArray(d.data)) return d.data; return null; }
   function _kpProdKey(row){
+    if(!row||typeof row!=='object') return null;
     for(const k of ['mall_product_id','origin_product_no','product_no','mall_product_no','product_id','nv_mid','mid']) if(k in row && row[k]!=null) return k;
+    for(const k of ['product_name','mall_product_name','origin_product_name','product_title']) if(k in row && row[k]!=null) return k; // 상품ID가 없으면 상품명으로 그룹
     for(const k in row){ if(/product/i.test(k)&&/(id|no)$/i.test(k)) return k; }
+    for(const k in row){ if(/product/i.test(k)&&/(name|title)/i.test(k)) return k; }
     return null;
   }
   function _kpProdName(row){
-    for(const k of ['mall_product_name','product_name','origin_product_name','product_title']) if(k in row && row[k]) return k;
+    if(!row||typeof row!=='object') return null;
+    for(const k of ['product_name','mall_product_name','origin_product_name','product_title']) if(k in row && row[k]) return k;
     for(const k in row){ if(/product/i.test(k)&&/(name|title)/i.test(k)) return k; }
     return null;
   }
@@ -15678,17 +15682,13 @@ async function importGpagoMigrationData(evt) {
     let caps=[];
     try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
     if((!caps||!caps.length) && Array.isArray(window._bizCaptures)) caps=window._bizCaptures;
-    const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
-    const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
-    console.log('[kperf 상품별] perproduct 캡처:', !!ppCap, 'prodname 캡처:', !!pnCap, '총 캡처', (caps||[]).length);
-    if(!ppCap){
-      try{ const dg=(caps||[]).filter(c=>String(c&&c.url||'').startsWith('__gpago_ppdiag__')).map(c=>c&&c.data); if(dg.length) console.log('[kperf 상품별] 진단(상세):', JSON.stringify(dg)); else console.log('[kperf 상품별] 진단 캡처 없음 — 능동조회가 실행되지 않음(ref_keyword 요청 미포착 가능)'); }catch(_){}
-      toast('상품별 데이터가 아직 없습니다 — F12 콘솔의 "[kperf 상품별] 진단(상세)" 내용을 공유해 주세요'); return;
-    }
     const btn=document.getElementById('kp-perproduct-btn'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='처리 중…'; }
     try{
-      const products=_kpBuildPerProduct(caps);
-      if(!products || !products.length){ toast('상품별 데이터 형식을 못 읽었습니다 — 콘솔 로그 공유 부탁드립니다'); try{ console.log('[kperf 상품별] rows[0]=', _kpExtractRows(ppCap)[0]); }catch(_){} return; }
+      const products=_kpBuildPerProduct(caps); // 전용 캡처 or passive 캡처(상품명+ref_keyword)에서 빌드
+      if(!products || !products.length){
+        try{ const dg=(caps||[]).filter(c=>String(c&&c.url||'').startsWith('__gpago_ppdiag__')).map(c=>c&&c.data); console.log('[kperf 상품별] 빌드 실패 — 진단:', JSON.stringify(dg)); }catch(_){}
+        toast('상품별 데이터를 못 읽었습니다 — "스토어 추가"로 [판매분석 ▸ 상품/검색채널] 화면을 보며 재수집해 주세요'); return;
+      }
       const stores=_kpLoadStores(); const s=stores.find(x=>x.id===_kp.storeId);
       if(s){
         const total=(s.products||[]).find(p=>p.no==='전체');
@@ -15844,23 +15844,34 @@ async function importGpagoMigrationData(evt) {
   }
   // 상품별 키워드 데이터 빌드 (bizadvisor 아이프레임에서 능동 조회해 저장한 __gpago_perproduct__ 캡처 사용)
   function _kpBuildPerProduct(caps){
+    // 1) 전용 능동조회 캡처, 2) 없으면 passive 캡처 중 (상품필드 + ref_keyword) 행을 가진 응답 탐색
+    let rows=null;
     const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
-    if(!ppCap) return null;
-    const rows=_kpExtractRows(ppCap);
+    if(ppCap) rows=_kpExtractRows(ppCap);
+    if(!rows||!rows.length||!_kpProdKey(rows[0])){
+      for(const c of (caps||[])){
+        if(String(c&&c.url||'').startsWith('__gpago_')) continue;
+        const r=_kpExtractRows(c);
+        if(r&&r.length&&r[0]&&typeof r[0]==='object'&&('ref_keyword' in r[0])&&_kpProdKey(r[0])){ rows=r; break; }
+      }
+    }
     if(!rows||!rows.length||!_kpProdKey(rows[0])) return null;
     const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
     const nameMap={};
     try{ const pn=pnCap?_kpExtractRows(pnCap):[]; if(pn&&pn.length){ const pk=_kpProdKey(pn[0]),nk=_kpProdName(pn[0]); if(pk&&nk) for(const r of pn) nameMap[String(r[pk])]=String(r[nk]); } }catch(_){}
-    const pidKey=_kpProdKey(rows[0]); const groups={};
+    const pidKey=_kpProdKey(rows[0]); const nameKey=_kpProdName(rows[0]); const groups={}, nameOf={};
+    // 결제/유입 필드명 변형 대응 (pay_amount / attribution_pay_amount_by_interaction / num_interaction 등)
+    const numByRe=(row,reArr)=>{ for(const re of reArr){ for(const k in row){ if(re.test(k) && row[k]!=null && !isNaN(Number(row[k]))) return Number(row[k]); } } return null; };
+    const payOf=(row)=>{ const v = (row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount!=null?row.attribution_pay_amount:numByRe(row,[/pay_amount/i]))); return Math.round(Number(v||0))||0; };
+    const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):0; };
+    const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/num_users/i,/inflow/i]))); return v!=null?Number(v):null; };
     for(const row of rows){
       const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
       const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
-      (groups[pid]=groups[pid]||[]).push({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null,
-        payment:Math.round((row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount||0))||0),
-        payCnt:(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:0)),
-        inflow:(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:null)) });
+      if(nameKey && row[nameKey]) nameOf[pid]=String(row[nameKey]);
+      (groups[pid]=groups[pid]||[]).push({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:payOf(row), payCnt:cntOf(row), inflow:infOf(row) });
     }
-    const products=Object.keys(groups).map(pid=>{ const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0)); return { no:pid, name:(nameMap[pid]||('상품번호 '+pid)), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws }; }).sort((a,b)=>(b.payment||0)-(a.payment||0));
+    const products=Object.keys(groups).map(pid=>{ const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0)); return { no:pid, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws }; }).sort((a,b)=>(b.payment||0)-(a.payment||0));
     return products.length?products:null;
   }
   function _kpBuildStoreFromCaptures(caps){
