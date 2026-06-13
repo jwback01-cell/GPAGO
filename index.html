@@ -1800,7 +1800,7 @@ PBT키캡	1180
       <h1 class="text-[1.5rem] md:text-[1.9rem] font-black tracking-tight">경쟁사 상품 분석</h1>
       <span class="text-[10px] font-black text-brand-blue bg-brand-blue-light px-2 py-0.5 rounded-full tracking-wider align-middle">BETA</span>
     </div>
-    <p class="text-brand-gray text-[13px] md:text-[14px] mb-5 pl-3.5">경쟁사 상품을 등록하면 순위 · 월매출(재고 추적) · 가격 변동을 한눈에 추적합니다.</p>
+    <p class="text-brand-gray text-[13px] md:text-[14px] mb-5 pl-3.5">경쟁사 상품을 등록하면 순위 · 판매량/월매출(추정) · 가격 변동을 한눈에 추적합니다.</p>
 
     <!-- 상품 등록 (URL 붙여넣기) -->
     <div class="bg-white border border-brand-border rounded-2xl p-3 mb-5 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center panel">
@@ -14751,16 +14751,19 @@ async function importGpagoMigrationData(evt) {
   async function _cmpRefreshOne(p){
     const sc=await _cmpScrapeProduct(p.mainKeyword, p.productId);
     let prod=sc.product;
-    // 순위를 못 잡았거나 가격이 없으면 스마트스토어 상품정보로 가격/제목/리뷰 보완 (가격 0원 방지)
-    if((!prod || prod.price==null) && p.url){
+    // 순위를 못 잡았거나 가격이 없으면(또는 등록일 미확보 시) 스마트스토어 상품정보로 가격/제목/리뷰/등록일 보완
+    if((!prod || prod.price==null || !p.registDate) && p.url){
       try{
         const res=await _cmpFetchInfo(p.url); const d=(res&&res.ok&&res.data)?res.data:{};
-        if(d && (d.price!=null || d.title)){
-          if(!prod) prod={};
-          if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
-          if(!prod.title && d.title) prod.title=d.title;
-          if(prod.reviewCount==null && d.reviewCount!=null) prod.reviewCount=Number(d.reviewCount);
-          if(!prod.image && d.image) prod.image=d.image;
+        if(d){
+          if(!p.registDate && d.registDate) p.registDate=d.registDate; // 판매량 추정용 (등록일~현재 역산)
+          if(d.price!=null || d.title){
+            if(!prod) prod={};
+            if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
+            if(!prod.title && d.title) prod.title=d.title;
+            if(prod.reviewCount==null && d.reviewCount!=null) prod.reviewCount=Number(d.reviewCount);
+            if(!prod.image && d.image) prod.image=d.image;
+          }
         }
       }catch(_){}
     }
@@ -14788,6 +14791,46 @@ async function importGpagoMigrationData(evt) {
   }
   function _cmpRankChartArr(rank){ const nums=(rank||[]).filter(v=>typeof v==='number'); if(!nums.length) return null; const mx=Math.max.apply(null,nums); return rank.map(v=> v==null? mx+2 : v); }
   function _cmpRankText(rank){ const last=(rank&&rank.length)?rank[rank.length-1]:undefined; if(typeof last==='number') return last+'위'; if(last===null) return '순위권 밖'; return '미조회'; }
+
+  // ── 판매량 / 월매출 추정 ──
+  //   네이버는 실재고 수량을 구매자에게 비공개(셀러 대시보드 전용)라 직접 읽을 수 없음.
+  //   대신 ropago·셀러마스터류와 동일하게 "리뷰 증가량"으로 판매량을 역산한다.
+  //   판매량 = 리뷰수 ÷ 리뷰작성률.  (갱신 2회 이상 → 증가분 기반 / 1회뿐이면 등록일~현재 누적 기반)
+  const CMP_REVIEW_RATE = 0.25; // 구매자 중 리뷰 작성 비율 가정(25%) — 실제값 미공개라 업계 통용 가정치 사용
+  function _cmpSalesEstimate(p){
+    const snaps=(p.snapshots||[]).filter(s=> s && s.reviewCount!=null && s.t);
+    const priceArr=(p.snapshots||[]).map(s=>s.price).filter(v=>v!=null);
+    const price=(p.price!=null?p.price:(priceArr.length?priceArr[priceArr.length-1]:null));
+    let monthlyUnits=null, basis=null, periodDays=null, periodUnits=null;
+    if(snaps.length>=2){
+      const first=snaps[0], last=snaps[snaps.length-1];
+      const gain=Math.max(0,(Number(last.reviewCount)||0)-(Number(first.reviewCount)||0));
+      const days=Math.max(0.5,(new Date(last.t)-new Date(first.t))/86400000);
+      if(gain>0){
+        periodUnits=Math.round(gain/CMP_REVIEW_RATE);
+        periodDays=Math.round(days);
+        monthlyUnits=Math.round((periodUnits/days)*30);
+        basis='delta';
+      }
+    }
+    if(monthlyUnits==null){
+      // 추적 기간이 짧거나 리뷰 증가가 아직 없을 때 — 등록일~현재 누적 리뷰로 월평균 역산
+      const rc=(snaps.length?Number(snaps[snaps.length-1].reviewCount):(p.reviewCount!=null?Number(p.reviewCount):null));
+      if(rc!=null && rc>0 && p.registDate){
+        const reg=new Date(p.registDate);
+        if(!isNaN(reg)){
+          const monthsLive=Math.max(1,(Date.now()-reg.getTime())/(86400000*30));
+          monthlyUnits=Math.round((rc/CMP_REVIEW_RATE)/monthsLive);
+          basis='lifetime';
+        }
+      }
+    }
+    if(monthlyUnits==null) return {ok:false};
+    const revenue=(price!=null? monthlyUnits*price : null);
+    // 차트용: 각 스냅샷의 누적 추정 판매량(= 리뷰수/작성률) → 우상향 추세
+    const series=(p.snapshots||[]).map(s=> (s.reviewCount!=null? Math.round(Number(s.reviewCount)/CMP_REVIEW_RATE):null)).filter(v=>v!=null);
+    return {ok:true, monthlyUnits, revenue, basis, series, price, periodDays, periodUnits};
+  }
 
   // ── 변동 타입 색상 ──
   function _cmpTypeStyle(type){
@@ -14984,11 +15027,26 @@ async function importGpagoMigrationData(evt) {
         rankNums.length>=2 ? _cmpDelta(Math.abs(rankImp)+'위', rankImp>=0?'green':'pink', rankImp>0?true:(rankImp<0?false:null)) : '',
         rankChartArr ? _cmpChart(rankChartArr,C_RANK,true) : note(p.real?'순위 미확인<br>(키워드 순위권에서 상품을 못 찾았거나 네이버 접속이 제한됨 — 잠시 후 메인키워드 확인하고 재조회)':'순위 데이터 없음'),'purple');
 
-    // 월매출 — sample 은 내장 추정치, real 은 재고 연동 대기
+    // 월 판매량 / 월매출 — real 은 리뷰 증가량 기반 추정, sample 은 내장 추정치
     let revCard;
     if(p.real){
-      revCard=metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적)</span>','—','',
-        note('재고 추적 데이터 누적 중<br>재고 수집 연동이 필요합니다<br>(다음 단계)'),'green');
+      const est=_cmpSalesEstimate(p);
+      if(est.ok){
+        const big='약 '+_won(est.monthlyUnits)+'개';
+        const revTxt = est.revenue!=null ? ('월매출 ≈ '+_won(Math.max(0,Math.round(est.revenue/10000)))+'만원') : '가격 미확인';
+        const ser=est.series||[];
+        const chartOrNote = ser.length>=2
+          ? _cmpChart(ser,C_REV,false)
+          : note(est.basis==='lifetime'
+              ? '등록일~현재 누적 리뷰로 추정<br>월 약 '+_won(est.monthlyUnits)+'개 · 갱신할수록 정확해집니다'
+              : '리뷰 증가 기반 추정<br>월 약 '+_won(est.monthlyUnits)+'개');
+        revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정·리뷰작성률 '+Math.round(CMP_REVIEW_RATE*100)+'%)</span>', big,
+          '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full text-brand-green bg-brand-green-light">'+_cmpEsc(revTxt)+'</span>',
+          chartOrNote,'green');
+      } else {
+        revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정)</span>','—','',
+          note('리뷰 데이터 누적 중<br>↻ 갱신을 2회 이상 하면<br>리뷰 증가량으로 판매량을 추정합니다'),'green');
+      }
     } else {
       const revD=_last(A.rev)-_first(A.rev);
       revCard=metricCard('월매출 <span class="text-[9px] text-brand-gray font-normal">(재고추적 추정)</span>', _won(_last(A.rev))+'만원',
@@ -15094,6 +15152,7 @@ async function importGpagoMigrationData(evt) {
         price:(sp&&sp.price!=null)?sp.price:(Number(d.price)||0),
         reviewCount:(sp&&sp.reviewCount!=null)?sp.reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
         category:(d.category||''), freeShip:true, badges:[], stock:null,
+        registDate:(d.registDate||''),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)) });
