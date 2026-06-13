@@ -15475,7 +15475,7 @@ async function importGpagoMigrationData(evt) {
     renderKperf();
   };
 
-  const _kp = { step:1, storeId:null, productNo:null, range:'7' };
+  const _kp = { step:1, storeId:null, productNo:null, range:'7', calStart:null, calEnd:null };
 
   // ── 샘플 데이터 ──
   const _KP_SAMPLE_STORES = [
@@ -15624,10 +15624,13 @@ async function importGpagoMigrationData(evt) {
       let cells=''; for(let i=0;i<startWd;i++) cells+='<div></div>';
       for(let d=1;d<=dim;d++){
         const dt=new Date(y,mo,d); const ir=inRange(dt); const isToday=dt.getTime()===today.getTime();
+        const ds=fmt(dt);
+        const sel = _kp.calStart && (ds===_kp.calStart || ds===_kp.calEnd || (_kp.calEnd && ds>_kp.calStart && ds<_kp.calEnd));
         const inner = ir ? 'bg-brand-green text-white font-bold' : (isToday?'border border-brand-green text-brand-green font-bold':'text-brand-gray');
         const wd=dt.getDay();
         const dowColor = ir?'':(wd===0?'text-brand-pink':(wd===6?'text-brand-blue':''));
-        cells+='<div class="flex items-center justify-center"><span class="w-7 h-7 flex items-center justify-center rounded-full text-[12px] '+inner+' '+dowColor+'">'+d+'</span></div>';
+        const selCls = sel ? ' ring-2 ring-brand-blue ring-offset-1' : '';
+        cells+='<div class="flex items-center justify-center"><span onclick="kperfPickDate(\''+ds+'\')" class="w-7 h-7 flex items-center justify-center rounded-full text-[12px] cursor-pointer hover:ring-2 hover:ring-brand-blue/50 '+inner+' '+dowColor+selCls+'">'+d+'</span></div>';
       }
       return '<div class="flex-1 min-w-[230px]"><div class="text-center text-[13px] font-bold mb-2">'+y+'. '+String(mo+1).padStart(2,'0')+'</div>'
         +'<div class="grid grid-cols-7 gap-1 text-[11px] mb-1">'+WD.map((w,i)=>'<div class="text-center '+(i===0?'text-brand-pink':(i===6?'text-brand-blue':'text-brand-gray'))+'">'+w+'</div>').join('')+'</div>'
@@ -15639,8 +15642,28 @@ async function importGpagoMigrationData(evt) {
       +'<div class="font-black text-[14px] flex items-center gap-2"><span>📅</span>스마트스토어센터 결제·유입 데이터 저장</div>'
       +'<div class="text-[12px] '+(recent?'text-brand-green':'text-brand-gray')+' font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full '+(recent?'bg-brand-green':'bg-brand-gray')+' inline-block"></span>저장됨 '+days+'일'+(recent?' · 최신 상태':'')+'</div></div>'
       +'<div class="text-center text-[14px] font-bold text-brand-blue mb-4">'+_kpEsc(rangeStr)+'</div>'
-      +'<div class="flex gap-6 flex-wrap justify-center">'+months.map(monthGrid).join('')+'</div></div>';
+      +'<div class="flex gap-6 flex-wrap justify-center">'+months.map(monthGrid).join('')+'</div>'
+      +_kpCalActions()+'</div>';
   }
+  // 달력 하단: 날짜 선택 안내 + 수집/조회 버튼
+  function _kpCalActions(){
+    const sel=_kp.calStart;
+    const selTxt = sel ? ('선택 기간: '+_kp.calStart+((_kp.calEnd&&_kp.calEnd!==_kp.calStart)?(' ~ '+_kp.calEnd):'')) : '달력에서 날짜를 클릭해 조회할 기간을 선택하세요 (시작일·종료일)';
+    return '<div class="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-brand-border flex-wrap">'
+      +'<div class="text-[12px] text-brand-gray">'+_kpEsc(selTxt)+(sel?' · <span onclick="kperfClearPick()" class="text-brand-blue cursor-pointer hover:underline">초기화</span>':'')+'</div>'
+      +'<div class="flex items-center gap-2">'
+      +(sel?'<button onclick="kperfCollectRange()" class="text-[12px] font-bold text-white bg-brand-green px-3.5 py-2 rounded-lg hover:opacity-90">🔍 선택 기간 수집·조회</button>':'')
+      +'<button onclick="kperfStartImport()" class="text-[12px] font-bold text-brand-green border border-brand-green-light bg-brand-green-light/40 px-3.5 py-2 rounded-lg hover:opacity-80">↻ 데이터 수집/갱신</button>'
+      +'</div></div>';
+  }
+  window.kperfPickDate=function(d){
+    if(!_kp.calStart || _kp.calEnd){ _kp.calStart=d; _kp.calEnd=null; }
+    else if(d<_kp.calStart){ _kp.calEnd=_kp.calStart; _kp.calStart=d; }
+    else { _kp.calEnd=d; }
+    renderKperf();
+  };
+  window.kperfClearPick=function(){ _kp.calStart=null; _kp.calEnd=null; renderKperf(); };
+  window.kperfCollectRange=function(){ window._kpTargetRange={ start:_kp.calStart, end:(_kp.calEnd||_kp.calStart) }; kperfStartImport(); };
   // ── 상품별 데이터 (비즈어드바이저 리포트 재요청으로 상품 차원 분리) ──
   function _kpLoadBizRequests(){ try{ return JSON.parse(localStorage.getItem('gpago_biz_requests')||'[]'); }catch(_){ return []; } }
   function _kpReportTemplate(){
@@ -15976,8 +15999,11 @@ async function importGpagoMigrationData(evt) {
       }
     };
     window.addEventListener('message',handler);
-    window.postMessage({source:'gpago-page', type:'GPAGO_REQUEST_BIZADVISOR'}, window.location.origin);
-    toast('스마트스토어센터를 엽니다… 팝업에서 [데이터분석 ▸ 판매분석 ▸ 판매성과] 화면을 보면 자동 수집됩니다 (최대 2분)');
+    const tr=window._kpTargetRange;
+    window.postMessage({source:'gpago-page', type:'GPAGO_REQUEST_BIZADVISOR', range:(tr&&tr.start?tr:null)}, window.location.origin);
+    if(tr&&tr.start){ toast('스마트스토어센터를 엽니다 — 판매성과/검색채널 화면에서 조회기간을 '+tr.start+' ~ '+tr.end+' 로 맞춘 뒤 [상품/검색채널]과 [마케팅분석 검색채널]을 보면 그 기간으로 수집됩니다'); }
+    else { toast('스마트스토어센터를 엽니다… 팝업에서 ①판매분석 ▸ 상품/검색채널 ②마케팅분석 ▸ 검색채널 두 화면을 보면 자동 수집됩니다 (최대 2분)'); }
+    window._kpTargetRange=null;
     setTimeout(()=>{ if(!received){ window.removeEventListener('message',handler); toast('수집 응답이 없습니다 — GPAGO 확장프로그램(1.7.43+) 설치·활성화를 확인하세요'); } }, 140000);
   };
 
