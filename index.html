@@ -15794,7 +15794,7 @@ async function importGpagoMigrationData(evt) {
     if(!p.real && s && s.real) p.real=true; // 실스토어의 상품인데 real 플래그 누락된 기존 데이터 보정
     const kws=(p.keywords||[]).slice().sort((a,b)=>(b.payment||0)-(a.payment||0));
     // 렌더 보강: 저장된 상품데이터에 결제수/유입이 비어 있으면 검색채널 리포트로 채움 (재빌드 불필요)
-    if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; if(k.rank==null){ const rp=_km.rankPK[p.name+' '+k.kw]; const rv=(rp!=null?rp:_km.rank[k.kw]); if(rv!=null) k.rank=rv; } }); }catch(_){} }
+    if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payment==null||k.payment===0)){ const pp=_km.payPK[p.name+' '+k.kw]; if(pp!=null) k.payment=pp; } if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; if(k.rank==null){ const rp=_km.rankPK[p.name+' '+k.kw]; const rv=(rp!=null?rp:_km.rank[k.kw]); if(rv!=null) k.rank=rv; } }); kws.sort((a,b)=>(b.payment||0)-(a.payment||0)); }catch(_){} }
     const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
     const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
     const totalCnt=kws.reduce((x,k)=>x+(k.payCnt||0),0);
@@ -15913,10 +15913,11 @@ async function importGpagoMigrationData(evt) {
   function _kpKwMaps(){
     let caps=[]; try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
     if((!caps||!caps.length)&&Array.isArray(window._bizCaptures)) caps=window._bizCaptures;
-    const inflow={}, cnt={}, rank={}, rankPK={};
+    const inflow={}, cnt={}, rank={}, rankPK={}, payPK={};
     const numByRe=(row,reArr)=>{ for(const re of reArr){ for(const k in row){ if(re.test(k)&&row[k]!=null&&!isNaN(Number(row[k]))) return Number(row[k]); } } return null; };
     const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/inflow/i,/num_users/i,/num_visit/i,/^pv$/i,/num_click/i]))); return v!=null?Number(v):null; };
     const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):null; };
+    const payOf=(row)=>{ const v=(row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount!=null?row.attribution_pay_amount:numByRe(row,[/pay_amount/i]))); return v!=null?Math.round(Number(v)):null; };
     const rankOf=(row)=>{ const v=numByRe(row,[/노출순위/,/exposure.*rank/i,/avg.*rank/i,/average.*rank/i,/rank.*index/i,/avg_index/i,/exposure.*index/i]); return v!=null?Number(v):null; };
     const kwOf=(row)=> String(row.ref_keyword!=null?row.ref_keyword:(row.keyword!=null?row.keyword:''));
     for(const c of (caps||[])){
@@ -15928,10 +15929,11 @@ async function importGpagoMigrationData(evt) {
         const kw=kwOf(row); if(!kw||kw==='(검색어 없음)'||kw==='전체') continue;
         const iv=infOf(row); if(iv!=null&&iv>0&&(inflow[kw]==null||iv>inflow[kw])) inflow[kw]=iv;
         const cv=cntOf(row); if(cv!=null&&cv>0&&(cnt[kw]==null||cv>cnt[kw])) cnt[kw]=cv;
-        const rk=rankOf(row); if(rk!=null&&rk>0){ if(rank[kw]==null||rk<rank[kw]) rank[kw]=rk; const prod=pk?String(row[pk]):''; if(prod) rankPK[prod+' '+kw]=rk; }
+        const rk=rankOf(row); if(rk!=null&&rk>0){ if(rank[kw]==null||rk<rank[kw]) rank[kw]=rk; const prod=String(row.product_name||row.mall_product_name||(pk?row[pk]:'')||''); if(prod){ const key=prod+' '+kw; if(rankPK[key]==null||rk<rankPK[key]) rankPK[key]=rk; } }
+        const pv=payOf(row); if(pv!=null&&pv>0){ const prod=String(row.product_name||row.mall_product_name||(pk?row[pk]:'')||''); if(prod){ const key=prod+' '+kw; if(payPK[key]==null||pv>payPK[key]) payPK[key]=pv; } }
       }
     }
-    return {inflow, cnt, rank, rankPK};
+    return {inflow, cnt, rank, rankPK, payPK};
   }
   function _kpBuildPerProduct(caps){
     // (상품필드 + ref_keyword) 행을 가진 모든 캡처를 합침 — 결제는 한 응답, 유입은 다른 응답에 있을 수 있음
@@ -15971,10 +15973,12 @@ async function importGpagoMigrationData(evt) {
     }
     // (상품, 키워드) 단위로 여러 캡처의 metric 을 병합
     const map={}; // pid -> kw -> {payment,payCnt,inflow}
+    // 여러 리포트가 상품 키 필드가 다름(결제=product_name, 노출성과=product_id) → product_name 으로 통일해 병합
+    const pidOf=(row)=> String(row.product_name||row.mall_product_name||row.origin_product_name||(pidKey?row[pidKey]:'')||'');
     for(const row of rows){
-      const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
-      const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
-      if(nameKey && row[nameKey]) nameOf[pid]=String(row[nameKey]);
+      const pid=pidOf(row); if(!pid||pid==='null'||pid==='undefined') continue;
+      const kw=String(row.ref_keyword!=null?row.ref_keyword:(row.keyword||'')); if(!kw||kw==='(검색어 없음)') continue;
+      if(row.product_name||row[nameKey]) nameOf[pid]=String(row.product_name||row[nameKey]);
       map[pid]=map[pid]||{};
       const cell=map[pid][kw]=map[pid][kw]||{payment:null,payCnt:null,inflow:null};
       const pv=payOf(row); if(pv!=null && (cell.payment==null || pv>cell.payment)) cell.payment=pv;
@@ -15983,7 +15987,7 @@ async function importGpagoMigrationData(evt) {
     }
     const products=Object.keys(map).map(pid=>{
       const kws=Object.keys(map[pid]).map(kw=>({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:map[pid][kw].payment||0, payCnt:(map[pid][kw].payCnt!=null&&map[pid][kw].payCnt>0?map[pid][kw].payCnt:(kwCnt[kw]!=null?kwCnt[kw]:0)), inflow:(map[pid][kw].inflow!=null?map[pid][kw].inflow:(kwInflow[kw]!=null?kwInflow[kw]:null)) })).sort((a,b)=>(b.payment||0)-(a.payment||0));
-      return { no:pid, real:true, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
+      return { no:pid, real:true, name:(nameMap[pid]||nameOf[pid]||pid), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
     }).sort((a,b)=>(b.payment||0)-(a.payment||0));
     return products.length?products:null;
   }
