@@ -15575,7 +15575,55 @@ async function importGpagoMigrationData(evt) {
         +'<div class="text-right shrink-0"><div class="text-[14px] font-black '+(p.payment>0?'text-brand-black':'text-brand-gray')+'">결제 '+_kpWon(p.payment)+'원</div>'
         +'<div class="text-[12px] text-brand-gray">유입 '+_kpWon(p.inflow)+'</div></div></button>';
     }).join('');
-    return head+'<div class="flex flex-col gap-3">'+(rows||'<div class="text-center text-brand-gray text-[13px] py-8">저장된 상품이 없습니다</div>')+'</div>';
+    return head+'<div class="flex flex-col gap-3">'+(rows||'<div class="text-center text-brand-gray text-[13px] py-8">저장된 상품이 없습니다</div>')+'</div>'+_kpRenderDataCalendar(s);
+  }
+  // 스마트스토어센터 결제·유입 데이터 저장 캘린더 (수집된 날짜 범위 표시 — 로파고 스타일)
+  function _kpParseRange(store){
+    const r=String(store&&store.range||'');
+    const m=r.match(/(\d{4})[-.](\d{1,2})[-.](\d{1,2})\s*~\s*(\d{4})[-.](\d{1,2})[-.](\d{1,2})/);
+    if(!m) return null;
+    return { start:new Date(+m[1],+m[2]-1,+m[3]), end:new Date(+m[4],+m[5]-1,+m[6]) };
+  }
+  function _kpRenderDataCalendar(store){
+    let rg=_kpParseRange(store);
+    if(!rg){
+      // 범위 정보가 없으면 수집 시점 기준 최근 30일로 표시
+      const base=(store&&store.collectedAt)?new Date(store.collectedAt):new Date(); base.setHours(0,0,0,0);
+      const start=new Date(base); start.setDate(base.getDate()-29); rg={start,end:base};
+    }
+    const fmt=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const rangeStr=(store&&store.range)||(fmt(rg.start)+' ~ '+fmt(rg.end));
+    const oneDay=86400000;
+    const days=Math.round((rg.end-rg.start)/oneDay)+1;
+    const inRange=(d)=> d>=rg.start && d<=rg.end;
+    const months=[]; let cur=new Date(rg.start.getFullYear(),rg.start.getMonth(),1);
+    const endMonth=new Date(rg.end.getFullYear(),rg.end.getMonth(),1);
+    while(cur<=endMonth && months.length<6){ months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+    const today=new Date(); today.setHours(0,0,0,0);
+    const WD=['일','월','화','수','목','금','토'];
+    function monthGrid(mDate){
+      const y=mDate.getFullYear(), mo=mDate.getMonth();
+      const startWd=new Date(y,mo,1).getDay();
+      const dim=new Date(y,mo+1,0).getDate();
+      let cells=''; for(let i=0;i<startWd;i++) cells+='<div></div>';
+      for(let d=1;d<=dim;d++){
+        const dt=new Date(y,mo,d); const ir=inRange(dt); const isToday=dt.getTime()===today.getTime();
+        const inner = ir ? 'bg-brand-green text-white font-bold' : (isToday?'border border-brand-green text-brand-green font-bold':'text-brand-gray');
+        const wd=dt.getDay();
+        const dowColor = ir?'':(wd===0?'text-brand-pink':(wd===6?'text-brand-blue':''));
+        cells+='<div class="flex items-center justify-center"><span class="w-7 h-7 flex items-center justify-center rounded-full text-[12px] '+inner+' '+dowColor+'">'+d+'</span></div>';
+      }
+      return '<div class="flex-1 min-w-[230px]"><div class="text-center text-[13px] font-bold mb-2">'+y+'. '+String(mo+1).padStart(2,'0')+'</div>'
+        +'<div class="grid grid-cols-7 gap-1 text-[11px] mb-1">'+WD.map((w,i)=>'<div class="text-center '+(i===0?'text-brand-pink':(i===6?'text-brand-blue':'text-brand-gray'))+'">'+w+'</div>').join('')+'</div>'
+        +'<div class="grid grid-cols-7 gap-1">'+cells+'</div></div>';
+    }
+    const recent=(today-rg.end)/oneDay<=2;
+    return '<div class="bg-white border border-brand-border rounded-2xl p-5 panel mt-4">'
+      +'<div class="flex items-center justify-between mb-1 flex-wrap gap-2">'
+      +'<div class="font-black text-[14px] flex items-center gap-2"><span>📅</span>스마트스토어센터 결제·유입 데이터 저장</div>'
+      +'<div class="text-[12px] '+(recent?'text-brand-green':'text-brand-gray')+' font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full '+(recent?'bg-brand-green':'bg-brand-gray')+' inline-block"></span>저장됨 '+days+'일'+(recent?' · 최신 상태':'')+'</div></div>'
+      +'<div class="text-center text-[14px] font-bold text-brand-blue mb-4">'+_kpEsc(rangeStr)+'</div>'
+      +'<div class="flex gap-6 flex-wrap justify-center">'+months.map(monthGrid).join('')+'</div></div>';
   }
   window.kperfSelectProduct=function(no){ _kp.productNo=no; _kp.step=3; renderKperf(); };
 
