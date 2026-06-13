@@ -14750,8 +14750,21 @@ async function importGpagoMigrationData(evt) {
   }
   async function _cmpRefreshOne(p){
     const sc=await _cmpScrapeProduct(p.mainKeyword, p.productId);
-    if(sc.rank===undefined && !sc.product) return false; // 확장 미응답
-    const prod=sc.product;
+    let prod=sc.product;
+    // 순위를 못 잡았거나 가격이 없으면 스마트스토어 상품정보로 가격/제목/리뷰 보완 (가격 0원 방지)
+    if((!prod || prod.price==null) && p.url){
+      try{
+        const res=await _cmpFetchInfo(p.url); const d=(res&&res.ok&&res.data)?res.data:{};
+        if(d && (d.price!=null || d.title)){
+          if(!prod) prod={};
+          if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
+          if(!prod.title && d.title) prod.title=d.title;
+          if(prod.reviewCount==null && d.reviewCount!=null) prod.reviewCount=Number(d.reviewCount);
+          if(!prod.image && d.image) prod.image=d.image;
+        }
+      }catch(_){}
+    }
+    if(sc.rank===undefined && !prod) return false; // 확장 미응답·완전 실패
     const now=new Date().toISOString();
     if(prod){ if(prod.image && !p.image) p.image=prod.image; if(prod.mall) p.mall=prod.mall; }
     _cmpApplyDiff(p,{
@@ -15049,11 +15062,12 @@ async function importGpagoMigrationData(evt) {
     const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='수집 중...'; }
     try{
       let d={};
-      // 메인키워드 미입력 시 — 스마트스토어 정보로 제목을 받아 자동 추정
+      // 가격/제목/이미지는 키워드와 무관하게 항상 스마트스토어 상품정보에서 가져옴
+      // (쇼핑 스크랩이 순위를 못 잡아도 가격이 0원으로 나오던 문제 방지)
+      toast('상품 정보 수집 중… (보안확인 뜨면 풀어주세요)');
+      try{ const res=await _cmpFetchInfo(url); d=(res&&res.ok&&res.data)?res.data:{}; }catch(_){ d={}; }
+      // 메인키워드 미입력 시 — 받은 제목으로 자동 추정
       if(!mainKw){
-        toast('메인키워드 자동 추정을 위해 상품 정보 수집 중…');
-        const res=await _cmpFetchInfo(url);
-        d=(res&&res.ok&&res.data)?res.data:{};
         mainKw=_cmpGuessKeyword(d.title||'');
         if(!mainKw){ toast('메인키워드를 입력해 주세요 (자동 추정 실패)'); return; }
         toast('메인키워드 추정: "'+mainKw+'" — 정확하지 않으면 등록 후 수정하세요');
