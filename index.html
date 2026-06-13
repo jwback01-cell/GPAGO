@@ -15052,7 +15052,9 @@ async function importGpagoMigrationData(evt) {
     const header='<div class="flex items-start gap-4 mb-6">'
       +thumbBig
       +'<div class="flex-1 min-w-0"><div class="text-[12px] text-brand-gray font-semibold mb-0.5">'+_cmpEsc(p.mall||'')+'</div>'
-      +'<div class="text-[1.25rem] font-black text-brand-black leading-snug">'+_cmpEsc(p.name||p.url||'')+'</div>'
+      +(p.url
+         ? '<a href="'+_cmpEsc(p.url)+'" target="_blank" rel="noopener noreferrer" title="상품 페이지 열기 ↗" class="text-[1.25rem] font-black text-brand-black leading-snug hover:text-brand-blue hover:underline cursor-pointer">'+_cmpEsc(p.name||p.url||'')+' <span class="text-[13px] text-brand-gray align-middle">↗</span></a>'
+         : '<div class="text-[1.25rem] font-black text-brand-black leading-snug">'+_cmpEsc(p.name||p.url||'')+'</div>')
       +kwArea
       +'</div>'
       +'<button onclick="closeCompetitorDetail()" class="text-brand-gray hover:text-brand-black text-2xl leading-none shrink-0 px-2">×</button></div>';
