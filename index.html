@@ -14835,6 +14835,10 @@ async function importGpagoMigrationData(evt) {
     }
     // 셀하 캐시 우선 반영 (백그라운드 창엔 셀하가 안 떠서, 사용자가 평소 본 페이지에서 저장된 값을 사용)
     try{ const cs=await _cmpGetCachedSellha(p.productId); if(_cmpSellhaFresh(cs)) p.sellha=cs; }catch(_){}
+    // 가격을 못 얻었으면 셀하(예상매출÷배송건수)로 단가 역산
+    if((!prod || prod.price==null || prod.price===0) && p.sellha && p.sellha.revenue7d>0 && p.sellha.deliver7d>0){
+      const u=Math.round(p.sellha.revenue7d/p.sellha.deliver7d); if(u>0){ if(!prod) prod={}; if(prod.price==null||prod.price===0) prod.price=u; }
+    }
     if(sc.rank===undefined && !prod) return false; // 확장 미응답·완전 실패
     const now=new Date().toISOString();
     if(prod){ if(prod.image && !p.image) p.image=prod.image; if(prod.mall) p.mall=prod.mall; }
@@ -15260,6 +15264,8 @@ async function importGpagoMigrationData(evt) {
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
       try{ const cs=await _cmpGetCachedSellha(pid); if(_cmpSellhaFresh(cs)) prod.sellha=cs; }catch(_){}
+      // 가격 0이면 셀하 예상매출÷배송건수로 단가 역산
+      if((prod.price==null||prod.price===0) && prod.sellha && prod.sellha.revenue7d>0 && prod.sellha.deliver7d>0){ const u=Math.round(prod.sellha.revenue7d/prod.sellha.deliver7d); if(u>0) prod.price=u; }
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource });
       products.unshift(prod); _cmpSaveProducts(products);
       inp.value=''; if(kwInput) kwInput.value='';
