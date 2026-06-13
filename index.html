@@ -15844,34 +15844,42 @@ async function importGpagoMigrationData(evt) {
   }
   // 상품별 키워드 데이터 빌드 (bizadvisor 아이프레임에서 능동 조회해 저장한 __gpago_perproduct__ 캡처 사용)
   function _kpBuildPerProduct(caps){
-    // 1) 전용 능동조회 캡처, 2) 없으면 passive 캡처 중 (상품필드 + ref_keyword) 행을 가진 응답 탐색
-    let rows=null;
+    // (상품필드 + ref_keyword) 행을 가진 모든 캡처를 합침 — 결제는 한 응답, 유입은 다른 응답에 있을 수 있음
+    let rows=[];
     const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
-    if(ppCap) rows=_kpExtractRows(ppCap);
-    if(!rows||!rows.length||!_kpProdKey(rows[0])){
-      for(const c of (caps||[])){
-        if(String(c&&c.url||'').startsWith('__gpago_')) continue;
-        const r=_kpExtractRows(c);
-        if(r&&r.length&&r[0]&&typeof r[0]==='object'&&('ref_keyword' in r[0])&&_kpProdKey(r[0])){ rows=r; break; }
-      }
+    if(ppCap){ const r=_kpExtractRows(ppCap); if(r&&r.length) rows=rows.concat(r); }
+    for(const c of (caps||[])){
+      if(String(c&&c.url||'').startsWith('__gpago_')) continue;
+      const r=_kpExtractRows(c);
+      if(r&&r.length&&r[0]&&typeof r[0]==='object'&&('ref_keyword' in r[0])&&_kpProdKey(r[0])) rows=rows.concat(r);
     }
-    if(!rows||!rows.length||!_kpProdKey(rows[0])) return null;
+    if(!rows.length||!_kpProdKey(rows[0])) return null;
+    try{ console.log('[kperf 상품별] 채택 행 keys=', Object.keys(rows[0]), '| 행수', rows.length); }catch(_){}
     const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
     const nameMap={};
     try{ const pn=pnCap?_kpExtractRows(pnCap):[]; if(pn&&pn.length){ const pk=_kpProdKey(pn[0]),nk=_kpProdName(pn[0]); if(pk&&nk) for(const r of pn) nameMap[String(r[pk])]=String(r[nk]); } }catch(_){}
-    const pidKey=_kpProdKey(rows[0]); const nameKey=_kpProdName(rows[0]); const groups={}, nameOf={};
-    // 결제/유입 필드명 변형 대응 (pay_amount / attribution_pay_amount_by_interaction / num_interaction 등)
+    const pidKey=_kpProdKey(rows[0]); const nameKey=_kpProdName(rows[0]); const nameOf={};
+    // 결제/유입 필드명 변형 대응 (pay_amount / attribution_pay_amount_by_interaction / num_interaction / simple_num_users 등)
     const numByRe=(row,reArr)=>{ for(const re of reArr){ for(const k in row){ if(re.test(k) && row[k]!=null && !isNaN(Number(row[k]))) return Number(row[k]); } } return null; };
-    const payOf=(row)=>{ const v = (row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount!=null?row.attribution_pay_amount:numByRe(row,[/pay_amount/i]))); return Math.round(Number(v||0))||0; };
-    const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):0; };
-    const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/num_users/i,/inflow/i]))); return v!=null?Number(v):null; };
+    const payOf=(row)=>{ const v=(row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount!=null?row.attribution_pay_amount:numByRe(row,[/pay_amount/i]))); return v!=null?Math.round(Number(v)):null; };
+    const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):null; };
+    const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/num_inflow/i,/inflow/i,/num_users/i,/num_visit/i,/^pv$/i,/num_click/i]))); return v!=null?Number(v):null; };
+    // (상품, 키워드) 단위로 여러 캡처의 metric 을 병합
+    const map={}; // pid -> kw -> {payment,payCnt,inflow}
     for(const row of rows){
       const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
       const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
       if(nameKey && row[nameKey]) nameOf[pid]=String(row[nameKey]);
-      (groups[pid]=groups[pid]||[]).push({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:payOf(row), payCnt:cntOf(row), inflow:infOf(row) });
+      map[pid]=map[pid]||{};
+      const cell=map[pid][kw]=map[pid][kw]||{payment:null,payCnt:null,inflow:null};
+      const pv=payOf(row); if(pv!=null && (cell.payment==null || pv>cell.payment)) cell.payment=pv;
+      const cv=cntOf(row); if(cv!=null && (cell.payCnt==null || cv>cell.payCnt)) cell.payCnt=cv;
+      const iv=infOf(row); if(iv!=null && (cell.inflow==null || iv>cell.inflow)) cell.inflow=iv;
     }
-    const products=Object.keys(groups).map(pid=>{ const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0)); return { no:pid, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws }; }).sort((a,b)=>(b.payment||0)-(a.payment||0));
+    const products=Object.keys(map).map(pid=>{
+      const kws=Object.keys(map[pid]).map(kw=>({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null, payment:map[pid][kw].payment||0, payCnt:map[pid][kw].payCnt||0, inflow:map[pid][kw].inflow })).sort((a,b)=>(b.payment||0)-(a.payment||0));
+      return { no:pid, name:(nameMap[pid]||nameOf[pid]||((pidKey&&/name|title/i.test(pidKey))?pid:('상품번호 '+pid))), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
+    }).sort((a,b)=>(b.payment||0)-(a.payment||0));
     return products.length?products:null;
   }
   function _kpBuildStoreFromCaptures(caps){
