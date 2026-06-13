@@ -15794,7 +15794,7 @@ async function importGpagoMigrationData(evt) {
     if(!p.real && s && s.real) p.real=true; // 실스토어의 상품인데 real 플래그 누락된 기존 데이터 보정
     const kws=(p.keywords||[]).slice().sort((a,b)=>(b.payment||0)-(a.payment||0));
     // 렌더 보강: 저장된 상품데이터에 결제수/유입이 비어 있으면 검색채널 리포트로 채움 (재빌드 불필요)
-    if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; }); }catch(_){} }
+    if(p.real){ try{ const _km=_kpKwMaps(); kws.forEach(k=>{ if((k.payCnt==null||k.payCnt===0)&&_km.cnt[k.kw]!=null) k.payCnt=_km.cnt[k.kw]; if((k.inflow==null||k.inflow===0)&&_km.inflow[k.kw]!=null) k.inflow=_km.inflow[k.kw]; if(k.rank==null){ const rp=_km.rankPK[p.name+' '+k.kw]; const rv=(rp!=null?rp:_km.rank[k.kw]); if(rv!=null) k.rank=rv; } }); }catch(_){} }
     const totalInflow=kws.reduce((x,k)=>x+(k.inflow||0),0);
     const totalPay=kws.reduce((x,k)=>x+(k.payment||0),0);
     const totalCnt=kws.reduce((x,k)=>x+(k.payCnt||0),0);
@@ -15848,7 +15848,7 @@ async function importGpagoMigrationData(evt) {
         +'<td class="py-3.5 font-bold text-[13px] whitespace-nowrap pr-4">'+_kpEsc(k.kw)+'</td>'
         +'<td class="py-3.5 pr-4 max-w-[240px]">'+(termsArr(k.kw,k.terms).map(chip).join('')||dash)+'</td>'
         +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+(p.real?volTxt(k.kw):(k.search==null?dash:_kpWon(k.search)))+'</td>'
-        +'<td class="py-3.5 text-right text-[13px] text-brand-gray tabular-nums">'+(k.rank==null?dash:_kpEsc(String(k.rank)))+'</td>'
+        +'<td class="py-3.5 text-right text-[13px] text-brand-gray tabular-nums">'+(k.rank==null?dash:(typeof k.rank==='number'?(Number(k.rank).toFixed(1)+'위'):_kpEsc(String(k.rank))))+'</td>'
         +'<td class="py-3.5 text-right text-[13px] font-bold text-brand-green tabular-nums">'+_kpWon(k.payment)+'원</td>'
         +'<td class="py-3.5 text-right text-[13px] tabular-nums">'+cntFmt(k.payCnt)+'</td>'
         +'<td class="py-3.5 text-right text-[13px] pr-4 tabular-nums">'+(k.inflow==null?dash:_kpWon(k.inflow))+'</td>'
@@ -15913,12 +15913,25 @@ async function importGpagoMigrationData(evt) {
   function _kpKwMaps(){
     let caps=[]; try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
     if((!caps||!caps.length)&&Array.isArray(window._bizCaptures)) caps=window._bizCaptures;
-    const inflow={}, cnt={};
+    const inflow={}, cnt={}, rank={}, rankPK={};
     const numByRe=(row,reArr)=>{ for(const re of reArr){ for(const k in row){ if(re.test(k)&&row[k]!=null&&!isNaN(Number(row[k]))) return Number(row[k]); } } return null; };
     const infOf=(row)=>{ const v=(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:numByRe(row,[/num_interaction/i,/inflow/i,/num_users/i,/num_visit/i,/^pv$/i,/num_click/i]))); return v!=null?Number(v):null; };
     const cntOf=(row)=>{ const v=(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:numByRe(row,[/num_purchase/i]))); return v!=null?Number(v):null; };
-    for(const c of (caps||[])){ if(String(c&&c.url||'').startsWith('__gpago_')) continue; const r=_kpExtractRows(c); if(!r||!r.length||!r[0]||typeof r[0]!=='object'||!('ref_keyword' in r[0])) continue; for(const row of r){ const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue; const iv=infOf(row); if(iv!=null&&iv>0&&(inflow[kw]==null||iv>inflow[kw])) inflow[kw]=iv; const cv=cntOf(row); if(cv!=null&&cv>0&&(cnt[kw]==null||cv>cnt[kw])) cnt[kw]=cv; } }
-    return {inflow, cnt};
+    const rankOf=(row)=>{ const v=numByRe(row,[/노출순위/,/exposure.*rank/i,/avg.*rank/i,/average.*rank/i,/rank.*index/i,/avg_index/i,/exposure.*index/i]); return v!=null?Number(v):null; };
+    const kwOf=(row)=> String(row.ref_keyword!=null?row.ref_keyword:(row.keyword!=null?row.keyword:''));
+    for(const c of (caps||[])){
+      if(String(c&&c.url||'').startsWith('__gpago_')) continue;
+      const r=_kpExtractRows(c); if(!r||!r.length||!r[0]||typeof r[0]!=='object') continue;
+      if(!('ref_keyword' in r[0]) && !('keyword' in r[0])) continue;
+      const pk=_kpProdKey(r[0]);
+      for(const row of r){
+        const kw=kwOf(row); if(!kw||kw==='(검색어 없음)'||kw==='전체') continue;
+        const iv=infOf(row); if(iv!=null&&iv>0&&(inflow[kw]==null||iv>inflow[kw])) inflow[kw]=iv;
+        const cv=cntOf(row); if(cv!=null&&cv>0&&(cnt[kw]==null||cv>cnt[kw])) cnt[kw]=cv;
+        const rk=rankOf(row); if(rk!=null&&rk>0){ if(rank[kw]==null||rk<rank[kw]) rank[kw]=rk; const prod=pk?String(row[pk]):''; if(prod) rankPK[prod+' '+kw]=rk; }
+      }
+    }
+    return {inflow, cnt, rank, rankPK};
   }
   function _kpBuildPerProduct(caps){
     // (상품필드 + ref_keyword) 행을 가진 모든 캡처를 합침 — 결제는 한 응답, 유입은 다른 응답에 있을 수 있음
