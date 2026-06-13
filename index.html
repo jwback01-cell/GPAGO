@@ -15659,50 +15659,19 @@ async function importGpagoMigrationData(evt) {
     for(const k in row){ if(/product/i.test(k)&&/(name|title)/i.test(k)) return k; }
     return null;
   }
-  window.kperfFetchPerProduct=async function(){
-    const tmpl=_kpReportTemplate();
-    if(!tmpl){ toast('상품별 조회용 인증정보가 없습니다 — 먼저 "스토어 추가/수집"을 해주세요'); return; }
-    tmpl.url=_kpAbsUrl(tmpl.url); // 상대경로면 절대 URL 로
-    console.log('[kperf 상품별] 템플릿 요청:', tmpl.method||'GET', tmpl.url, '| 헤더키:', Object.keys(tmpl.headers||{}).join(','));
-    const btn=document.getElementById('kp-perproduct-btn'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='불러오는 중…'; }
-    toast('상품별 데이터 불러오는 중… (비즈어드바이저 재조회)');
+  window.kperfFetchPerProduct=function(){
+    // 수집 때 bizadvisor 아이프레임에서 same-origin 으로 받아 저장한 상품별 캡처를 사용
+    let caps=[];
+    try{ caps=JSON.parse(localStorage.getItem('gpago_biz_captures')||'[]'); }catch(_){}
+    if((!caps||!caps.length) && Array.isArray(window._bizCaptures)) caps=window._bizCaptures;
+    const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
+    const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
+    console.log('[kperf 상품별] perproduct 캡처:', !!ppCap, 'prodname 캡처:', !!pnCap, '총 캡처', (caps||[]).length);
+    if(!ppCap){ toast('상품별 데이터가 아직 없습니다 — "스토어 추가"로 다시 수집하면 상품별이 함께 수집됩니다 (확장 1.7.59+)'); return; }
+    const btn=document.getElementById('kp-perproduct-btn'); const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='처리 중…'; }
     try{
-      const dimsTry=['mall_product_id,ref_keyword','origin_product_no,ref_keyword','product_no,ref_keyword'];
-      let rows=null, used='';
-      for(const dims of dimsTry){
-        const res=await _kpReplay(_kpSetParam(tmpl.url,'dimensions',dims), tmpl);
-        console.log('[kperf 상품별] dims='+dims+' status='+(res&&res.status)+' ok='+(res&&res.ok)+' error='+(res&&res.error), res&&res.data);
-        const r=_kpRows(res);
-        if(r && r.length && _kpProdKey(r[0]) && ('ref_keyword' in r[0])){ rows=r; used=dims; break; }
-      }
-      if(!rows){ toast('상품별 데이터를 못 받았습니다 (인증 만료/형식 상이). F12 콘솔 로그를 공유해 주시면 맞추겠습니다'); return; }
-      // 상품명 매핑 (별도 차원 조회)
-      const nameMap={};
-      try{
-        for(const nd of ['mall_product_id,mall_product_name','origin_product_no,origin_product_name','mall_product_id,product_name']){
-          const res=await _kpReplay(_kpSetParam(tmpl.url,'dimensions',nd), tmpl);
-          const r=_kpRows(res); if(!r||!r.length) continue;
-          const pk=_kpProdKey(r[0]), nk=_kpProdName(r[0]);
-          if(pk&&nk){ for(const row of r) nameMap[String(row[pk])]=String(row[nk]); break; }
-        }
-      }catch(_){}
-      // 그룹화
-      const pidKey=_kpProdKey(rows[0]); const groups={};
-      for(const row of rows){
-        const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
-        const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
-        (groups[pid]=groups[pid]||[]).push({
-          kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null,
-          payment:Math.round((row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount||0))||0),
-          payCnt:(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:0)),
-          inflow:(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:null)),
-        });
-      }
-      const products=Object.keys(groups).map(pid=>{
-        const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0));
-        return { no:pid, name:(nameMap[pid]||('상품번호 '+pid)), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws };
-      }).sort((a,b)=>(b.payment||0)-(a.payment||0));
-      if(!products.length){ toast('상품별 키워드 데이터가 비어 있습니다'); return; }
+      const products=_kpBuildPerProduct(caps);
+      if(!products || !products.length){ toast('상품별 데이터 형식을 못 읽었습니다 — 콘솔 로그 공유 부탁드립니다'); try{ console.log('[kperf 상품별] rows[0]=', _kpExtractRows(ppCap)[0]); }catch(_){} return; }
       const stores=_kpLoadStores(); const s=stores.find(x=>x.id===_kp.storeId);
       if(s){
         const total=(s.products||[]).find(p=>p.no==='전체');
@@ -15845,6 +15814,7 @@ async function importGpagoMigrationData(evt) {
   function _kpFindKeywordReport(caps){
     let best=null, bestScore=-1;
     for(const c of caps){
+      if(String(c&&c.url||'').startsWith('__gpago_')) continue; // 상품별 능동조회 캡처는 '전체' 집계에서 제외
       const rows=_kpExtractRows(c);
       if(!rows.length || !rows[0] || typeof rows[0]!=='object' || !('ref_keyword' in rows[0])) continue; // 객체 행에 ref_keyword 있으면 키워드 리포트 (토큰 등 문자열 캡처 건너뜀)
       let score=rows.length;
@@ -15854,6 +15824,27 @@ async function importGpagoMigrationData(evt) {
       if(score>bestScore){ bestScore=score; best=rows; }
     }
     return best;
+  }
+  // 상품별 키워드 데이터 빌드 (bizadvisor 아이프레임에서 능동 조회해 저장한 __gpago_perproduct__ 캡처 사용)
+  function _kpBuildPerProduct(caps){
+    const ppCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_perproduct__'));
+    if(!ppCap) return null;
+    const rows=_kpExtractRows(ppCap);
+    if(!rows||!rows.length||!_kpProdKey(rows[0])) return null;
+    const pnCap=(caps||[]).find(c=>String(c&&c.url||'').startsWith('__gpago_prodname__'));
+    const nameMap={};
+    try{ const pn=pnCap?_kpExtractRows(pnCap):[]; if(pn&&pn.length){ const pk=_kpProdKey(pn[0]),nk=_kpProdName(pn[0]); if(pk&&nk) for(const r of pn) nameMap[String(r[pk])]=String(r[nk]); } }catch(_){}
+    const pidKey=_kpProdKey(rows[0]); const groups={};
+    for(const row of rows){
+      const pid=String(row[pidKey]); if(!pid||pid==='null'||pid==='undefined') continue;
+      const kw=String(row.ref_keyword||''); if(!kw||kw==='(검색어 없음)') continue;
+      (groups[pid]=groups[pid]||[]).push({ kw, terms:kw.split(/\s+/).filter(Boolean), search:null, rank:null,
+        payment:Math.round((row.pay_amount!=null?row.pay_amount:(row.attribution_pay_amount||0))||0),
+        payCnt:(row.num_purchase!=null?row.num_purchase:(row.attribution_num_purchase!=null?row.attribution_num_purchase:0)),
+        inflow:(row.num_interaction!=null?row.num_interaction:(row.simple_num_users!=null?row.simple_num_users:null)) });
+    }
+    const products=Object.keys(groups).map(pid=>{ const kws=groups[pid].sort((a,b)=>(b.payment||0)-(a.payment||0)); return { no:pid, name:(nameMap[pid]||('상품번호 '+pid)), image:'', payment:kws.reduce((x,k)=>x+(k.payment||0),0), inflow:kws.reduce((x,k)=>x+(k.inflow||0),0), keywords:kws }; }).sort((a,b)=>(b.payment||0)-(a.payment||0));
+    return products.length?products:null;
   }
   function _kpBuildStoreFromCaptures(caps){
     if(!Array.isArray(caps)) return null;
@@ -15877,11 +15868,14 @@ async function importGpagoMigrationData(evt) {
     const totalInflow=keywords.reduce((x,k)=>x+(k.inflow||0),0);
     let range='';
     for(const c of caps){ const m=String(c.url).match(/startDate=([\d-]+)&endDate=([\d-]+)/); if(m){ range=m[1]+' ~ '+m[2]; break; } }
+    const totalProduct={ no:'전체', name:'전체 스토어 키워드 성과', image:'', payment:totalPay, inflow:totalInflow, keywords:keywords };
+    const pp=_kpBuildPerProduct(caps); // 상품별 자동 분리 (있으면)
     return {
       id:'rs_'+(siteId||'store'),
       name:(mi?('스마트스토어 ('+mi+')'):'내 스마트스토어'),
       emoji:'🛍️', status:'데이터 수집됨', range:range, real:true, collectedAt:Date.now(), siteId:siteId,
-      products:[ { no:'전체', name:'전체 스토어 키워드 성과', image:'', payment:totalPay, inflow:totalInflow, keywords:keywords } ],
+      perProduct:!!pp,
+      products: pp ? [totalProduct].concat(pp) : [totalProduct],
     };
   }
 
