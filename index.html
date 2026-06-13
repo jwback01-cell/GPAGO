@@ -14807,6 +14807,7 @@ async function importGpagoMigrationData(evt) {
         const res=await _cmpFetchInfo(p.url); const d=(res&&res.ok&&res.data)?res.data:{};
         if(d){
           if(!p.registDate && d.registDate) p.registDate=d.registDate; // 판매량 추정용 (등록일~현재 역산)
+          if(d.sellha) p.sellha=d.sellha; // 셀하 최근 판매(7일) — 가장 정확한 판매량
           if(d.price!=null || d.title){
             if(!prod) prod={};
             if(prod.price==null && d.price!=null) prod.price=Number(d.price)||null;
@@ -14849,38 +14850,36 @@ async function importGpagoMigrationData(evt) {
   //   판매량 = 리뷰수 ÷ 리뷰작성률.  (갱신 2회 이상 → 증가분 기반 / 1회뿐이면 등록일~현재 누적 기반)
   const CMP_REVIEW_RATE = 0.25; // 구매자 중 리뷰 작성 비율 가정(25%) — 실제값 미공개라 업계 통용 가정치 사용
   function _cmpSalesEstimate(p){
-    const snaps=(p.snapshots||[]).filter(s=> s && s.reviewCount!=null && s.t);
     const priceArr=(p.snapshots||[]).map(s=>s.price).filter(v=>v!=null);
     const price=(p.price!=null?p.price:(priceArr.length?priceArr[priceArr.length-1]:null));
-    let monthlyUnits=null, basis=null, periodDays=null, periodUnits=null;
+    // 차트용: 각 스냅샷의 누적 추정 판매량(= 리뷰수/작성률) → 우상향 추세
+    const series=(p.snapshots||[]).map(s=> (s.reviewCount!=null? Math.round(Number(s.reviewCount)/CMP_REVIEW_RATE):null)).filter(v=>v!=null);
+    // 0) 셀하(외부 확장) 최근 7일 실판매 — 가장 정확
+    const sh=p.sellha;
+    if(sh && ((sh.deliver7d!=null && sh.deliver7d>0) || (sh.revenue7d!=null && sh.revenue7d>0))){
+      let d7=sh.deliver7d;
+      if(d7==null && sh.revenue7d!=null && price) d7=Math.round(sh.revenue7d/price);
+      const monthlyUnits=Math.round((d7||0)/7*30);
+      let revenue;
+      if(sh.revenue30d!=null) revenue=sh.revenue30d;
+      else if(sh.revenue7d!=null) revenue=Math.round(sh.revenue7d/7*30);
+      else revenue=(price!=null?monthlyUnits*price:null);
+      return {ok:true, monthlyUnits, revenue, basis:'sellha', series, price, week:{d:sh.deliver7d, r:sh.revenue7d}};
+    }
+    // 1) 리뷰 증가량 (서로 다른 날 2회 이상 갱신 시) — 최근 판매 속도 반영
+    const snaps=(p.snapshots||[]).filter(s=> s && s.reviewCount!=null && s.t);
     if(snaps.length>=2){
       const first=snaps[0], last=snaps[snaps.length-1];
       const gain=Math.max(0,(Number(last.reviewCount)||0)-(Number(first.reviewCount)||0));
-      const days=Math.max(0.5,(new Date(last.t)-new Date(first.t))/86400000);
-      if(gain>0){
-        periodUnits=Math.round(gain/CMP_REVIEW_RATE);
-        periodDays=Math.round(days);
-        monthlyUnits=Math.round((periodUnits/days)*30);
-        basis='delta';
+      const days=(new Date(last.t)-new Date(first.t))/86400000;
+      if(gain>0 && days>=0.5){
+        const monthlyUnits=Math.round((gain/CMP_REVIEW_RATE)/days*30);
+        const revenue=(price!=null? monthlyUnits*price : null);
+        return {ok:true, monthlyUnits, revenue, basis:'delta', series, price};
       }
     }
-    if(monthlyUnits==null){
-      // 추적 기간이 짧거나 리뷰 증가가 아직 없을 때 — 등록일~현재 누적 리뷰로 월평균 역산
-      const rc=(snaps.length?Number(snaps[snaps.length-1].reviewCount):(p.reviewCount!=null?Number(p.reviewCount):null));
-      if(rc!=null && rc>0 && p.registDate){
-        const reg=new Date(p.registDate);
-        if(!isNaN(reg)){
-          const monthsLive=Math.max(1,(Date.now()-reg.getTime())/(86400000*30));
-          monthlyUnits=Math.round((rc/CMP_REVIEW_RATE)/monthsLive);
-          basis='lifetime';
-        }
-      }
-    }
-    if(monthlyUnits==null) return {ok:false};
-    const revenue=(price!=null? monthlyUnits*price : null);
-    // 차트용: 각 스냅샷의 누적 추정 판매량(= 리뷰수/작성률) → 우상향 추세
-    const series=(p.snapshots||[]).map(s=> (s.reviewCount!=null? Math.round(Number(s.reviewCount)/CMP_REVIEW_RATE):null)).filter(v=>v!=null);
-    return {ok:true, monthlyUnits, revenue, basis, series, price, periodDays, periodUnits};
+    // 2) 데이터 부족 — 과대평가되는 누적-리뷰 추정은 쓰지 않음 (솔직하게 '추적 중')
+    return {ok:false, needMore:true, series, price};
   }
 
   // ── 변동 타입 색상 ──
@@ -15097,17 +15096,20 @@ async function importGpagoMigrationData(evt) {
         const big='약 '+_won(est.monthlyUnits)+'개';
         const revTxt = est.revenue!=null ? ('월매출 ≈ '+_won(Math.max(0,Math.round(est.revenue/10000)))+'만원') : '가격 미확인';
         const ser=est.series||[];
-        const chartOrNote = ser.length>=2
-          ? _cmpChart(ser,C_REV,false)
-          : note(est.basis==='lifetime'
-              ? '등록일~현재 누적 리뷰로 추정<br>월 약 '+_won(est.monthlyUnits)+'개 · 갱신할수록 정확해집니다'
-              : '리뷰 증가 기반 추정<br>월 약 '+_won(est.monthlyUnits)+'개');
-        revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정·리뷰작성률 '+Math.round(CMP_REVIEW_RATE*100)+'%)</span>', big,
+        const isSellha = est.basis==='sellha';
+        const label = isSellha
+          ? '월 판매량 <span class="text-[9px] text-brand-gray font-normal">(셀하 최근7일 기준)</span>'
+          : '월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정·리뷰 증가)</span>';
+        const noteTxt = isSellha
+          ? ('셀하 최근 7일 판매 '+_won((est.week&&est.week.d)||Math.round(est.monthlyUnits/30*7))+'건 기준<br>월 약 '+_won(est.monthlyUnits)+'개')
+          : ('리뷰 증가 속도 기반<br>월 약 '+_won(est.monthlyUnits)+'개');
+        const chartOrNote = ser.length>=2 ? _cmpChart(ser,C_REV,false) : note(noteTxt);
+        revCard=metricCard(label, big,
           '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full text-brand-green bg-brand-green-light">'+_cmpEsc(revTxt)+'</span>',
           chartOrNote,'green');
       } else {
         revCard=metricCard('월 판매량 <span class="text-[9px] text-brand-gray font-normal">(추정)</span>','—','',
-          note('리뷰 데이터 누적 중<br>↻ 갱신을 2회 이상 하면<br>리뷰 증가량으로 판매량을 추정합니다'),'green');
+          note('판매량 데이터 누적 중<br>셀하 설치 시 즉시 표시,<br>없으면 ↻ 갱신 2회+ 시 리뷰 증가로 추정'),'green');
       }
     } else {
       const revD=_last(A.rev)-_first(A.rev);
@@ -15220,7 +15222,7 @@ async function importGpagoMigrationData(evt) {
         price:(sp&&sp.price!=null)?sp.price:(Number(d.price)||0),
         reviewCount:(sp&&sp.reviewCount!=null)?sp.reviewCount:(d.reviewCount!=null?Number(d.reviewCount):null),
         category:(d.category||''), freeShip:true, badges:[], stock:null,
-        registDate:(d.registDate||''),
+        registDate:(d.registDate||''), sellha:(d.sellha||null),
         snapshots:[], history:[], memo:'', updatedAt:now,
       };
       _cmpApplyDiff(prod,{ t:now, price:prod.price, title:prod.name, reviewCount:prod.reviewCount, category:prod.category, stock:null, rank:(typeof sc.rank==='number'?sc.rank:(sc.rank===null?null:undefined)), rankSource:rankSource });
