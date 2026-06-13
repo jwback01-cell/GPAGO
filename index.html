@@ -15160,6 +15160,33 @@ async function importGpagoMigrationData(evt) {
 })();
 </script>
 
+<!-- ═════════════ 자동 새로고침 (배포 시 자동 reload) ═════════════ -->
+<script>
+(function autoReloadOnDeploy() {
+  let baseTag = null;
+  const url = location.pathname + (location.search || '');
+  async function getTag() {
+    try {
+      const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      return res.headers.get('etag') || res.headers.get('last-modified') || null;
+    } catch (_) { return null; }
+  }
+  async function check() {
+    const tag = await getTag();
+    if (!tag) return;
+    if (baseTag == null) { baseTag = tag; return; }
+    if (tag === baseTag) return;
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return; // 입력 중이면 미룸
+    location.reload();
+  }
+  getTag().then(t => { baseTag = t; });
+  setInterval(check, 20000); // 20초마다
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  window.addEventListener('focus', check);
+})();
+</script>
+
 <!-- ═════════════ 키워드 성과분석 (UI 골격 + 샘플데이터) ═════════════ -->
 <script>
 (function(){
