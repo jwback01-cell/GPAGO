@@ -2955,15 +2955,53 @@ function _triggerExtensionFromN() {
   return _runKeywordAnalysisNoPopup(keywords[0]);
 }
 
+// 확장 백그라운드 직접 fetch — 보안창/팝업 없이 사용자 브라우저(IP·쿠키)로 네이버 SERP 수집
+//   실제 속성/태그/NLU 포함. 실패하면 null 반환 → 서버 스크랩/공식 API 폴백.
+window._directFetchResolvers = window._directFetchResolvers || {};
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  const d = e.data;
+  if (!d || d.source !== 'gpago-extension' || d.type !== 'GPAGO_DIRECT_FETCH_RESULT') return;
+  const fn = window._directFetchResolvers[d.reqId];
+  if (fn) { delete window._directFetchResolvers[d.reqId]; fn(d); }
+});
+function _tryExtensionDirectFetch(keyword, timeoutMs) {
+  return new Promise((resolve) => {
+    const reqId = 'df_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; delete window._directFetchResolvers[reqId]; resolve(v); };
+    window._directFetchResolvers[reqId] = (d) => finish(d);
+    try { window.postMessage({ type: 'GPAGO_DIRECT_FETCH', source: 'gpago-page', keyword, reqId }, window.location.origin); }
+    catch (_) { finish(null); return; }
+    setTimeout(() => finish(null), timeoutMs || 8000);
+  });
+}
+
 // 보안창 없이 키워드 분석 — 로파고 방식
-//   1순위: /api/naver-shop-scrape (서버 스크랩, 속성·태그·NLU 포함)
-//   2순위: /api/naver-shop (공식 Open API, 차단 없음)
+//   0순위: 확장 백그라운드 직접 fetch (사용자 IP·쿠키 → 실제 속성·태그·NLU, 팝업 없음)
+//   1순위: /api/naver-shop-scrape (서버 스크랩) — 단 Vercel IP는 차단될 수 있음
+//   2순위: /api/naver-shop (공식 Open API, 차단 없음 — 속성·태그는 상품명 기반 폴백)
 // 확장 캡처 처리 함수(_processExtensionPayload)를 그대로 재사용해 동일한 테이블을 렌더
 async function _runKeywordAnalysisNoPopup(keyword) {
   if (!keyword) return;
   _showLoadingOverlay(keyword);
-  _updateLoadingOverlay(15, '네이버 쇼핑 데이터(서버) 가져오는 중...');
-  // 1) 서버 스크랩 우선
+  _updateLoadingOverlay(15, '쇼핑 데이터 가져오는 중...');
+  // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
+  try {
+    const ext = await _tryExtensionDirectFetch(keyword, 8000);
+    if (ext && ext.ok && ext.tabs) {
+      const tabs = ext.tabs;
+      const payload = tabs['네이버페이'] || tabs['전체'] || null;
+      if (payload && Array.isArray(payload.products) && payload.products.length) {
+        _updateLoadingOverlay(85, `분석 중... (${payload.products.length}개 상품)`);
+        _extensionTriggerSource = 'analysis';
+        await _processExtensionPayload(payload, tabs);
+        try { _hideLoadingOverlay(); } catch (_) {}
+        return;
+      }
+    }
+  } catch (e) { console.warn('[분석] 확장 직접 fetch 실패:', e); }
+  // 1) 서버 스크랩
   try {
     const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
     if (resp.ok) {
@@ -3079,6 +3117,16 @@ async function _runMultiKwAnalysis(keywords) {
 //   1순위: 서버 스크랩(/api/naver-shop-scrape, 속성·태그·NLU 포함) → 2순위: 공식 API
 // 반환: { data: payload, tabs: { '전체': payload } }  (확장 캡처와 동일 형태)
 async function _fetchScrapePayload(keyword) {
+  // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
+  try {
+    const ext = await _tryExtensionDirectFetch(keyword, 8000);
+    if (ext && ext.ok && ext.tabs) {
+      const payload = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
+      if (payload && Array.isArray(payload.products) && payload.products.length) {
+        return { data: payload, tabs: ext.tabs };
+      }
+    }
+  } catch (_) {}
   let products = [], terms = [], total = 0, query = keyword;
   try {
     const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
