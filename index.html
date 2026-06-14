@@ -2259,6 +2259,7 @@ async function gpagoCloudPullAll() {
       if (!GPAGO_SYNC_KEYS.includes(row.key)) continue;
       if (row.value == null) continue;
       pulledKeys.add(row.key);
+      await new Promise(r => setTimeout(r, 0)); // 키마다 메인 스레드 양보 — 새로고침 직후 멈춤 방지
 
       // 보호 1: PULL 진행 중에 사용자가 수정한 키
       if (_gpagoLocalChangesBeforePull.has(row.key)) {
