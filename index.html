@@ -1001,7 +1001,7 @@
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
                 전체 날짜 보기
               </button>
-              <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨 · 매일 오전 7시 자동 추적 + 수동 조회 누적</span>
+              <span class="text-xs text-brand-gray">최신 → 과거 순으로 정렬됨 · 매일 오전 10시 자동 추적 + 수동 조회 누적</span>
             </div>
             <!-- 표 -->
             <div id="kw-detail-canvas" class="overflow-auto"></div>
@@ -6767,7 +6767,7 @@ function setKwTab(tab) {
 
 // ── 자동 추적 설정 ─────────────────────────
 const KW_AUTO_KEY = 'kw_auto_tracking';
-const KW_AUTO_HOUR = 7; // 매일 오전 7시 고정
+const KW_AUTO_HOUR = 10; // 매일 오전 10시 고정
 function _loadKwAuto() { try { return JSON.parse(localStorage.getItem(KW_AUTO_KEY) || '{}'); } catch(_) { return {}; } }
 function _saveKwAuto(o) { localStorage.setItem(KW_AUTO_KEY, JSON.stringify(o)); }
 
@@ -6953,12 +6953,12 @@ function _scheduleKwAutoTick() {
 }
 
 async function _kwAutoTick() {
-  // 자동 추적은 항상 활성. 등록된 모든 키워드를 매일 오전 7시 이후 한 번 실행.
+  // 자동 추적은 항상 활성. 등록된 모든 키워드를 매일 오전 10시 이후 한 번 실행.
   const s = _loadKwAuto();
   const now = new Date();
   const today = _ymdStr(now);
   if (s.lastRunDay === today) return; // 오늘 이미 실행됨
-  if (now.getHours() < KW_AUTO_HOUR) return; // 오전 7시 이후에만
+  if (now.getHours() < KW_AUTO_HOUR) return; // 오전 10시 이후에만
   const list = _loadKwManage();
   if (!list.length) return;
   const api = _loadNaverApi();
