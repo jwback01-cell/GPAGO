@@ -2951,24 +2951,60 @@ function _triggerExtensionFromN() {
   if (keywords.length > 1) {
     return _runMultiKwAnalysis(keywords);
   }
-  // ── 단일 키워드 — 기존 로직 ────────────────────
-  const naverKw = keywords[0];
-  _extensionAckReceived = false;
-  _extensionTriggerSource = 'analysis';  // v1.7.17+ : 키워드 분석 소스 표시
-  window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: naverKw }, window.location.origin);
-  // 1초 후 확장 응답이 없으면 폴백 (API 호출 방식)
-  setTimeout(() => {
-    if (!_extensionAckReceived) {
-      toast('확장 프로그램 미설치 — API 방식으로 분석');
-      runAnalysisWithNaverKw();
-    } else {
-      // 확장이 응답함 → 로딩 오버레이 시작
-      _startLoadingProgress(naverKw);
+  // ── 단일 키워드 — 보안창(네이버 SERP 직접 열기) 없이 서버 스크랩 → 공식 API 폴백 ──
+  return _runKeywordAnalysisNoPopup(keywords[0]);
+}
+
+// 보안창 없이 키워드 분석 — 로파고 방식
+//   1순위: /api/naver-shop-scrape (서버 스크랩, 속성·태그·NLU 포함)
+//   2순위: /api/naver-shop (공식 Open API, 차단 없음)
+// 확장 캡처 처리 함수(_processExtensionPayload)를 그대로 재사용해 동일한 테이블을 렌더
+async function _runKeywordAnalysisNoPopup(keyword) {
+  if (!keyword) return;
+  _showLoadingOverlay(keyword);
+  _updateLoadingOverlay(15, '네이버 쇼핑 데이터(서버) 가져오는 중...');
+  // 1) 서버 스크랩 우선
+  try {
+    const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
+    if (resp.ok) {
+      const d = await resp.json();
+      if (d && Array.isArray(d.products) && d.products.length) {
+        _updateLoadingOverlay(80, `분석 중... (${d.products.length}개 상품)`);
+        const payload = { query: d.query || keyword, products: d.products, total: d.total || d.products.length, terms: d.terms || [], nluTerms: d.nluTerms || [] };
+        _extensionTriggerSource = 'analysis';
+        await _processExtensionPayload(payload, { '전체': payload });
+        try { _hideLoadingOverlay(); } catch (_) {}
+        return;
+      }
     }
-  }, 1000);
-  // 미리 0% 단계 표시 (응답 대기 중)
-  _showLoadingOverlay(naverKw);
-  _updateLoadingOverlay(5, '확장 프로그램 응답 대기 중...');
+  } catch (e) { console.warn('[분석] 서버 스크랩 실패:', e); }
+  // 2) 공식 API 폴백
+  _updateLoadingOverlay(55, '서버 스크랩 실패 — 공식 API로 전환...');
+  const api = _getApi();
+  if (!api || !api.id || !api.secret) {
+    try { _hideLoadingOverlay(); } catch (_) {}
+    toast('데이터를 가져오지 못했습니다 — API 설정에서 Client ID/Secret 을 등록해 주세요');
+    try { openApiSettings && openApiSettings(); } catch (_) {}
+    return;
+  }
+  try {
+    const r = await fetch('/api/naver-shop?query=' + encodeURIComponent(keyword) + '&display=100&sort=sim', {
+      headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const products = d.items || [];
+    if (!products.length) { toast(`"${keyword}" 검색 결과 없음`); _hideLoadingOverlay(); return; }
+    _updateLoadingOverlay(85, `분석 중... (${products.length}개 상품)`);
+    const payload = { query: keyword, products, total: d.total || products.length, terms: [], nluTerms: [] };
+    _extensionTriggerSource = 'analysis';
+    await _processExtensionPayload(payload, { '전체': payload });
+  } catch (e) {
+    console.error('[분석] 공식 API 폴백 실패:', e);
+    toast('분석 실패: ' + (e.message || e));
+  } finally {
+    try { _hideLoadingOverlay(); } catch (_) {}
+  }
 }
 
 // 다중 키워드 — 쉼표로 분리해 순차적으로 확장 트리거 후 결과를 탭으로 모음
@@ -2985,13 +3021,10 @@ async function _runMultiKwAnalysis(keywords) {
     const pct = Math.round(5 + (i / keywords.length) * 90);
     _updateLoadingOverlay(pct, `[${i+1}/${keywords.length}] '${kw}' 분석 중...`);
     try {
-      // 확장 캡처와 네이버 API 총 갯수 조회를 병렬로 실행
-      const capturePromise = _captureNextExtensionPayload(60000, () => {
-        _extensionTriggerSource = 'analysis';
-        window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
-      });
+      // 보안창 없이 서버 스크랩(→공식 API 폴백)으로 데이터 수집 + 탭별 카운트 병렬 조회
+      const scrapePromise = _fetchScrapePayload(kw);
       const totalPromise = _fetchNaverServerTotal(kw);   // 스크랩(탭별 카운트 포함) → API 폴백
-      const { data, tabs } = await capturePromise;
+      const { data, tabs } = await scrapePromise;
       const totalInfo = await totalPromise.catch(() => ({ total: 0, tabTotals: {} }));
       const apiTotal = totalInfo.total || 0;
       const scrapedTabTotals = totalInfo.tabTotals || {};
@@ -3040,6 +3073,35 @@ async function _runMultiKwAnalysis(keywords) {
     activateMultiKwTab(_multiActiveIndex);
   }
   toast(`✅ 다중 분석 완료 — ${_multiAnalysisResults.filter(r => r.items.length).length}/${keywords.length} 성공`);
+}
+
+// 보안창 없이 키워드 1개의 분석용 payload 수집 — 다중 분석에서 사용
+//   1순위: 서버 스크랩(/api/naver-shop-scrape, 속성·태그·NLU 포함) → 2순위: 공식 API
+// 반환: { data: payload, tabs: { '전체': payload } }  (확장 캡처와 동일 형태)
+async function _fetchScrapePayload(keyword) {
+  let products = [], terms = [], total = 0, query = keyword;
+  try {
+    const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
+    if (resp.ok) {
+      const d = await resp.json();
+      if (Array.isArray(d.products) && d.products.length) {
+        products = d.products; terms = d.terms || []; total = d.total || products.length; query = d.query || keyword;
+      }
+    }
+  } catch (_) {}
+  if (!products.length) {
+    const api = _getApi();
+    if (api && api.id && api.secret) {
+      try {
+        const r = await fetch('/api/naver-shop?query=' + encodeURIComponent(keyword) + '&display=100&sort=sim', {
+          headers: { 'x-client-id': api.id, 'x-client-secret': api.secret }
+        });
+        if (r.ok) { const d = await r.json(); products = d.items || []; total = d.total || products.length; }
+      } catch (_) {}
+    }
+  }
+  const payload = { query, products, total, terms, nluTerms: [] };
+  return { data: payload, tabs: { '전체': payload } };
 }
 
 // 네이버 쇼핑 키워드의 진짜 총 갯수 + 탭별 갯수 조회
