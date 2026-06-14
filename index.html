@@ -1813,6 +1813,15 @@ PBT키캡	1180
       <button type="button" id="cmp-add-btn" onclick="addCompetitor()" class="bg-brand-black text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#333] transition-colors whitespace-nowrap shrink-0">+ 추가</button>
     </div>
 
+    <!-- 자동 갱신 토글 -->
+    <div class="flex items-center justify-end gap-2 mb-3 pr-1">
+      <span id="cmp-auto-status" class="text-[11px] text-brand-gray"></span>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none text-[12px] font-bold text-brand-gray">
+        <span>🕙 매일 오전 10시 자동 갱신</span>
+        <input type="checkbox" id="cmp-auto-toggle" onchange="cmpToggleAuto(this.checked)" class="w-4 h-4 accent-brand-blue cursor-pointer">
+      </label>
+    </div>
+
     <!-- 요약 카드 5개 -->
     <div id="cmp-summary" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6"></div>
 
@@ -15006,6 +15015,7 @@ async function importGpagoMigrationData(evt) {
 
   // ── 메인 렌더 ──
   window.renderCompetitor=function(){
+    try{ _cmpAutoSyncUI(); }catch(_){}
     const all=_cmpAll();
     const isSample=!_cmpHasReal();
     const data=all;
@@ -15357,8 +15367,43 @@ async function importGpagoMigrationData(evt) {
   // ESC 로 모달 닫기
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ const m=document.getElementById('cmp-detail-modal'); if(m&&!m.classList.contains('hidden')) closeCompetitorDetail(); } });
 
+  // ── 매일 오전 10시 자동 갱신 (GPAGO 가 열려 있을 때 동작) ──
+  const CMP_AUTO_KEY='gpago_cmp_auto';
+  function _cmpAutoLoad(){ try{ return JSON.parse(localStorage.getItem(CMP_AUTO_KEY)||'{}'); }catch(_){ return {}; } }
+  function _cmpAutoSave(o){ try{ localStorage.setItem(CMP_AUTO_KEY, JSON.stringify(o)); }catch(_){} }
+  function _cmpTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  window.cmpToggleAuto=function(on){ const o=_cmpAutoLoad(); o.on=!!on; _cmpAutoSave(o); _cmpAutoSyncUI(); toast(on?'매일 오전 10시 자동 갱신 ON':'자동 갱신 OFF'); if(on) _cmpAutoTick(); };
+  function _cmpAutoSyncUI(){
+    const o=_cmpAutoLoad(); const t=document.getElementById('cmp-auto-toggle'); const s=document.getElementById('cmp-auto-status');
+    if(t) t.checked=!!o.on;
+    if(s) s.textContent = o.on ? (o.last? ('마지막 자동 갱신 '+o.last) : '오늘 10시부터 동작') : '';
+  }
+  async function _cmpAutoTick(){
+    const o=_cmpAutoLoad(); if(!o.on) return;
+    if(window._cmpAutoRunning) return;
+    if(!_cmpLoadProducts().length) return;            // 실제 등록 상품이 있을 때만
+    const now=new Date(); const today=_cmpTodayStr();
+    if(o.last===today) return;                          // 오늘 이미 갱신함
+    if(now.getHours()<10) return;                       // 오전 10시 이후에만
+    window._cmpAutoRunning=true;
+    try{
+      const products=_cmpLoadProducts();
+      toast('🕙 경쟁사 자동 갱신 시작 ('+products.length+'개)');
+      let n=0;
+      for(let i=0;i<products.length;i++){ try{ if(await _cmpRefreshOne(products[i])) n++; }catch(_){} if(i<products.length-1) await new Promise(r=>setTimeout(r,3000)); }
+      _cmpSaveProducts(products);
+      o.last=today; _cmpAutoSave(o);
+      toast('🕙 경쟁사 자동 갱신 완료 — '+n+'/'+products.length+'개');
+      const pc=document.getElementById('page-competitor'); if(pc&&pc.classList.contains('active')) renderCompetitor();
+      _cmpAutoSyncUI();
+    } finally { window._cmpAutoRunning=false; }
+  }
+  // 1분마다 체크 + 페이지 진입 시 체크
+  setInterval(_cmpAutoTick, 60000);
+  setTimeout(()=>{ _cmpAutoSyncUI(); _cmpAutoTick(); }, 3000);
+
   // 세션 복원으로 첫 로드 시 이 페이지가 이미 활성일 경우 렌더 (goPage 훅이 늦게 정의되는 케이스 대비)
-  try { const pc=document.getElementById('page-competitor'); if(pc && pc.classList.contains('active')) renderCompetitor(); } catch(_){}
+  try { const pc=document.getElementById('page-competitor'); if(pc && pc.classList.contains('active')) { renderCompetitor(); _cmpAutoSyncUI(); } } catch(_){}
 })();
 </script>
 
