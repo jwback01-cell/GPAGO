@@ -4156,14 +4156,13 @@ function renderAnalysisResults() {
         : isNaverPay
           ? '<span class="inline-block text-[10px] font-black bg-brand-bg text-brand-gray px-2.5 py-0.5 rounded-full">일반</span>'
           : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
-    const attrText = _renderAttrInline(matched, terms);
-    const tagText  = _renderTagInline(matched, terms);
-    const attrCell = attrText
-      ? `<span class="text-brand-black font-semibold leading-relaxed">${attrText}</span>`
-      : '<span class="text-brand-gray text-[11px]">-</span>';
-    const tagCell = tagText
-      ? `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`
-      : '<span class="text-brand-gray text-[11px]">-</span>';
+    let attrText = _renderAttrInline(matched, terms);
+    let tagText  = _renderTagInline(matched, terms);
+    // 실제 속성/태그(쇼핑 JSON)가 없으면(공식 API 폴백 등) 상품명 기반으로 추출 — 로파고 스타일, 칸이 비지 않도록
+    if (!attrText) attrText = _extractAttributes(it);
+    if (!tagText)  tagText  = _extractTagsFromTitle(it);
+    const attrCell = `<span class="text-brand-black font-semibold leading-relaxed">${attrText}</span>`;
+    const tagCell  = `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`;
     // 순서고정 매칭: 초록 배경 / 그 외: 연한 주황 배경 (둘 다 둥근 셀 배지)
     const _titleLinkCls = isOrderFixed
       ? 'inline-block font-semibold hover:text-brand-blue leading-relaxed bg-brand-green-light px-3 py-1.5 rounded-xl'
