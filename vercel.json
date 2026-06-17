@@ -2,6 +2,12 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "regions": ["icn1"],
+  "crons": [
+    { "path": "/api/track-ranks", "schedule": "0 1 * * *" }
+  ],
+  "functions": {
+    "api/track-ranks.js": { "maxDuration": 60 }
+  },
   "headers": [
     {
       "source": "/",
