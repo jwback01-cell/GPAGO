@@ -137,12 +137,19 @@ function parseProducts(html, q) {
 function buildProxyUrl(target, withGeo) {
   const geo = process.env.SCRAPER_API_COUNTRY || 'kr';
   if (process.env.SCRAPER_API_KEY) {
+    // 프리미엄/한국IP: SCRAPER_PREMIUM=true(프리미엄) 또는 ultra(주거용). 네이버는 보통 ultra 필요(유료).
     const p = { api_key: process.env.SCRAPER_API_KEY, url: target, keep_headers: 'true' };
     if (withGeo && geo && geo !== 'none') p.country_code = geo;
+    const prem = (process.env.SCRAPER_PREMIUM || '').toLowerCase();
+    if (prem === 'ultra') p.ultra_premium = 'true';
+    else if (prem === 'true' || prem === 'premium') p.premium = 'true';
     return 'https://api.scraperapi.com/?' + new URLSearchParams(p).toString();
   }
   if (process.env.SCRAPINGBEE_API_KEY) {
-    const p = { api_key: process.env.SCRAPINGBEE_API_KEY, url: target, render_js: 'false' };
+    // 네이버엔 premium_proxy + country_code=kr 가 사실상 필수(무료체험 크레딧으로 테스트 가능).
+    const p = { api_key: process.env.SCRAPINGBEE_API_KEY, url: target, render_js: (process.env.SCRAPINGBEE_RENDER || 'false') };
+    const usePrem = (process.env.SCRAPINGBEE_PREMIUM || 'true').toLowerCase() !== 'false';
+    if (usePrem) p.premium_proxy = 'true';
     if (withGeo && geo && geo !== 'none') p.country_code = geo;
     return 'https://app.scrapingbee.com/api/v1/?' + new URLSearchParams(p).toString();
   }
@@ -156,7 +163,7 @@ function proxyConfigured() { return !!buildProxyUrl('https://x', true); }
 
 async function _fetchProxied(proxied) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 22000);
+  const t = setTimeout(() => ctrl.abort(), 45000);
   try {
     const r = await fetch(proxied, { headers: { 'Accept': 'text/html,application/json,*/*', 'Accept-Language': 'ko-KR,ko;q=0.9' }, signal: ctrl.signal });
     const html = await r.text();
@@ -223,10 +230,9 @@ export default async function handler(req, res) {
   // 2단계: 스크래핑 API 프록시 (주거용/우회 IP) — 키가 설정돼 있을 때만
   //   504(함수 타임아웃) 방지: 가벼운 내부 API(JSON) 1회 → 실패 시 데스크탑 SERP HTML 1회. (각 ≤22초)
   if (proxyConfigured()) {
-    const apiUrl = 'https://search.shopping.naver.com/api/search/all?' + new URLSearchParams({ query: q, origQuery: q, pagingIndex: '1', pagingSize: '80', productSet: 'total', sort: 'rel', viewType: 'list' }).toString();
     const desktopUrl = `https://search.shopping.naver.com/search/all?${new URLSearchParams({ query: q, frm: 'NVSHATC' }).toString()}`;
+    // 프리미엄 프록시는 느리므로 SERP HTML 1회만 (45초). __NEXT_DATA__ 에 manuTag 포함.
     const proxyTargets = [
-      { label: 'api', url: apiUrl },
       { label: 'serp', url: desktopUrl },
     ];
     for (const pt of proxyTargets) {
