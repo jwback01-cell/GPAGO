@@ -5147,8 +5147,9 @@ function _renderTagStatsList() {
   }
 }
 
-// 3-1) 키워드 → 확장프로그램으로 네이버 쇼핑 캡처 (마누태그 추출)
-//      확장이 없거나 응답 없을 시 안내 메시지만 표시 (서버 스크래핑/Open API 폴백 없음)
+// 3-1) 키워드 → 마누태그 추출 (보안창/팝업 없이)
+//      0순위: 확장 백그라운드 직접 fetch → 1순위: 서버 스크랩 → 2순위: 공식 API
+//      수집한 데이터는 기존 _processExtensionPayload('tool') 로 처리(parseShopJson → manuTag 추출)
 async function extractFromKeyword() {
   const kw = (document.getElementById('tool-json-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
@@ -5159,52 +5160,58 @@ async function extractFromKeyword() {
   const termsBox = document.getElementById('tool-json-terms');
   const origBtnText = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '추출 중...'; }
-  if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 확장프로그램으로 네이버 쇼핑 캡처 중...</div>';
+  if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 쇼핑 데이터 가져오는 중...</div>';
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
 
-  // v1+ : 텀즈 모드 잔여 상태 확실히 정리 (이전 텀즈 분석이 timeout/취소된 경우 응답을 가로채던 문제)
-  _termsAnalysisPending = false;
-  _termsAnalysisInputName = '';
+  // 잔여 상태 정리 (텀즈/다중분석이 응답 가로채는 것 방지)
+  _termsAnalysisPending = false; _termsAnalysisInputName = '';
   try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
-  // v1+ : 다중 키워드 분석 잔여 상태 정리 — 남아있으면 마누태그 페이로드가 다중캡처/분석으로 새서 화면이 키워드 분석으로 튕김
   try { window._multiCaptureActive = false; window._multiCaptureResolve = null; } catch(_) {}
+  const nInput = document.getElementById('kw-naver'); if (nInput) nInput.value = kw;
 
-  // 확장이 kw-naver 입력란을 읽으므로 키워드 미리 동기화
-  const nInput = document.getElementById('kw-naver');
-  if (nInput) nInput.value = kw;
-  let ackReceived = false;
-  let dataReceived = false;
-  const ackListener = (e) => {
-    if (e.source !== window) return;
-    if (e.data?.source === 'gpago-extension' && e.data?.type === 'TRIGGER_ACK') ackReceived = true;
-    if (e.data?.source === 'gpago-extension' && e.data?.type === 'GPAGO_AUTO_ANALYZE') dataReceived = true;
-  };
-  window.addEventListener('message', ackListener);
   try {
-    _extensionTriggerSource = 'tool';  // v1.7.17+ : 키워드 도구 소스 표시
-    // v1+ : 소스가 레이스로 null 이 되어도 tool 로 라우팅되도록 sessionStorage 플래그 보존 (텀즈와 동일 패턴)
-    try { sessionStorage.setItem('_gpago_tool_pending', '1'); } catch(_) {}
-    window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword: kw }, window.location.origin);
-    // 1초 대기 — 확장 ACK 확인
-    await new Promise(r => setTimeout(r, 1000));
-    if (!ackReceived) {
-      if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 확장프로그램이 응답하지 않습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO Chrome 확장프로그램이 설치·활성화되어 있는지 확인해 주세요.</span></div>`;
-      if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">확장 무응답</span>';
+    let payload = null, tabs = null;
+    // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 manuTag·NLU 포함)
+    try {
+      const ext = await _tryExtensionDirectFetch(kw, 8000);
+      if (ext && ext.ok && ext.tabs) {
+        const p = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
+        if (p && Array.isArray(p.products) && p.products.length) { payload = p; tabs = ext.tabs; }
+      }
+    } catch (e) { console.warn('[마누태그] 확장 직접 fetch 실패:', e); }
+    // 1) 서버 스크랩
+    if (!payload) {
+      try {
+        const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(kw));
+        if (resp.ok) {
+          const d = await resp.json();
+          if (Array.isArray(d.products) && d.products.length) {
+            payload = { query: d.query || kw, products: d.products, terms: d.terms || [], nluTerms: d.nluTerms || [] };
+            tabs = { '전체': payload };
+          }
+        }
+      } catch (_) {}
+    }
+    // 2) 공식 API (manuTag 는 없지만 동작은 함)
+    if (!payload) {
+      const api = _getApi();
+      if (api && api.id && api.secret) {
+        try {
+          const r = await fetch('/api/naver-shop?query=' + encodeURIComponent(kw) + '&display=100&sort=sim', { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
+          if (r.ok) { const d = await r.json(); const products = d.items || []; if (products.length) { payload = { query: kw, products, terms: [], nluTerms: [] }; tabs = { '전체': payload }; } }
+        } catch (_) {}
+      }
+    }
+    if (!payload) {
+      if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 데이터를 가져오지 못했습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO 확장 설치/활성화 또는 API 설정을 확인해 주세요.</span></div>';
+      if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">데이터 없음</span>';
       if (totalEl) totalEl.textContent = '0';
       return;
     }
-    // 확장 살아있음 — 캡처 데이터 대기 (최대 20초)
-    if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">📦 확장프로그램 응답 — 네이버 팝업에서 80개 상품 캡처 중... (최대 20초)</div>';
-    for (let i = 0; i < 40 && !dataReceived; i++) {
-      await new Promise(r => setTimeout(r, 500));
-    }
-    if (!dataReceived) {
-      if (tagsBox) tagsBox.innerHTML = `<div class="text-center py-12 text-xs text-brand-pink">⚠ 캡처 시간 초과 (20초)<br><span class="text-brand-gray mt-2 inline-block">네이버 페이지 로딩이 늦거나 캡처에 실패했어요. 다시 시도해 주세요.</span></div>`;
-    }
-    // dataReceived 인 경우 _processExtensionPayload 가 자동으로 결과 채움
+    _extensionTriggerSource = 'tool';
+    await _processExtensionPayload(payload, tabs);
   } finally {
-    window.removeEventListener('message', ackListener);
     if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
   }
 }
