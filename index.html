@@ -2988,7 +2988,7 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   _updateLoadingOverlay(15, '쇼핑 데이터 가져오는 중...');
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 8000);
+    const ext = await _tryExtensionDirectFetch(keyword, 12000);
     if (ext && ext.ok && ext.tabs) {
       const tabs = ext.tabs;
       const payload = tabs['네이버페이'] || tabs['전체'] || null;
@@ -3119,7 +3119,7 @@ async function _runMultiKwAnalysis(keywords) {
 async function _fetchScrapePayload(keyword) {
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 8000);
+    const ext = await _tryExtensionDirectFetch(keyword, 12000);
     if (ext && ext.ok && ext.tabs) {
       const payload = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
       if (payload && Array.isArray(payload.products) && payload.products.length) {
@@ -5174,7 +5174,7 @@ async function extractFromKeyword() {
     let payload = null, tabs = null;
     // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 manuTag·NLU 포함)
     try {
-      const ext = await _tryExtensionDirectFetch(kw, 8000);
+      const ext = await _tryExtensionDirectFetch(kw, 12000);
       if (ext && ext.ok && ext.tabs) {
         const p = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
         if (p && Array.isArray(p.products) && p.products.length) { payload = p; tabs = ext.tabs; }
@@ -5211,6 +5211,13 @@ async function extractFromKeyword() {
     }
     _extensionTriggerSource = 'tool';
     await _processExtensionPayload(payload, tabs);
+    // 실제 manuTag 가 하나도 없으면(=공식 API 폴백) 원인 안내 — '태그 없음'이 아니라 네이버 접속 제한일 가능성
+    const hasTag = Array.isArray(payload.products) && payload.products.some(p => p && p.manuTag);
+    if (!hasTag && tagsBox) {
+      tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 실제 태그(manuTag)를 가져오지 못했습니다.<br>'
+        + '<span class="text-brand-gray mt-2 inline-block">네이버 쇼핑 접속이 일시 제한됐을 수 있어요(이전 시도 누적). 몇 분 뒤 다시 시도하거나, '
+        + '네이버에 <b>로그인된 탭</b>이 열린 상태에서 시도해 주세요. 공식 API 폴백에는 태그 정보가 없습니다.</span></div>';
+    }
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
   }
