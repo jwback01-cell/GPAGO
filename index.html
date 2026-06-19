@@ -5170,10 +5170,12 @@ async function extractFromKeyword() {
   try {
     // ── 데이터 수집 (도구 전용 지역 변수만 사용. 분석 전역 미사용) ──
     let products = null, terms = [], nluTerms = [], query = kw;
-    // 0) 확장 백그라운드 직접 fetch
+    let extError = null;
+    // 0) 확장 백그라운드 직접 fetch (열린 네이버 탭이 있으면 그 탭에서 가져옴)
     try {
-      const ext = await _tryExtensionDirectFetch(kw, 12000);
+      const ext = await _tryExtensionDirectFetch(kw, 15000);
       console.log('[마누태그] 확장 직접 fetch 응답:', ext ? { ok: ext.ok, tabs: ext.tabs ? Object.keys(ext.tabs) : null, error: ext.error } : 'null(무응답/타임아웃 — 확장 미설치/미갱신?)');
+      if (ext) extError = ext.error || null;
       if (ext && ext.ok && ext.tabs) {
         const p = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
         if (p && Array.isArray(p.products) && p.products.length) { products = p.products; terms = Array.isArray(p.terms) ? p.terms : []; nluTerms = Array.isArray(p.nluTerms) ? p.nluTerms : []; query = p.query || kw; }
@@ -5194,7 +5196,15 @@ async function extractFromKeyword() {
       }
     }
     if (!products) {
-      if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 데이터를 가져오지 못했습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO 확장 설치/활성화 또는 API 설정을 확인해 주세요.</span></div>';
+      if (extError === 'no_naver_tab') {
+        if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">🔖 네이버쇼핑 탭을 먼저 열어 주세요.<br>'
+          + '<span class="text-brand-gray mt-2 inline-block">네이버는 서버·확장 백그라운드 요청을 차단하기 때문에, '
+          + '<b>네이버쇼핑(search.shopping.naver.com)에 로그인된 탭</b>을 하나 열어둔 상태에서 추출해야 실제 태그를 가져올 수 있어요.<br>'
+          + '탭을 열고 다시 <b>+추출</b>을 눌러 주세요.</span><br>'
+          + '<a href="https://search.shopping.naver.com/search/all?query=' + encodeURIComponent(kw) + '" target="_blank" class="inline-block mt-3 bg-brand-pink text-white px-3 py-1.5 rounded-full text-[11px] font-bold">네이버쇼핑 탭 열기 →</a></div>';
+      } else if (tagsBox) {
+        tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 데이터를 가져오지 못했습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO 확장 설치/활성화 또는 API 설정을 확인해 주세요. (네이버쇼핑 탭을 열어두면 더 잘 됩니다)</span></div>';
+      }
       if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">데이터 없음</span>';
       if (totalEl) totalEl.textContent = '0';
       return;
