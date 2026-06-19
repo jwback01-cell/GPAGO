@@ -106,6 +106,77 @@ async function tryFetch(url, isMobile) {
   return { ok: r.ok, status: r.status, html, len: html.length };
 }
 
+// HTML(또는 JSON 문자열)에서 products 추출 — 직접/프록시 공용
+function parseProducts(html, q) {
+  const nextData = extractNextData(html);
+  if (nextData) {
+    const scope = findProducts(nextData.props, 0) || findProducts(nextData, 0);
+    const tabTotals = findTabTotals(nextData, 0) || {};
+    if (scope && scope.products && scope.products.length) {
+      return { query: scope.query || q, products: scope.products, total: scope.total || scope.products.length, tabTotals, terms: scope.terms || [], nluTerms: scope.nluTerms || [], source: 'next-data' };
+    }
+  }
+  // 프록시가 내부 API JSON 을 그대로 돌려주는 경우 (HTML 아님)
+  try {
+    const j = JSON.parse(html);
+    const scope = findProducts(j, 0);
+    if (scope && scope.products && scope.products.length) {
+      return { query: scope.query || q, products: scope.products, total: scope.total || scope.products.length, tabTotals: {}, terms: scope.terms || [], nluTerms: scope.nluTerms || [], source: 'json' };
+    }
+  } catch (_) {}
+  const products = regexFallback(html);
+  if (products.length) return { query: q, products, total: products.length, tabTotals: {}, terms: [], nluTerms: [], source: 'regex' };
+  return null;
+}
+
+// 스크래핑 API 프록시 — 네이버가 서버(데이터센터) IP 를 차단할 때 주거용/우회 IP 로 SERP 를 가져온다.
+//   Vercel 환경변수에 키를 넣으면 자동 활성화:
+//     SCRAPER_API_KEY      (scraperapi.com,  무료 1,000건/월)
+//     SCRAPINGBEE_API_KEY  (scrapingbee.com, 무료 1,000크레딧)
+//     SCRAPE_PROXY_URL     (직접 템플릿; "{url}" 자리에 인코딩된 대상 URL 치환)
+function buildProxyUrl(target, withGeo) {
+  const geo = process.env.SCRAPER_API_COUNTRY || 'kr';
+  if (process.env.SCRAPER_API_KEY) {
+    const p = { api_key: process.env.SCRAPER_API_KEY, url: target, keep_headers: 'true' };
+    if (withGeo && geo && geo !== 'none') p.country_code = geo;
+    return 'https://api.scraperapi.com/?' + new URLSearchParams(p).toString();
+  }
+  if (process.env.SCRAPINGBEE_API_KEY) {
+    const p = { api_key: process.env.SCRAPINGBEE_API_KEY, url: target, render_js: 'false' };
+    if (withGeo && geo && geo !== 'none') p.country_code = geo;
+    return 'https://app.scrapingbee.com/api/v1/?' + new URLSearchParams(p).toString();
+  }
+  if (process.env.SCRAPE_PROXY_URL) {
+    const tpl = process.env.SCRAPE_PROXY_URL;
+    return tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(target)) : tpl + encodeURIComponent(target);
+  }
+  return null;
+}
+function proxyConfigured() { return !!buildProxyUrl('https://x', true); }
+
+async function _fetchProxied(proxied) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const r = await fetch(proxied, { headers: { 'Accept': 'text/html,application/json,*/*', 'Accept-Language': 'ko-KR,ko;q=0.9' }, signal: ctrl.signal });
+    const html = await r.text();
+    return { ok: r.ok, status: r.status, html, len: html.length };
+  } catch (e) { return { ok: false, status: 0, html: '', len: 0, error: String(e && e.message || e) }; }
+  finally { clearTimeout(t); }
+}
+
+async function tryProxyFetch(target) {
+  // 1) 지오타게팅(kr) 포함 시도 → 2) 무료플랜이 거부(4xx)하면 지오 없이 재시도
+  let url = buildProxyUrl(target, true);
+  if (!url) return { ok: false, status: 0, html: '', len: 0, error: 'no_proxy_key' };
+  let r = await _fetchProxied(url);
+  if (!r.ok && (r.status === 400 || r.status === 401 || r.status === 403)) {
+    const noGeo = buildProxyUrl(target, false);
+    if (noGeo && noGeo !== url) { const r2 = await _fetchProxied(noGeo); r2._retriedNoGeo = true; if (r2.ok || r2.len > r.len) r = r2; }
+  }
+  return r;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -122,57 +193,56 @@ export default async function handler(req, res) {
   ];
 
   const diagnostics = [];
+  const respond = (parsed, viaLabel) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.status(200).json({
+      query: parsed.query || q,
+      products: parsed.products,
+      total: parsed.total || parsed.products.length,
+      tabTotals: parsed.tabTotals || {},
+      terms: parsed.terms || [],
+      nluTerms: parsed.nluTerms || [],
+      source: `${parsed.source}-${viaLabel}`,
+    });
+  };
+
+  // 1단계: 직접 fetch (데이터센터 IP — 네이버가 차단할 수 있음: 418 등)
   for (const a of attempts) {
     try {
       const r = await tryFetch(a.url, a.isMobile);
-      diagnostics.push({ label: a.label, status: r.status, len: r.len, ok: r.ok });
+      diagnostics.push({ via: 'direct', label: a.label, status: r.status, len: r.len, ok: r.ok });
       if (!r.ok || !r.html) continue;
-
-      // 1) __NEXT_DATA__ 시도
-      const nextData = extractNextData(r.html);
-      let scope = null;
-      let tabTotals = {};
-      if (nextData) {
-        scope = findProducts(nextData.props, 0) || findProducts(nextData, 0);
-        tabTotals = findTabTotals(nextData, 0) || {};
-      }
-      if (scope && scope.products && scope.products.length) {
-        res.setHeader('Cache-Control', 'public, max-age=300');
-        res.status(200).json({
-          query: scope.query || q,
-          products: scope.products,
-          total: scope.total || scope.products.length,
-          tabTotals,
-          terms: scope.terms || [],
-          nluTerms: scope.nluTerms || [],
-          source: `next-data-${a.label}`,
-        });
-        return;
-      }
-      // 2) 정규식 폴백
-      const products = regexFallback(r.html);
-      if (products.length) {
-        res.setHeader('Cache-Control', 'public, max-age=300');
-        res.status(200).json({
-          query: q,
-          products,
-          total: products.length,
-          terms: [],
-          nluTerms: [],
-          source: `regex-${a.label}`,
-        });
-        return;
-      }
+      const parsed = parseProducts(r.html, q);
+      if (parsed) { respond(parsed, `direct-${a.label}`); return; }
       diagnostics[diagnostics.length - 1].parsed = 'no products';
     } catch (e) {
-      diagnostics.push({ label: a.label, error: e.message || String(e) });
+      diagnostics.push({ via: 'direct', label: a.label, error: e.message || String(e) });
+    }
+  }
+
+  // 2단계: 스크래핑 API 프록시 (주거용/우회 IP) — 키가 설정돼 있을 때만
+  if (proxyConfigured()) {
+    for (const a of attempts) {
+      try {
+        const r = await tryProxyFetch(a.url);
+        diagnostics.push({ via: 'proxy', label: a.label, status: r.status, len: r.len, ok: r.ok, error: r.error });
+        if (!r.ok || !r.html) continue;
+        const parsed = parseProducts(r.html, q);
+        if (parsed) { respond(parsed, `proxy-${a.label}`); return; }
+        diagnostics[diagnostics.length - 1].parsed = 'no products';
+      } catch (e) {
+        diagnostics.push({ via: 'proxy', label: a.label, error: e.message || String(e) });
+      }
     }
   }
 
   // 전부 실패
   res.status(502).json({
     error: '네이버 쇼핑 스크래핑 실패',
-    hint: '네이버가 봇 접근을 차단했을 가능성 — 대안: 상품 제목 기반 폴백 모드 또는 직접 JSON 붙여넣기 사용',
+    proxyConfigured: proxyConfigured(),
+    hint: proxyConfigured()
+      ? '프록시 경유에도 실패 — 키 잔여 크레딧/응답을 diagnostics 에서 확인하세요.'
+      : '서버 직접 접근은 네이버가 차단함. Vercel 환경변수에 SCRAPER_API_KEY(또는 SCRAPINGBEE_API_KEY)를 설정하면 프록시로 우회합니다.',
     diagnostics,
   });
 }

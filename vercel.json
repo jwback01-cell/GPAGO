@@ -6,7 +6,8 @@
     { "path": "/api/track-ranks", "schedule": "0 1 * * *" }
   ],
   "functions": {
-    "api/track-ranks.js": { "maxDuration": 60 }
+    "api/track-ranks.js": { "maxDuration": 60 },
+    "api/naver-shop-scrape.js": { "maxDuration": 30 }
   },
   "headers": [
     {
