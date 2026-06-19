@@ -5173,6 +5173,7 @@ async function extractFromKeyword() {
     // 0) 확장 백그라운드 직접 fetch
     try {
       const ext = await _tryExtensionDirectFetch(kw, 12000);
+      console.log('[마누태그] 확장 직접 fetch 응답:', ext ? { ok: ext.ok, tabs: ext.tabs ? Object.keys(ext.tabs) : null, error: ext.error } : 'null(무응답/타임아웃 — 확장 미설치/미갱신?)');
       if (ext && ext.ok && ext.tabs) {
         const p = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
         if (p && Array.isArray(p.products) && p.products.length) { products = p.products; terms = Array.isArray(p.terms) ? p.terms : []; nluTerms = Array.isArray(p.nluTerms) ? p.nluTerms : []; query = p.query || kw; }
