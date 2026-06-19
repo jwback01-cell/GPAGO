@@ -689,7 +689,7 @@
           </div>
         </div>
         <div class="mt-4 text-[11px] text-brand-gray bg-brand-bg rounded-xl px-3 py-2 leading-relaxed">
-          💡 추출 결과는 <b>키워드 분석</b> 페이지의 결과 테이블에도 자동 매칭됩니다 (productId / 상품명 기준).
+          💡 <b>키워드 도구</b>는 <b>키워드 분석</b>과 독립적으로 동작합니다. 여기서 추출해도 키워드 분석에는 영향을 주지 않습니다.
         </div>
       </section>
 
@@ -5147,9 +5147,11 @@ function _renderTagStatsList() {
   }
 }
 
-// 3-1) 키워드 → 마누태그 추출 (보안창/팝업 없이)
+// 3-1) 키워드 → 마누태그 추출 (보안창/팝업 없이) — ★키워드 분석과 완전 독립★
 //      0순위: 확장 백그라운드 직접 fetch → 1순위: 서버 스크랩 → 2순위: 공식 API
-//      수집한 데이터는 기존 _processExtensionPayload('tool') 로 처리(parseShopJson → manuTag 추출)
+//      ⚠ _processExtensionPayload / parseShopJson / 분석 입력·전역(_lastAnalysisItems, kw-naver, kw-filter,
+//        _jsonNluTerms, _extensionTabPayloads, _indexJsonProducts) 를 절대 건드리지 않는다.
+//        (키워드 도구에서 검색해도 키워드 분석이 동작하지 않도록)
 async function extractFromKeyword() {
   const kw = (document.getElementById('tool-json-kw').value || '').trim();
   if (!kw) { toast('키워드를 입력해 주세요'); return; }
@@ -5158,66 +5160,75 @@ async function extractFromKeyword() {
   const totalEl  = document.getElementById('tool-json-tag-total');
   const resultListBox = document.getElementById('tool-json-result-list');
   const termsBox = document.getElementById('tool-json-terms');
+  const kwBox    = document.getElementById('tool-json-keyword');
   const origBtnText = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '추출 중...'; }
   if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-gray animate-pulse">🔍 네이버 쇼핑 데이터 가져오는 중...</div>';
   if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">불러오는 중...</span>';
   if (termsBox) termsBox.innerHTML = '<span class="text-brand-gray">-</span>';
 
-  // 잔여 상태 정리 (텀즈/다중분석이 응답 가로채는 것 방지)
-  _termsAnalysisPending = false; _termsAnalysisInputName = '';
-  try { sessionStorage.removeItem('_gpago_terms_pending'); } catch(_) {}
-  try { window._multiCaptureActive = false; window._multiCaptureResolve = null; } catch(_) {}
-  const nInput = document.getElementById('kw-naver'); if (nInput) nInput.value = kw;
-
   try {
-    let payload = null, tabs = null;
-    // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 manuTag·NLU 포함)
+    // ── 데이터 수집 (도구 전용 지역 변수만 사용. 분석 전역 미사용) ──
+    let products = null, terms = [], nluTerms = [], query = kw;
+    // 0) 확장 백그라운드 직접 fetch
     try {
       const ext = await _tryExtensionDirectFetch(kw, 12000);
       if (ext && ext.ok && ext.tabs) {
         const p = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
-        if (p && Array.isArray(p.products) && p.products.length) { payload = p; tabs = ext.tabs; }
+        if (p && Array.isArray(p.products) && p.products.length) { products = p.products; terms = Array.isArray(p.terms) ? p.terms : []; nluTerms = Array.isArray(p.nluTerms) ? p.nluTerms : []; query = p.query || kw; }
       }
     } catch (e) { console.warn('[마누태그] 확장 직접 fetch 실패:', e); }
     // 1) 서버 스크랩
-    if (!payload) {
+    if (!products) {
       try {
         const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(kw));
-        if (resp.ok) {
-          const d = await resp.json();
-          if (Array.isArray(d.products) && d.products.length) {
-            payload = { query: d.query || kw, products: d.products, terms: d.terms || [], nluTerms: d.nluTerms || [] };
-            tabs = { '전체': payload };
-          }
-        }
+        if (resp.ok) { const d = await resp.json(); if (Array.isArray(d.products) && d.products.length) { products = d.products; terms = d.terms || []; nluTerms = d.nluTerms || []; query = d.query || kw; } }
       } catch (_) {}
     }
-    // 2) 공식 API (manuTag 는 없지만 동작은 함)
-    if (!payload) {
+    // 2) 공식 API (manuTag 없음)
+    if (!products) {
       const api = _getApi();
       if (api && api.id && api.secret) {
-        try {
-          const r = await fetch('/api/naver-shop?query=' + encodeURIComponent(kw) + '&display=100&sort=sim', { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } });
-          if (r.ok) { const d = await r.json(); const products = d.items || []; if (products.length) { payload = { query: kw, products, terms: [], nluTerms: [] }; tabs = { '전체': payload }; } }
-        } catch (_) {}
+        try { const r = await fetch('/api/naver-shop?query=' + encodeURIComponent(kw) + '&display=100&sort=sim', { headers: { 'x-client-id': api.id, 'x-client-secret': api.secret } }); if (r.ok) { const d = await r.json(); if ((d.items || []).length) products = d.items; } } catch (_) {}
       }
     }
-    if (!payload) {
+    if (!products) {
       if (tagsBox) tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 데이터를 가져오지 못했습니다.<br><span class="text-brand-gray mt-2 inline-block">GPAGO 확장 설치/활성화 또는 API 설정을 확인해 주세요.</span></div>';
       if (resultListBox) resultListBox.innerHTML = '<span class="text-brand-gray">데이터 없음</span>';
       if (totalEl) totalEl.textContent = '0';
       return;
     }
-    _extensionTriggerSource = 'tool';
-    await _processExtensionPayload(payload, tabs);
-    // 실제 manuTag 가 하나도 없으면(=공식 API 폴백) 원인 안내 — '태그 없음'이 아니라 네이버 접속 제한일 가능성
-    const hasTag = Array.isArray(payload.products) && payload.products.some(p => p && p.manuTag);
-    if (!hasTag && tagsBox) {
-      tagsBox.innerHTML = '<div class="text-center py-12 text-xs text-brand-pink">⚠ 실제 태그(manuTag)를 가져오지 못했습니다.<br>'
-        + '<span class="text-brand-gray mt-2 inline-block">네이버 쇼핑 접속이 일시 제한됐을 수 있어요(이전 시도 누적). 몇 분 뒤 다시 시도하거나, '
-        + '네이버에 <b>로그인된 탭</b>이 열린 상태에서 시도해 주세요. 공식 API 폴백에는 태그 정보가 없습니다.</span></div>';
+
+    // ── 키워드 도구 전용 렌더 (키워드 분석 일절 미접촉) ──
+    if (kwBox) { kwBox.textContent = query || '(query 없음)'; kwBox.classList.remove('text-brand-gray'); kwBox.classList.add('text-brand-black', 'font-bold'); }
+    // Terms
+    const termList = terms.filter(t => typeof t === 'string' && t.trim());
+    if (!termList.length) termsBox.innerHTML = '<span class="text-brand-gray">terms 필드를 찾을 수 없습니다</span>';
+    else termsBox.innerHTML = termList.map((t, i) => {
+      const nlu = nluTerms.find(n => n.keyword === t); const type = nlu ? nlu.type : '';
+      const tb = type ? ` <span class="text-[9px] font-bold text-brand-blue bg-brand-blue-light px-1 py-0.5 rounded ml-0.5">${escapeHtml(type)}</span>` : '';
+      return `<span class="inline-block bg-brand-purple-light text-brand-purple px-2 py-1 rounded-full text-[11px] font-bold m-0.5"><span class="text-brand-gray font-black mr-0.5">${i + 1}</span>${escapeHtml(t)}${tb}</span>`;
+    }).join('');
+    // manuTag 집계
+    const EXCLUDE = new Set(['오늘출발','오늘발송','당일출발','당일발송','내일발송','내일도착','무료교환','무료반품','무료교환반품','무료반품교환','무료배송','쿠팡배송','당일출고','당일배송','새벽배송','로켓배송']);
+    const tagCounts = {}; let totalProducts = 0;
+    products.forEach(p => { const ts = (p && p.manuTag) || ''; if (!ts) return; totalProducts++; ts.split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(t => { if (EXCLUDE.has(t)) return; tagCounts[t] = (tagCounts[t] || 0) + 1; }); });
+    const sorted = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+    totalEl.textContent = sorted.length.toLocaleString('ko-KR');
+    if (!sorted.length) {
+      const hasTag = products.some(p => p && p.manuTag);
+      tagsBox.innerHTML = hasTag
+        ? '<span class="text-brand-gray">manuTag가 있는 상품이 없습니다</span>'
+        : '<div class="text-center py-12 text-xs text-brand-pink">⚠ 실제 태그(manuTag)를 가져오지 못했습니다.<br><span class="text-brand-gray mt-2 inline-block">네이버 접속 제한 가능성(이전 시도 누적). 몇 분 뒤/네이버 <b>로그인된 탭</b>이 열린 상태에서 재시도. 공식 API 폴백엔 태그가 없습니다.</span></div>';
+      resultListBox.innerHTML = '<span class="text-brand-gray">-</span>';
+      return;
     }
+    resultListBox.innerHTML = `<span class="text-brand-black font-medium leading-relaxed">${sorted.slice(0, 12).map(([t]) => escapeHtml(t)).join(',')}</span>`;
+    window._lastTagStats = { sorted, totalProducts };   // 도구 전용 전역 (분석과 무관)
+    const toggleEl = document.getElementById('tool-json-sort-toggle');
+    if (toggleEl) { toggleEl.classList.remove('hidden'); toggleEl.classList.add('flex'); }
+    if (typeof _renderTagStatsList === 'function') { try { _renderTagStatsList(); } catch (_) {} }
+    if (typeof _refreshKwVolumesForRendered === 'function') { try { _refreshKwVolumesForRendered(); } catch (_) {} }
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = origBtnText; }
   }
