@@ -7,7 +7,7 @@
   ],
   "functions": {
     "api/track-ranks.js": { "maxDuration": 60 },
-    "api/naver-shop-scrape.js": { "maxDuration": 30 }
+    "api/naver-shop-scrape.js": { "maxDuration": 60 }
   },
   "headers": [
     {

@@ -156,7 +156,7 @@ function proxyConfigured() { return !!buildProxyUrl('https://x', true); }
 
 async function _fetchProxied(proxied) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 25000);
+  const t = setTimeout(() => ctrl.abort(), 22000);
   try {
     const r = await fetch(proxied, { headers: { 'Accept': 'text/html,application/json,*/*', 'Accept-Language': 'ko-KR,ko;q=0.9' }, signal: ctrl.signal });
     const html = await r.text();
@@ -221,17 +221,24 @@ export default async function handler(req, res) {
   }
 
   // 2단계: 스크래핑 API 프록시 (주거용/우회 IP) — 키가 설정돼 있을 때만
+  //   504(함수 타임아웃) 방지: 가벼운 내부 API(JSON) 1회 → 실패 시 데스크탑 SERP HTML 1회. (각 ≤22초)
   if (proxyConfigured()) {
-    for (const a of attempts) {
+    const apiUrl = 'https://search.shopping.naver.com/api/search/all?' + new URLSearchParams({ query: q, origQuery: q, pagingIndex: '1', pagingSize: '80', productSet: 'total', sort: 'rel', viewType: 'list' }).toString();
+    const desktopUrl = `https://search.shopping.naver.com/search/all?${new URLSearchParams({ query: q, frm: 'NVSHATC' }).toString()}`;
+    const proxyTargets = [
+      { label: 'api', url: apiUrl },
+      { label: 'serp', url: desktopUrl },
+    ];
+    for (const pt of proxyTargets) {
       try {
-        const r = await tryProxyFetch(a.url);
-        diagnostics.push({ via: 'proxy', label: a.label, status: r.status, len: r.len, ok: r.ok, error: r.error });
+        const r = await tryProxyFetch(pt.url);
+        diagnostics.push({ via: 'proxy', label: pt.label, status: r.status, len: r.len, ok: r.ok, error: r.error });
         if (!r.ok || !r.html) continue;
         const parsed = parseProducts(r.html, q);
-        if (parsed) { respond(parsed, `proxy-${a.label}`); return; }
+        if (parsed) { respond(parsed, `proxy-${pt.label}`); return; }
         diagnostics[diagnostics.length - 1].parsed = 'no products';
       } catch (e) {
-        diagnostics.push({ via: 'proxy', label: a.label, error: e.message || String(e) });
+        diagnostics.push({ via: 'proxy', label: pt.label, error: e.message || String(e) });
       }
     }
   }
