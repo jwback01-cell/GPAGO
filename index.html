@@ -3019,9 +3019,15 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   //   전체/가격비교는 해당 칩 클릭 시 그때 받음(_switchOrFetchTab).
   window._lastAnalyzedKw = keyword;
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 12000, ['npay']);
-    if (ext && ext.ok && ext.tabs) {
-      const tabs = ext.tabs;
+    // 0-a) 네이버페이 먼저 (기본 표시)
+    let ext = await _tryExtensionDirectFetch(keyword, 12000, ['npay']);
+    let tabs = (ext && ext.ok && ext.tabs && ext.tabs['네이버페이'] && ext.tabs['네이버페이'].products && ext.tabs['네이버페이'].products.length) ? ext.tabs : null;
+    // 0-b) npay 가 (일시 차단 등으로) 비면 → 전체 in-tab 으로 폴백 (공식 API 전에, 실제 속성/태그 유지)
+    if (!tabs) {
+      const ext2 = await _tryExtensionDirectFetch(keyword, 12000, ['total']);
+      if (ext2 && ext2.ok && ext2.tabs && ext2.tabs['전체'] && ext2.tabs['전체'].products && ext2.tabs['전체'].products.length) tabs = ext2.tabs;
+    }
+    if (tabs) {
       const payload = tabs['네이버페이'] || tabs['전체'] || null;
       if (payload && Array.isArray(payload.products) && payload.products.length) {
         _updateLoadingOverlay(85, `분석 중... (${payload.products.length}개 상품)`);
