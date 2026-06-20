@@ -3012,6 +3012,7 @@ function _tryExtensionDirectFetch(keyword, timeoutMs, sets) {
 // 확장 캡처 처리 함수(_processExtensionPayload)를 그대로 재사용해 동일한 테이블을 렌더
 async function _runKeywordAnalysisNoPopup(keyword) {
   if (!keyword) return;
+  window._analysisDegraded = false;  // 기본: 실데이터. 공식 API 폴백 시에만 true
   _showLoadingOverlay(keyword);
   _updateLoadingOverlay(15, '쇼핑 데이터 가져오는 중...');
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
@@ -3072,6 +3073,7 @@ async function _runKeywordAnalysisNoPopup(keyword) {
     const products = d.items || [];
     if (!products.length) { toast(`"${keyword}" 검색 결과 없음`); _hideLoadingOverlay(); return; }
     _updateLoadingOverlay(85, `분석 중... (${products.length}개 상품)`);
+    window._analysisDegraded = true;  // 공식 API — 실제 속성/태그 없음 → 화면에 '제한' 표시
     const payload = { query: keyword, products, total: d.total || products.length, terms: [], nluTerms: [] };
     _extensionTriggerSource = 'analysis';
     await _processExtensionPayload(payload, { '전체': payload });
@@ -4219,7 +4221,10 @@ function renderAnalysisResults() {
     tbody.innerHTML = '<tr><td colspan="7" class="px-5 py-12 text-center text-brand-gray text-sm">해당 필터에 맞는 상품이 없습니다</td></tr>';
     return;
   }
-  tbody.innerHTML = items.map((it, i) => {
+  const _degradedBanner = window._analysisDegraded
+    ? '<tr><td colspan="7" class="px-5 py-3 bg-brand-pink-light text-brand-pink text-[13px] font-bold text-center">🔒 네이버 일시 제한 — 실제 속성·태그를 가져오지 못했습니다. 네이버쇼핑 탭을 열어두고 1~2분 후 다시 검색해 주세요.</td></tr>'
+    : '';
+  tbody.innerHTML = _degradedBanner + items.map((it, i) => {
     const title = _stripHtml(it.title);
     // 상품명·속성·태그 모두 동일한 inline 색상 (1번째 파랑, 2번째 빨강)
     const highlighted = _highlightTermsInline(title, terms);
@@ -4244,9 +4249,15 @@ function renderAnalysisResults() {
           : '<span class="inline-block text-[10px] font-black bg-brand-purple-light text-brand-purple px-2.5 py-0.5 rounded-full">기타</span>';
     let attrText = _renderAttrInline(matched, terms);
     let tagText  = _renderTagInline(matched, terms);
-    // 실제 속성/태그(쇼핑 JSON)가 없으면(공식 API 폴백 등) 상품명 기반으로 추출 — 로파고 스타일, 칸이 비지 않도록
-    if (!attrText) attrText = _extractAttributes(it);
-    if (!tagText)  tagText  = _extractTagsFromTitle(it);
+    if (window._analysisDegraded) {
+      // 네이버 일시 제한으로 실제 속성/태그를 못 가져온 상태 — 제목 추정값 대신 '제한' 표시
+      if (!attrText) attrText = '<span class="text-brand-pink font-bold">🔒 제한</span>';
+      if (!tagText)  tagText  = '<span class="text-brand-pink font-bold">🔒 제한</span>';
+    } else {
+      // 실제 속성/태그가 없으면 상품명 기반 추출 — 로파고 스타일, 칸이 비지 않도록
+      if (!attrText) attrText = _extractAttributes(it);
+      if (!tagText)  tagText  = _extractTagsFromTitle(it);
+    }
     const attrCell = `<span class="text-brand-black font-semibold leading-relaxed">${attrText}</span>`;
     const tagCell  = `<span class="text-brand-black font-semibold leading-relaxed">${tagText}</span>`;
     // 순서고정 매칭: 초록 배경 / 그 외: 연한 주황 배경 (둘 다 둥근 셀 배지)
