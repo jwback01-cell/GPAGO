@@ -14812,7 +14812,24 @@ async function importGpagoMigrationData(evt) {
   ];
 
   // ── 실데이터 저장 (localStorage) ──
-  function _cmpLoadProducts(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_products')||'[]'); }catch(_){ return []; } }
+  function _cmpLoadProducts(){ try{ const a=JSON.parse(localStorage.getItem('gpago_cmp_products')||'[]'); return _cmpSanitizeProducts(a); }catch(_){ return []; } }
+  // 기존에 잘못 기록된 '0원 → 실제가' 가격인상/인하 항목 제거 + 배지 재계산 (1회성 마이그레이션)
+  function _cmpSanitizeProducts(arr){
+    let changed=false;
+    (arr||[]).forEach(p=>{
+      if(!p||!Array.isArray(p.history)) return;
+      const before=p.history.length;
+      p.history=p.history.filter(h=> !(h && (h.type==='가격인상'||h.type==='가격인하') && /(^|[^\d])0원\s*→/.test(String(h.text||''))));
+      if(p.history.length!==before){
+        changed=true;
+        // 남은 가격 history 가 없으면 가격 배지도 제거
+        const hasPriceHist=p.history.some(h=> h.type==='가격인상'||h.type==='가격인하');
+        if(Array.isArray(p.badges)) p.badges=p.badges.filter(b=> hasPriceHist || (b!=='가격인상'&&b!=='가격인하'));
+      }
+    });
+    if(changed){ try{ localStorage.setItem('gpago_cmp_products', JSON.stringify(arr)); }catch(_){} }
+    return arr;
+  }
   function _cmpSaveProducts(a){ try{ localStorage.setItem('gpago_cmp_products', JSON.stringify(a)); }catch(_){} }
   function _cmpLoadMemos(){ try{ return JSON.parse(localStorage.getItem('gpago_cmp_memo')||'{}'); }catch(_){ return {}; } }
   function _cmpSaveMemos(m){ try{ localStorage.setItem('gpago_cmp_memo', JSON.stringify(m)); }catch(_){} }
@@ -14935,7 +14952,9 @@ async function importGpagoMigrationData(evt) {
     const md=_cmpMD(snap.t);
     const badges=new Set();
     if(prev){
-      if(snap.price!=null && prev.price!=null && snap.price!==prev.price){
+      // 가격 인상/인하는 ★이전·현재 둘 다 실제 가격(>0)★일 때만 기록.
+      //   (처음 0원 → 실제가 들어온 경우는 '최초 가격 확정'이지 인상이 아님)
+      if(snap.price!=null && snap.price>0 && prev.price!=null && prev.price>0 && snap.price!==prev.price){
         if(snap.price<prev.price){ badges.add('가격인하'); p.history.unshift({type:'가격인하',date:md,text:'가격 인하 — '+_won(prev.price)+'원 → '+_won(snap.price)+'원'}); }
         else { badges.add('가격인상'); p.history.unshift({type:'가격인상',date:md,text:'가격 인상 — '+_won(prev.price)+'원 → '+_won(snap.price)+'원'}); }
       }
