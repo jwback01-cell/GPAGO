@@ -5526,12 +5526,14 @@ async function _processExtensionPayload(payload, tabsMap) {
         filterInput.value = joinedTerms.length ? joinedTerms.join(' ') : _lastBaseKw;
         _lastFilterKw = filterInput.value;
       }
-      // 결과 필터 — 이미 해당 탭(네이버페이) 세트를 서버에서 받아왔으므로 productType 으로 재필터하지 않음.
-      //   (네이버가 네이버페이 결과에 섞어준 가격비교/혼합 상품까지 수집분 전부 표시) → '전체' 칩 활성화.
+      // 결과 필터 — 해당 탭(네이버페이) 세트를 받아왔으므로 productType 재필터 없이 수집분 전부 표시.
+      //   기본 노출 칩은 '네이버페이'(chosenTab)로 강조하되, 필터는 'all'(전부 표시).
       try {
         _resultFilter = 'all';
+        const _chipMap = { '전체': 'all', '가격비교': 'price', '네이버페이': 'naverpay' };
+        const _activeChip = _chipMap[chosenTab] || 'naverpay';
         document.querySelectorAll('[data-rfilter]').forEach(x => {
-          x.classList.toggle('weight-chip-active', x.dataset.rfilter === 'all');
+          x.classList.toggle('weight-chip-active', x.dataset.rfilter === _activeChip);
         });
       } catch (_) {}
       try { _hideLoadingOverlay(); } catch (_) {}
