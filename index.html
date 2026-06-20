@@ -14894,7 +14894,9 @@ async function importGpagoMigrationData(evt) {
       const ids=[p.mallProductId,p.id,p.npayProductId].map(x=>String(x||''));
       const link=String(p.crUrl||p.adcrUrl||p.dlUrl||'');
       if(pidStr && (ids.includes(pidStr) || (pidStr.length>=7 && link.includes(pidStr)))){
-        return { rank:i+1, product:{
+        // 순위는 네이버가 매긴 실제 rank(광고 포함 노출 위치) 우선 — 광고 제거로 당겨진 인덱스(i+1) 대신.
+        const _rk=Number(p.rank!=null?p.rank:(p.productRank!=null?p.productRank:p.nvShowRank));
+        return { rank:(Number.isFinite(_rk)&&_rk>0?_rk:(i+1)), product:{
           price:Number(p.lowPrice||p.price||0)||null,
           reviewCount:(p.reviewCount!=null?Number(p.reviewCount):null),
           title:(p.productTitle||p.productName||p.title||''),
