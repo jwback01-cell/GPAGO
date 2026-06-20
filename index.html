@@ -14861,17 +14861,14 @@ async function importGpagoMigrationData(evt) {
   //   (Open API 정렬은 실제 쇼핑 순위와 달라 사용하지 않음 — 기존 '순위 추적'과 동일하게 실제 페이지 스크랩)
   //   반환 rank: number=순위 / null=400위 밖(검색됐으나 미발견) / undefined=확장 미응답·오류
   async function _cmpScrapeProduct(keyword, productId){
-    if(!keyword || typeof _captureNextExtensionPayload!=='function') return {rank:undefined, product:null};
-    let res;
-    try{
-      res = await _captureNextExtensionPayload(95000, ()=>{
-        const ni=document.getElementById('kw-naver'); if(ni) ni.value=keyword;
-        // deep:2 (약 160위) — 요청 수를 줄여 네이버 접속 제한(rate limit) 위험 완화
-        window.postMessage({ type:'GPAGO_REQUEST_TRIGGER', source:'gpago-page', keyword:keyword, deep:2 }, window.location.origin);
-      });
-    }catch(_){ return {rank:undefined, product:null}; }
-    const data=(res&&res.data)||res||{}; const tabs=(res&&res.tabs)||{};
-    let chosen=data; let maxLen=(data&&data.products&&data.products.length)||0;
+    // ★창 없이★ in-tab SERP(열린 네이버 탭 페이지 컨텍스트)로 검색 → productId 매칭으로 순위+가격
+    //   (kw-naver/분석 상태 건드리지 않음). 열린 네이버 탭 없으면 ok=false → 호출부가 스마트스토어 폴백.
+    if(!keyword || typeof _tryExtensionDirectFetch!=='function') return {rank:undefined, product:null};
+    let ext;
+    try{ ext = await _tryExtensionDirectFetch(keyword, 15000); }catch(_){ return {rank:undefined, product:null}; }
+    if(!ext || !ext.ok || !ext.tabs) return {rank:undefined, product:null, _noTab:(ext&&ext.error==='no_naver_tab')};
+    const tabs=ext.tabs;
+    let chosen=null; let maxLen=0;
     ['전체','네이버페이','가격비교'].forEach(t=>{ const p=tabs[t]; const l=(p&&p.products&&p.products.length)||0; if(l>maxLen){chosen=p;maxLen=l;} });
     const products=(chosen&&chosen.products)||[];
     const pidStr=String(productId||'');
@@ -15404,12 +15401,11 @@ async function importGpagoMigrationData(evt) {
     const ob=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.innerHTML='수집 중...'; }
     try{
       let d={};
-      // 가격/제목/이미지는 키워드와 무관하게 항상 스마트스토어 상품정보에서 가져옴
-      // (쇼핑 스크랩이 순위를 못 잡아도 가격이 0원으로 나오던 문제 방지)
-      toast('상품 정보 수집 중… (보안확인 뜨면 풀어주세요)');
-      try{ const res=await _cmpFetchInfo(url); d=(res&&res.ok&&res.data)?res.data:{}; }catch(_){ d={}; }
-      // 메인키워드 미입력 시 — 받은 제목으로 자동 추정
+      // 메인키워드가 있으면 스마트스토어 정보(창)를 생략 → in-tab SERP 스크랩으로 가격/제목까지 창 없이 확보.
+      // (없으면 제목 자동추정을 위해 스마트스토어 정보 1회 필요 — 이때만 창 열림)
       if(!mainKw){
+        toast('상품 정보 수집 중…');
+        try{ const res=await _cmpFetchInfo(url); d=(res&&res.ok&&res.data)?res.data:{}; }catch(_){ d={}; }
         mainKw=_cmpGuessKeyword(d.title||'');
         if(!mainKw){ toast('메인키워드를 입력해 주세요 (자동 추정 실패)'); return; }
         toast('메인키워드 추정: "'+mainKw+'" — 정확하지 않으면 등록 후 수정하세요');
