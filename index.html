@@ -14975,17 +14975,22 @@ async function importGpagoMigrationData(evt) {
     if(snap.deliveryFee!=null) p.deliveryFee=snap.deliveryFee;
   }
   async function _cmpRefreshOne(p){
-    // 순위 조회 — 공식 Open API 우선(캡차/팝업 없음). 키 없거나 API 미발견 시 실시간 스크랩으로 폴백.
+    // 순위·가격 조회 — ★in-tab SERP 우선★ (창 없음, 정확한 lowPrice). 상위 80위 안이면 순위+가격 한번에.
+    //   80위 밖/네이버 탭 없음일 때만 공식 API 로 깊은 순위 보완(가격은 in-tab 값 유지 — API lprice 부정확 대비).
     let sc=null, rankSource='scrape';
+    try{ sc=await _cmpScrapeProduct(p.mainKeyword, p.productId); }catch(_){ sc=null; }
     const _api=(typeof _getApi==='function')?_getApi():{};
-    if(_api.id && _api.secret){
+    if((!sc || typeof sc.rank!=='number') && _api.id && _api.secret){
       try{
         const apiR=await _cmpApiRank(p.mainKeyword, p.productId, p.url, p.name);
-        // API 가 정상 응답하면(순위 숫자 or 200위밖 null) 그 결과를 신뢰 — 스크랩 팝업 안 띄움
-        if(apiR && apiR.rank!==undefined){ sc={rank:apiR.rank, product:apiR.product}; rankSource='api'; }
+        if(apiR && apiR.rank!==undefined){
+          const keepPrice=(sc&&sc.product&&sc.product.price!=null)?sc.product.price:null;
+          sc={rank:apiR.rank, product:apiR.product||null}; rankSource='api';
+          if(keepPrice!=null){ if(!sc.product) sc.product={}; if(sc.product.price==null) sc.product.price=keepPrice; }
+        }
       }catch(_){}
     }
-    if(!sc){ sc=await _cmpScrapeProduct(p.mainKeyword, p.productId); rankSource='scrape'; }
+    if(!sc) sc={rank:undefined, product:null};
     let prod=sc.product;
     // 가격/리뷰/등록일이 없으면 스마트스토어 상품정보로 보완
     //   (공식 API 순위는 리뷰수를 안 주므로 — 판매량 추정에 필요한 reviewCount 확보 위해 항상 보완)
@@ -15410,15 +15415,16 @@ async function importGpagoMigrationData(evt) {
         if(!mainKw){ toast('메인키워드를 입력해 주세요 (자동 추정 실패)'); return; }
         toast('메인키워드 추정: "'+mainKw+'" — 정확하지 않으면 등록 후 수정하세요');
       }
-      // 실제 네이버 쇼핑 스크랩으로 정확한 순위 + 가격/리뷰/제목/이미지
-      // 순위 — 공식 Open API 우선(캡차/팝업 없음), 키 없거나 API 오류 시 실시간 스크랩
+      // 순위·가격 — ★in-tab SERP 우선★(창 없음, lowPrice 정확). 80위 밖/탭없음일 때만 공식 API 보완.
       let sc=null, rankSource='scrape';
+      toast('순위·가격 조회 중…');
+      try{ sc=await _cmpScrapeProduct(mainKw, pid); }catch(_){ sc=null; }
       const _api=(typeof _getApi==='function')?_getApi():{};
-      if(_api.id && _api.secret){
-        toast('순위 조회 중… (공식 API)');
-        try{ const apiR=await _cmpApiRank(mainKw, pid, url, d.title||''); if(apiR && apiR.rank!==undefined){ sc={rank:apiR.rank, product:apiR.product}; rankSource='api'; } }catch(_){}
+      if((!sc || typeof sc.rank!=='number') && _api.id && _api.secret){
+        toast('순위 보완 중… (공식 API)');
+        try{ const apiR=await _cmpApiRank(mainKw, pid, url, d.title||''); if(apiR && apiR.rank!==undefined){ const keepPrice=(sc&&sc.product&&sc.product.price!=null)?sc.product.price:null; sc={rank:apiR.rank, product:apiR.product||null}; rankSource='api'; if(keepPrice!=null){ if(!sc.product) sc.product={}; if(sc.product.price==null) sc.product.price=keepPrice; } } }catch(_){}
       }
-      if(!sc){ toast('순위·가격 조회 중… (네이버 쇼핑 스크랩, 보안확인 뜨면 풀어주세요)'); sc=await _cmpScrapeProduct(mainKw, pid); rankSource='scrape'; }
+      if(!sc) sc={rank:undefined, product:null};
       const sp=sc.product;
       // 제목/이미지: 스크랩 우선, 없으면 스마트스토어 정보로 보완
       let title=(sp&&sp.title)||d.title||'';
