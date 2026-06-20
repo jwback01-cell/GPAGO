@@ -2794,20 +2794,23 @@ document.querySelectorAll('[data-mode]').forEach(c => {
 let _resultFilter = 'all';
 document.querySelectorAll('[data-rfilter]').forEach(c => {
   c.addEventListener('click', () => {
-    _resultFilter = c.dataset.rfilter;
+    const clicked = c.dataset.rfilter;
     document.querySelectorAll('[data-rfilter]').forEach(x => {
-      x.classList.toggle('weight-chip-active', x.dataset.rfilter === _resultFilter);
+      x.classList.toggle('weight-chip-active', x.dataset.rfilter === clicked);
     });
     // 확장에서 받은 탭별 데이터가 있으면 → 해당 탭 데이터로 전환
     // (network에서 받은 진짜 네이버페이/전체 탭 데이터)
     const tabMap = { 'all': '전체', 'price': '가격비교', 'naverpay': '네이버페이' };
-    const tabName = tabMap[_resultFilter];
+    const tabName = tabMap[clicked];
     const captured = window._extensionTabPayloads ? Object.keys(window._extensionTabPayloads) : [];
-    console.log(`[GPAGO 필터] '${_resultFilter}' → '${tabName}' 탭 요청 | 캡처된 탭: ${captured.join(', ') || '(없음)'}`);
+    console.log(`[GPAGO 필터] '${clicked}' → '${tabName}' 탭 요청 | 캡처된 탭: ${captured.join(', ') || '(없음)'}`);
     if (tabName && window._extensionTabPayloads && window._extensionTabPayloads[tabName]) {
+      // 해당 탭 데이터 자체가 이미 그 분류이므로 productType 재필터 없이 전부 표시
+      _resultFilter = 'all';
       _switchToExtensionTab(tabName);
     } else {
-      // 캡처된 탭 데이터 없으면 기존 데이터를 productType 으로 필터링만 (경고 없이 조용히)
+      // 캡처된 탭 데이터 없으면 기존 데이터를 productType 으로 필터링
+      _resultFilter = clicked;
       renderAnalysisResults();
     }
   });
