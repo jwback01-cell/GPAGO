@@ -2808,6 +2808,10 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
       // 해당 탭 데이터 자체가 이미 그 분류이므로 productType 재필터 없이 전부 표시
       _resultFilter = 'all';
       _switchToExtensionTab(tabName);
+    } else if (tabName && window._lastAnalyzedKw) {
+      // 아직 안 받은 탭 → 그때 받아서 표시 (네이버페이만 먼저 받고 전체/가격비교는 온디맨드)
+      _resultFilter = 'all';
+      _switchOrFetchTab(tabName, clicked);
     } else {
       // 캡처된 탭 데이터 없으면 기존 데이터를 productType 으로 필터링
       _resultFilter = clicked;
@@ -2815,6 +2819,27 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
     }
   });
 });
+// 칩 클릭 시 해당 탭 데이터가 없으면 확장으로 그때 받아와서 표시
+async function _switchOrFetchTab(tabName, clicked) {
+  const kw = window._lastAnalyzedKw;
+  if (!kw) { _resultFilter = clicked; renderAnalysisResults(); return; }
+  const setMap = { '전체': 'total', '가격비교': 'compare', '네이버페이': 'npay' };
+  const setName = setMap[tabName] || 'total';
+  try {
+    const ext = await _tryExtensionDirectFetch(kw, 12000, [setName]);
+    const p = ext && ext.ok && ext.tabs ? (ext.tabs[tabName] || ext.tabs['전체'] || null) : null;
+    if (p && Array.isArray(p.products) && p.products.length) {
+      window._extensionTabPayloads = window._extensionTabPayloads || {};
+      window._extensionTabPayloads[tabName] = p;
+      _resultFilter = 'all';
+      _switchToExtensionTab(tabName);
+      return;
+    }
+  } catch (_) {}
+  // 못 받으면 현재 데이터를 productType 으로 필터(폴백)
+  _resultFilter = clicked;
+  renderAnalysisResults();
+}
 
 // 매칭 모드 (우선/혼합)
 let _matchMode = '';
@@ -2990,8 +3015,11 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   _showLoadingOverlay(keyword);
   _updateLoadingOverlay(15, '쇼핑 데이터 가져오는 중...');
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
+  //   기본은 네이버페이만 받음 → 항상 네이버페이 기본 표시 + 1회 요청(속도↑·rate-limit↓).
+  //   전체/가격비교는 해당 칩 클릭 시 그때 받음(_switchOrFetchTab).
+  window._lastAnalyzedKw = keyword;
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 12000);
+    const ext = await _tryExtensionDirectFetch(keyword, 12000, ['npay']);
     if (ext && ext.ok && ext.tabs) {
       const tabs = ext.tabs;
       const payload = tabs['네이버페이'] || tabs['전체'] || null;
