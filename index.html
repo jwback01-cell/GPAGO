@@ -3004,9 +3004,10 @@ async function _runKeywordAnalysisNoPopup(keyword) {
       }
     }
   } catch (e) { console.warn('[분석] 확장 직접 fetch 실패:', e); }
-  // 1) 서버 스크랩
+  // 1) 서버 스크랩 (5초 타임아웃 — 프록시가 느리면 기다리지 않고 다음 단계로)
   try {
-    const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
+    const _sc = new AbortController(); const _scT = setTimeout(() => _sc.abort(), 5000);
+    const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword), { signal: _sc.signal }).finally(() => clearTimeout(_scT));
     if (resp.ok) {
       const d = await resp.json();
       if (d && Array.isArray(d.products) && d.products.length) {
@@ -5187,7 +5188,8 @@ async function extractFromKeyword() {
     // 1) 서버 스크랩
     if (!products) {
       try {
-        const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(kw));
+        const _sc = new AbortController(); const _scT = setTimeout(() => _sc.abort(), 5000);
+        const resp = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(kw), { signal: _sc.signal }).finally(() => clearTimeout(_scT));
         if (resp.ok) { const d = await resp.json(); if (Array.isArray(d.products) && d.products.length) { products = d.products; terms = d.terms || []; nluTerms = d.nluTerms || []; query = d.query || kw; } }
       } catch (_) {}
     }
