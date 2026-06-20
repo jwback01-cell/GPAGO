@@ -5521,19 +5521,14 @@ async function _processExtensionPayload(payload, tabsMap) {
         filterInput.value = joinedTerms.length ? joinedTerms.join(' ') : _lastBaseKw;
         _lastFilterKw = filterInput.value;
       }
-      // 결과 필터 — 네이버페이 chip 활성화
-      if (chosenTab) {
-        const chipMap = { '전체': 'all', '가격비교': 'price', '네이버페이': 'naverpay' };
-        const targetRfilter = chipMap[chosenTab];
-        if (targetRfilter) {
-          try {
-            _resultFilter = targetRfilter;
-            document.querySelectorAll('[data-rfilter]').forEach(x => {
-              x.classList.toggle('weight-chip-active', x.dataset.rfilter === targetRfilter);
-            });
-          } catch (_) {}
-        }
-      }
+      // 결과 필터 — 이미 해당 탭(네이버페이) 세트를 서버에서 받아왔으므로 productType 으로 재필터하지 않음.
+      //   (네이버가 네이버페이 결과에 섞어준 가격비교/혼합 상품까지 수집분 전부 표시) → '전체' 칩 활성화.
+      try {
+        _resultFilter = 'all';
+        document.querySelectorAll('[data-rfilter]').forEach(x => {
+          x.classList.toggle('weight-chip-active', x.dataset.rfilter === 'all');
+        });
+      } catch (_) {}
       try { _hideLoadingOverlay(); } catch (_) {}
       try { _reanalyzeFromCachedData(); } catch (e) { console.error('[analysis 모드 재분석]', e); }
       try { toast && toast(`✅ 키워드 분석 완료 — ${chosenTab || '전체'} (${items.length}개 상품)`); } catch (_) {}
