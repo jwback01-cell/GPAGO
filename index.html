@@ -5237,7 +5237,7 @@ async function extractFromKeyword() {
     let extError = null;
     // 0) 확장 백그라운드 직접 fetch (열린 네이버 탭이 있으면 그 탭에서 가져옴)
     try {
-      const ext = await _tryExtensionDirectFetch(kw, 15000, ['total'], 'tool');   // 도구: 조용한 열린탭 방식(분석과 분리)
+      const ext = await _tryExtensionDirectFetch(kw, 20000, ['total'], 'tool');   // 도구: 열린 네이버탭 이동→캡처→복원(분석과 분리)
       console.log('[마누태그] 확장 직접 fetch 응답:', ext ? { ok: ext.ok, tabs: ext.tabs ? Object.keys(ext.tabs) : null, error: ext.error } : 'null(무응답/타임아웃 — 확장 미설치/미갱신?)');
       if (ext) extError = ext.error || null;
       if (ext && ext.ok && ext.tabs) {
