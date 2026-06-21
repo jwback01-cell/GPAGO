@@ -2798,34 +2798,42 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
     document.querySelectorAll('[data-rfilter]').forEach(x => {
       x.classList.toggle('weight-chip-active', x.dataset.rfilter === clicked);
     });
-    // 전체(혼합) 데이터를 받아두고, 칩은 클라이언트에서 productType 으로 필터.
-    //   all=전부 / naverpay=productType 2·3 / price=productType 1 → 네이버페이가 전체와 구분됨.
-    //   (별도 fetch 안 함: 네이버가 productSet 별로 같은 결과를 줘서 따로 받는 의미가 없고 차단만 늘어남)
-    _resultFilter = clicked;
-    renderAnalysisResults();
-    try { _findSellerRank(); } catch (_) {}  // 스토어 순위도 현재 칩 기준으로 갱신
+    // 각 탭을 올바른 productSet(전체=total/네이버페이=checkout/가격비교=model)으로 따로 받아
+    //   네이버의 실제 탭 순서·구성 그대로 표시. (productType 클라이언트 필터로는 순서가 안 맞음)
+    const tabMap = { 'all': '전체', 'price': '가격비교', 'naverpay': '네이버페이' };
+    const tabName = tabMap[clicked];
+    if (tabName && window._lastAnalyzedKw) {
+      _switchOrFetchTab(tabName, clicked);
+    } else {
+      _resultFilter = clicked;
+      renderAnalysisResults();
+      try { _findSellerRank(); } catch (_) {}
+    }
   });
 });
-// 칩 클릭 시 해당 탭 데이터가 없으면 확장으로 그때 받아와서 표시
+// 칩 클릭 → 해당 탭을 올바른 productSet 으로 받아 네이버 순서대로 표시
 async function _switchOrFetchTab(tabName, clicked) {
   const kw = window._lastAnalyzedKw;
   if (!kw) { _resultFilter = clicked; renderAnalysisResults(); return; }
-  const setMap = { '전체': 'total', '가격비교': 'compare', '네이버페이': 'npay' };
+  const setMap = { '전체': 'total', '가격비교': 'model', '네이버페이': 'checkout' };
   const setName = setMap[tabName] || 'total';
+  try { _showLoadingOverlay(kw); _updateLoadingOverlay(20, `${tabName} 데이터 가져오는 중...`); } catch (_) {}
   try {
     const ext = await _tryExtensionDirectFetch(kw, 65000, [setName], 'analysis');
-    const p = ext && ext.ok && ext.tabs ? (ext.tabs[tabName] || ext.tabs['전체'] || null) : null;
+    const p = ext && ext.ok && ext.tabs ? (ext.tabs[tabName] || null) : null;
     if (p && Array.isArray(p.products) && p.products.length) {
-      window._extensionTabPayloads = window._extensionTabPayloads || {};
-      window._extensionTabPayloads[tabName] = p;
-      _resultFilter = 'all';
-      _switchToExtensionTab(tabName);
+      // 받은 탭 페이로드를 분석 파이프라인으로 그대로 렌더(네이버 순서 보존, productType 강제 없음)
+      _extensionTriggerSource = 'analysis';
+      await _processExtensionPayload(p, { [tabName]: p });
+      try { _hideLoadingOverlay(); } catch (_) {}
       return;
     }
   } catch (_) {}
+  try { _hideLoadingOverlay(); } catch (_) {}
   // 못 받으면 현재 데이터를 productType 으로 필터(폴백)
   _resultFilter = clicked;
   renderAnalysisResults();
+  try { _findSellerRank(); } catch (_) {}
 }
 
 // 매칭 모드 (우선/혼합)
@@ -3011,15 +3019,15 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   const _blockedNow = window._naverBlockedUntil && Date.now() < window._naverBlockedUntil;
   try {
     if (_blockedNow) throw new Error('cooldown');  // in-tab 건너뛰고 공식 API(제한)로
-    // 전체(total) 1회 요청 — 실제 productType 을 보존해 네이버페이/가격비교는 화면에서 분리 필터.
-    //   (네이버는 productSet=npay 로 받아도 전체와 같은 혼합 결과를 줘서 따로 받는 의미가 없음)
-    let ext = await _tryExtensionDirectFetch(keyword, 65000, ['total'], 'analysis');  // 분석: 보이는 탭 해제 시간 포함
+    // 네이버페이 탭(productSet=checkout)을 받음 — 네이버의 실제 네이버페이 순서·구성 그대로.
+    //   (전체/가격비교는 칩 클릭 시 각자 올바른 productSet 으로 따로 받음 → 탭마다 네이버 순서 일치)
+    let ext = await _tryExtensionDirectFetch(keyword, 65000, ['checkout'], 'analysis');  // 분석: 보이는 탭 해제 시간 포함
     // 확장이 돌려준 실제 사유 저장(배너에서 원인별로 안내) — null 이면 확장 미응답(미설치/리로드 안됨)
     window._lastExtError = ext ? (ext.error || (ext.ok ? null : 'unknown')) : 'no_extension';
-    let tabs = (ext && ext.ok && ext.tabs && ext.tabs['전체'] && ext.tabs['전체'].products && ext.tabs['전체'].products.length) ? ext.tabs : null;
+    let tabs = (ext && ext.ok && ext.tabs && ext.tabs['네이버페이'] && ext.tabs['네이버페이'].products && ext.tabs['네이버페이'].products.length) ? ext.tabs : null;
     if (!tabs && ext && ext.error === 'no_products') { window._naverBlockedUntil = Date.now() + 90000; }  // 418 추정 → 90초 쿨다운
     if (tabs) { window._naverBlockedUntil = 0;
-      const payload = tabs['전체'] || tabs['네이버페이'] || null;
+      const payload = tabs['네이버페이'] || tabs['전체'] || null;
       if (payload && Array.isArray(payload.products) && payload.products.length) {
         _updateLoadingOverlay(85, `분석 중... (${payload.products.length}개 상품)`);
         _extensionTriggerSource = 'analysis';
@@ -5546,26 +5554,21 @@ async function _processExtensionPayload(payload, tabsMap) {
       //   - FITER+ 자동 채우기 (사용자 추가 입력 없이 즉시 분석)
       //   - 결과 필터 chip 네이버페이로 활성화
       const tabs = window._extensionTabPayloads || {};
+      // 단일 탭 페이로드로 호출되므로 존재하는 탭을 그대로 선택 (네이버페이/가격비교/전체).
       const chosenTab = tabs['네이버페이'] ? '네이버페이' :
-                        tabs['전체'] ? '전체' : null;
-      const chosenPayload = chosenTab ? tabs[chosenTab] : payload;
-      // v1.7.24+ : _adaptJsonProductToAnalysisItem 으로 모든 필드 추출 + productType 출처 탭 기반 강제
-      //   (Naver 가 네이버페이 탭 응답에 productType='1' 인 가격비교 상품을 섞어서 주기 때문)
+                        tabs['가격비교'] ? '가격비교' :
+                        tabs['전체'] ? '전체' : (Object.keys(tabs)[0] || null);
+      const chosenPayload = (chosenTab && tabs[chosenTab]) ? tabs[chosenTab] : payload;
       try {
         const ps = chosenPayload.searchParam?.productSet || chosenPayload.productSetFilter?.name || '';
         window._jsonProductSetHint = String(ps).toLowerCase();
-        if (!window._jsonProductSetHint && chosenTab === '네이버페이') window._jsonProductSetHint = 'npay';
-        else if (!window._jsonProductSetHint && chosenTab === '가격비교') window._jsonProductSetHint = 'compare';
+        if (!window._jsonProductSetHint && chosenTab === '네이버페이') window._jsonProductSetHint = 'checkout';
+        else if (!window._jsonProductSetHint && chosenTab === '가격비교') window._jsonProductSetHint = 'model';
       } catch (_) {}
-      // v1.7.26+ : 그룹/가격비교 감지에 필요한 raw 상품 인덱스 구축
+      // 그룹/가격비교 감지에 필요한 raw 상품 인덱스 구축
       try { _indexJsonProducts(chosenPayload.products || []); } catch (_) {}
-      const items = (chosenPayload.products || []).map(p => {
-        const adapted = _adaptJsonProductToAnalysisItem(p);
-        // 출처 탭 기반 productType 강제 — Naver 가 탭과 다른 타입 상품을 섞어서 줘도 대응
-        if (chosenTab === '네이버페이' && !['2','3'].includes(String(adapted.productType))) adapted.productType = '2';
-        else if (chosenTab === '가격비교' && String(adapted.productType) !== '1') adapted.productType = '1';
-        return adapted;
-      });
+      // ★네이버가 준 탭 순서·구성 그대로★ — productType 강제/필터 없음(탭 자체가 이미 네이버페이/가격비교).
+      const items = (chosenPayload.products || []).map(p => _adaptJsonProductToAnalysisItem(p));
       _lastAnalysisItems = items;
       _lastBaseKw = chosenPayload.query || payload.query || '';
       // 네이버 NLU terms 저장 — 모델명+접미사 자동 결합 ("버즈4"+"프로" → "버즈4프로")
@@ -5580,13 +5583,14 @@ async function _processExtensionPayload(payload, tabsMap) {
         filterInput.value = joinedTerms.length ? joinedTerms.join(' ') : _lastBaseKw;
         _lastFilterKw = filterInput.value;
       }
-      // 결과 필터 — 전체(혼합) 세트를 받았으므로 실제 productType 으로 화면에서 분리.
-      //   기본 화면은 '네이버페이'(productType 2/3)로 필터해 보여주고, 칩도 네이버페이 강조.
-      //   전체/가격비교 칩 클릭 시 클라이언트에서 재필터 (별도 fetch 없음 → 네이버페이가 전체와 구분됨).
+      // 받은 탭 자체가 해당 분류(네이버페이/가격비교/전체)이므로 productType 재필터 없이 전부 표시(_resultFilter='all').
+      //   칩은 받은 탭에 맞게 강조. 다른 칩 클릭 시 그 탭을 올바른 productSet 으로 따로 받아옴.
       try {
-        _resultFilter = 'naverpay';
+        _resultFilter = 'all';
+        const _chipMap = { '전체': 'all', '가격비교': 'price', '네이버페이': 'naverpay' };
+        const _activeChip = _chipMap[chosenTab] || 'naverpay';
         document.querySelectorAll('[data-rfilter]').forEach(x => {
-          x.classList.toggle('weight-chip-active', x.dataset.rfilter === 'naverpay');
+          x.classList.toggle('weight-chip-active', x.dataset.rfilter === _activeChip);
         });
       } catch (_) {}
       try { _hideLoadingOverlay(); } catch (_) {}
