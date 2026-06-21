@@ -2803,6 +2803,7 @@ document.querySelectorAll('[data-rfilter]').forEach(c => {
     //   (별도 fetch 안 함: 네이버가 productSet 별로 같은 결과를 줘서 따로 받는 의미가 없고 차단만 늘어남)
     _resultFilter = clicked;
     renderAnalysisResults();
+    try { _findSellerRank(); } catch (_) {}  // 스토어 순위도 현재 칩 기준으로 갱신
   });
 });
 // 칩 클릭 시 해당 탭 데이터가 없으면 확장으로 그때 받아와서 표시
@@ -3501,14 +3502,16 @@ function _findSellerRank() {
     result.innerHTML = '<span class="text-brand-gray">먼저 분석을 실행하세요</span>';
     return;
   }
+  // 현재 칩(전체/네이버페이/가격비교) 기준 목록에서 순위 산출 — 화면 NO 컬럼과 동일 기준.
+  const filtered = _getFilteredAnalysisItems();
   const ranks = [];
-  _lastAnalysisItems.forEach((it, idx) => {
+  filtered.forEach((it, idx) => {
     const mall = String(it.mallName || '').replace(/\s+/g, '').toLowerCase();
     if (!mall) return;
     if (mall === q || mall.includes(q) || q.includes(mall)) ranks.push(idx + 1);
   });
   if (!ranks.length) {
-    result.innerHTML = `<span class="text-brand-pink font-bold">${_escapeHtml(raw)} 없음 (${_lastAnalysisItems.length}위 내)</span>`;
+    result.innerHTML = `<span class="text-brand-pink font-bold">${_escapeHtml(raw)} 없음 (${filtered.length}위 내)</span>`;
   } else {
     const ranksHtml = ranks.map(r => `<b class="text-brand-blue cursor-pointer hover:underline" onclick="scrollToRank && scrollToRank(${r})">${r}위</b>`).join(', ');
     result.innerHTML = `<span class="text-brand-gray">${_escapeHtml(raw)}:</span> ${ranksHtml}`;
@@ -4175,19 +4178,23 @@ function _renderTagInline(p, terms) {
   return tags.map(t => '#' + render(t)).join(' ');
 }
 
+// 현재 칩(_resultFilter) 기준으로 필터된 분석 상품 목록 — 렌더·스토어순위가 동일 기준을 쓰도록 공용.
+//   all=전부 / naverpay=productType 2·3 / price=productType 1
+function _getFilteredAnalysisItems() {
+  let items = (_lastAnalysisItems || []).slice();
+  if (_resultFilter === 'price') items = items.filter(it => String(it.productType) === '1');
+  else if (_resultFilter === 'naverpay') items = items.filter(it => ['2','3'].includes(String(it.productType)));
+  return items;
+}
+
 function renderAnalysisResults() {
   const tbody = document.getElementById('analysis-tbody');
   if (!_lastAnalysisItems.length) return;
   const terms = _extractTerms(_lastBaseKw, _lastFilterKw);
   // 순서 고정 판정용 — FITER+(또는 기준 키워드) 공백 제거 문자열
   const _orderFixKw = (_lastFilterKw || _lastBaseKw || '').toLowerCase().replace(/\s+/g, '');
-  // 필터 적용
-  let items = _lastAnalysisItems.slice();
-  if (_resultFilter === 'price') {
-    items = items.filter(it => String(it.productType) === '1');
-  } else if (_resultFilter === 'naverpay') {
-    items = items.filter(it => ['2','3'].includes(String(it.productType)));
-  }
+  // 필터 적용 (현재 칩 기준 — 스토어 순위와 동일 기준)
+  let items = _getFilteredAnalysisItems();
   // 상품 개수 표시 — 우선순위: 스크랩 탭별 카운트 > 확장 탭 페이로드 total > API 전체 total > 캡처된 갯수
   try {
     const filterToTab = { all: '전체', price: '가격비교', naverpay: '네이버페이' };
