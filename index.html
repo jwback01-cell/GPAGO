@@ -2826,7 +2826,7 @@ async function _switchOrFetchTab(tabName, clicked) {
   const setMap = { '전체': 'total', '가격비교': 'compare', '네이버페이': 'npay' };
   const setName = setMap[tabName] || 'total';
   try {
-    const ext = await _tryExtensionDirectFetch(kw, 12000, [setName]);
+    const ext = await _tryExtensionDirectFetch(kw, 18000, [setName]);
     const p = ext && ext.ok && ext.tabs ? (ext.tabs[tabName] || ext.tabs['전체'] || null) : null;
     if (p && Array.isArray(p.products) && p.products.length) {
       window._extensionTabPayloads = window._extensionTabPayloads || {};
@@ -3024,7 +3024,7 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   try {
     if (_blockedNow) throw new Error('cooldown');  // in-tab 건너뛰고 공식 API(제한)로
     // 네이버페이만 1회 요청 (요청 수 최소화 → 네이버 차단 완화/회복 빠름). 전체/가격비교는 칩 클릭 시 온디맨드.
-    let ext = await _tryExtensionDirectFetch(keyword, 12000, ['npay']);
+    let ext = await _tryExtensionDirectFetch(keyword, 18000, ['npay']);
     // 확장이 돌려준 실제 사유 저장(배너에서 원인별로 안내) — null 이면 확장 미응답(미설치/리로드 안됨)
     window._lastExtError = ext ? (ext.error || (ext.ok ? null : 'unknown')) : 'no_extension';
     let tabs = (ext && ext.ok && ext.tabs && ext.tabs['네이버페이'] && ext.tabs['네이버페이'].products && ext.tabs['네이버페이'].products.length) ? ext.tabs : null;
@@ -3160,7 +3160,7 @@ async function _runMultiKwAnalysis(keywords) {
 async function _fetchScrapePayload(keyword) {
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 12000);
+    const ext = await _tryExtensionDirectFetch(keyword, 18000);
     if (ext && ext.ok && ext.tabs) {
       const payload = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
       if (payload && Array.isArray(payload.products) && payload.products.length) {
@@ -5236,7 +5236,7 @@ async function extractFromKeyword() {
     let extError = null;
     // 0) 확장 백그라운드 직접 fetch (열린 네이버 탭이 있으면 그 탭에서 가져옴)
     try {
-      const ext = await _tryExtensionDirectFetch(kw, 15000, ['total']);   // 도구는 total 한 set만 → 속도↑
+      const ext = await _tryExtensionDirectFetch(kw, 18000, ['total']);   // 도구는 total 한 set만 → 속도↑
       console.log('[마누태그] 확장 직접 fetch 응답:', ext ? { ok: ext.ok, tabs: ext.tabs ? Object.keys(ext.tabs) : null, error: ext.error } : 'null(무응답/타임아웃 — 확장 미설치/미갱신?)');
       if (ext) extError = ext.error || null;
       if (ext && ext.ok && ext.tabs) {
@@ -14943,7 +14943,7 @@ async function importGpagoMigrationData(evt) {
     //   (kw-naver/분석 상태 건드리지 않음). 열린 네이버 탭 없으면 ok=false → 호출부가 스마트스토어 폴백.
     if(!keyword || typeof _tryExtensionDirectFetch!=='function') return {rank:undefined, product:null};
     let ext;
-    try{ ext = await _tryExtensionDirectFetch(keyword, 15000); }catch(_){ return {rank:undefined, product:null}; }
+    try{ ext = await _tryExtensionDirectFetch(keyword, 18000); }catch(_){ return {rank:undefined, product:null}; }
     if(!ext || !ext.ok || !ext.tabs) return {rank:undefined, product:null, _noTab:(ext&&ext.error==='no_naver_tab')};
     const tabs=ext.tabs;
     let chosen=null; let maxLen=0;
