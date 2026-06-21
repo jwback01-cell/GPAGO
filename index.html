@@ -3025,6 +3025,8 @@ async function _runKeywordAnalysisNoPopup(keyword) {
     if (_blockedNow) throw new Error('cooldown');  // in-tab 건너뛰고 공식 API(제한)로
     // 네이버페이만 1회 요청 (요청 수 최소화 → 네이버 차단 완화/회복 빠름). 전체/가격비교는 칩 클릭 시 온디맨드.
     let ext = await _tryExtensionDirectFetch(keyword, 12000, ['npay']);
+    // 확장이 돌려준 실제 사유 저장(배너에서 원인별로 안내) — null 이면 확장 미응답(미설치/리로드 안됨)
+    window._lastExtError = ext ? (ext.error || (ext.ok ? null : 'unknown')) : 'no_extension';
     let tabs = (ext && ext.ok && ext.tabs && ext.tabs['네이버페이'] && ext.tabs['네이버페이'].products && ext.tabs['네이버페이'].products.length) ? ext.tabs : null;
     if (!tabs && ext && ext.error === 'no_products') { window._naverBlockedUntil = Date.now() + 90000; }  // 418 추정 → 90초 쿨다운
     if (tabs) { window._naverBlockedUntil = 0;
@@ -4221,7 +4223,20 @@ function renderAnalysisResults() {
     return;
   }
   const _degradedBanner = window._analysisDegraded
-    ? '<tr><td colspan="7" class="px-5 py-3 bg-brand-pink-light text-brand-pink text-[13px] font-bold text-center">🔒 네이버 일시 제한 — 실제 속성·태그를 가져오지 못했습니다. 네이버쇼핑 탭을 열어두고 1~2분 후 다시 검색해 주세요.</td></tr>'
+    ? (() => {
+        const er = window._lastExtError;
+        let msg;
+        if (er === 'no_extension') {
+          msg = '🧩 확장 프로그램이 응답하지 않습니다 — chrome://extensions 에서 "GPAGO 자동 분석"을 켜고 새로고침(↻)한 뒤 다시 검색해 주세요.';
+        } else if (er === 'no_naver_tab') {
+          msg = '🛒 네이버쇼핑 검색 탭이 없습니다 — <b>search.shopping.naver.com</b> 에서 아무거나 검색한 탭을 하나 열어둔 뒤 다시 검색해 주세요. (그 탭 안에서 데이터를 가져옵니다)';
+        } else if (er === 'no_products') {
+          msg = '🔒 네이버 일시 제한(418 추정) — 열린 쇼핑 탭에서 데이터를 받지 못했습니다. 90초 뒤 또는 네이버쇼핑을 직접 한 번 검색한 뒤 다시 시도해 주세요.';
+        } else {
+          msg = '🔒 실제 속성·태그를 가져오지 못해 공식 API 값으로 표시 중입니다. 네이버쇼핑 검색 탭을 열어두고 다시 검색해 주세요.';
+        }
+        return '<tr><td colspan="7" class="px-5 py-3 bg-brand-pink-light text-brand-pink text-[13px] font-bold text-center">' + msg + '</td></tr>';
+      })()
     : '';
   tbody.innerHTML = _degradedBanner + items.map((it, i) => {
     const title = _stripHtml(it.title);
