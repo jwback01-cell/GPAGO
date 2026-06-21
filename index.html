@@ -2826,7 +2826,7 @@ async function _switchOrFetchTab(tabName, clicked) {
   const setMap = { '전체': 'total', '가격비교': 'compare', '네이버페이': 'npay' };
   const setName = setMap[tabName] || 'total';
   try {
-    const ext = await _tryExtensionDirectFetch(kw, 65000, [setName]);
+    const ext = await _tryExtensionDirectFetch(kw, 65000, [setName], 'analysis');
     const p = ext && ext.ok && ext.tabs ? (ext.tabs[tabName] || ext.tabs['전체'] || null) : null;
     if (p && Array.isArray(p.products) && p.products.length) {
       window._extensionTabPayloads = window._extensionTabPayloads || {};
@@ -2993,13 +2993,14 @@ window.addEventListener('message', (e) => {
   const fn = window._directFetchResolvers[d.reqId];
   if (fn) { delete window._directFetchResolvers[d.reqId]; fn(d); }
 });
-function _tryExtensionDirectFetch(keyword, timeoutMs, sets) {
+function _tryExtensionDirectFetch(keyword, timeoutMs, sets, mode) {
   return new Promise((resolve) => {
     const reqId = 'df_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     let done = false;
     const finish = (v) => { if (done) return; done = true; delete window._directFetchResolvers[reqId]; resolve(v); };
     window._directFetchResolvers[reqId] = (d) => finish(d);
-    try { window.postMessage({ type: 'GPAGO_DIRECT_FETCH', source: 'gpago-page', keyword, reqId, sets: Array.isArray(sets) ? sets : null }, window.location.origin); }
+    // mode: 'tool'(조용히 열린탭만) | 'analysis'(보이는 탭으로 보안해제) — 도구/분석 완전 분리
+    try { window.postMessage({ type: 'GPAGO_DIRECT_FETCH', source: 'gpago-page', keyword, reqId, sets: Array.isArray(sets) ? sets : null, mode: mode || 'analysis' }, window.location.origin); }
     catch (_) { finish(null); return; }
     setTimeout(() => finish(null), timeoutMs || 8000);
   });
@@ -3024,7 +3025,7 @@ async function _runKeywordAnalysisNoPopup(keyword) {
   try {
     if (_blockedNow) throw new Error('cooldown');  // in-tab 건너뛰고 공식 API(제한)로
     // 네이버페이만 1회 요청 (요청 수 최소화 → 네이버 차단 완화/회복 빠름). 전체/가격비교는 칩 클릭 시 온디맨드.
-    let ext = await _tryExtensionDirectFetch(keyword, 65000, ['npay']);  // 보이는 탭에서 사용자가 보안해제할 시간 포함
+    let ext = await _tryExtensionDirectFetch(keyword, 65000, ['npay'], 'analysis');  // 분석: 보이는 탭에서 보안해제할 시간 포함
     // 확장이 돌려준 실제 사유 저장(배너에서 원인별로 안내) — null 이면 확장 미응답(미설치/리로드 안됨)
     window._lastExtError = ext ? (ext.error || (ext.ok ? null : 'unknown')) : 'no_extension';
     let tabs = (ext && ext.ok && ext.tabs && ext.tabs['네이버페이'] && ext.tabs['네이버페이'].products && ext.tabs['네이버페이'].products.length) ? ext.tabs : null;
@@ -3160,7 +3161,7 @@ async function _runMultiKwAnalysis(keywords) {
 async function _fetchScrapePayload(keyword) {
   // 0) 확장 백그라운드 직접 fetch (팝업/보안창 없음, 실제 속성·태그·NLU)
   try {
-    const ext = await _tryExtensionDirectFetch(keyword, 65000);
+    const ext = await _tryExtensionDirectFetch(keyword, 65000, null, 'analysis');
     if (ext && ext.ok && ext.tabs) {
       const payload = ext.tabs['네이버페이'] || ext.tabs['전체'] || null;
       if (payload && Array.isArray(payload.products) && payload.products.length) {
@@ -5236,7 +5237,7 @@ async function extractFromKeyword() {
     let extError = null;
     // 0) 확장 백그라운드 직접 fetch (열린 네이버 탭이 있으면 그 탭에서 가져옴)
     try {
-      const ext = await _tryExtensionDirectFetch(kw, 65000, ['total']);   // 보이는 탭 보안해제 시간 포함
+      const ext = await _tryExtensionDirectFetch(kw, 15000, ['total'], 'tool');   // 도구: 조용한 열린탭 방식(분석과 분리)
       console.log('[마누태그] 확장 직접 fetch 응답:', ext ? { ok: ext.ok, tabs: ext.tabs ? Object.keys(ext.tabs) : null, error: ext.error } : 'null(무응답/타임아웃 — 확장 미설치/미갱신?)');
       if (ext) extError = ext.error || null;
       if (ext && ext.ok && ext.tabs) {
