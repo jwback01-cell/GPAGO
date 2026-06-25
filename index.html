@@ -390,6 +390,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           <h3 class="font-black text-[15px]">상품의 카테고리 비율</h3>
           <span class="text-xs text-brand-gray">검색된 상품들이 속한 카테고리 분포</span>
+          <span id="cat-ratio-volume" class="ml-auto text-sm whitespace-nowrap"></span>
         </div>
         <div id="category-ratio-list" class="flex flex-col gap-2"></div>
       </section>
@@ -3911,6 +3912,23 @@ function computeStats(items, terms, baseKw, filterKw) {
   renderCategoryRatio(items);
 }
 
+// 기준 키워드 월 검색량 표시 (카테고리 비율 헤더 우측) — 캐시 즉시 표시 후 백그라운드 조회
+function _renderAnalysisVolume(keyword) {
+  const el = document.getElementById('cat-ratio-volume');
+  if (!el) return;
+  const kw = String(keyword || '').split(',')[0].trim();
+  if (!kw) { el.innerHTML = ''; return; }
+  const show = (vv) => { el.innerHTML = `<span class="text-brand-gray text-xs">"${escapeHtml(kw)}" 월 검색량</span> <b class="text-brand-blue">${_kwVolumeText(vv)}</b>`; };
+  const cache = (typeof _loadKwVolume === 'function') ? _loadKwVolume() : {};
+  const v = cache[kw];
+  if (v && !v.error && (Date.now() - (v.ts || 0) < KW_VOL_TTL)) { show(v); return; }
+  if (typeof _kwHasSaKey === 'function' && !_kwHasSaKey()) { show({ error: 'no_key' }); return; }
+  show({ loading: true });
+  if (typeof _fetchAndCacheKwVolume === 'function') {
+    _fetchAndCacheKwVolume(kw).then(res => show(res)).catch(() => show({ error: 'fetch_failed' }));
+  }
+}
+
 // 카테고리 풀패스별 비율 계산 + 렌더링
 function renderCategoryRatio(items) {
   const section = document.getElementById('category-ratio-section');
@@ -3926,6 +3944,7 @@ function renderCategoryRatio(items) {
   });
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   if (!sorted.length) { section.classList.add('hidden'); return; }
+  try { _renderAnalysisVolume(_lastBaseKw); } catch(_) {}
   // 기준/필터 키워드를 카테고리 경로에 색깔로 강조 (속성/태그와 동일한 색)
   const terms = (typeof _extractTerms === 'function') ? _extractTerms(_lastBaseKw, _lastFilterKw) : [];
   listEl.innerHTML = sorted.map(([path, cnt]) => {
