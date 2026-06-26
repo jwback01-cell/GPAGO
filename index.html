@@ -12635,10 +12635,12 @@ function _prodsrcBeep(kind) {
         const gain = ctx.createGain();
         osc.type = 'sine';
         osc.frequency.value = freq;
-        // 부드러운 ADSR — 클릭/팝 소리 제거
+        // 부드러운 ADSR — 클릭/팝 소리 제거 (PEAK = 음량, 0~1)
+        const PEAK = 0.9;
         const t0 = ctx.currentTime + startSec;
         gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(PEAK, t0 + 0.02);
+        gain.gain.setValueAtTime(PEAK, t0 + Math.max(0.03, durSec - 0.08));  // 피크 유지 → 더 또렷
         gain.gain.exponentialRampToValueAtTime(0.0001, t0 + durSec);
         osc.connect(gain).connect(ctx.destination);
         osc.start(t0);
