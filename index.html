@@ -8317,7 +8317,7 @@ function _renderKwDetailTable() {
   // 동일 id를 가진 항목들은 같은 manage 항목에서 나온 것이므로 dedupe
   const uniqueIds = [...new Set(items.map(it => it.id))];
   // 컬럼 너비 고정 (px) — table-layout: fixed 와 함께 사용해 펼침/접힘 무관하게 동일 크기 유지
-  const W_KW = 220;
+  const W_KW = 320;
   const W_VOL = 120;
   const W_DATE = 150;
   const COL_STYLE = `style="width:${W_DATE}px;min-width:${W_DATE}px;max-width:${W_DATE}px"`;
@@ -8383,11 +8383,11 @@ function _renderKwDetailTable() {
       : `<span class="inline-block w-3.5"></span>`;
     const rowDraggable = isFirstRowOfId ? 'draggable="true"' : '';
     return `<tr ${rowDraggable} data-kw-id="${item.id}" data-kw-pos="${myIdxInUnique}" ondragstart="_kwRowDragStart(event)" ondragover="_kwRowDragOver(event)" ondragleave="_kwRowDragLeave(event)" ondrop="_kwRowDrop(event)" ondragend="_kwRowDragEnd(event)" class="border-b border-brand-border last:border-b-0 hover:bg-gray-50/50 transition-colors">
-      <td style="width:${W_KW}px;min-width:${W_KW}px;max-width:${W_KW}px;left:0" class="p-3 pl-4 sticky bg-white z-10 border-r border-brand-border whitespace-nowrap overflow-hidden">
-        <div class="flex items-center gap-2">
+      <td style="width:${W_KW}px;min-width:${W_KW}px;max-width:${W_KW}px;left:0" class="p-3 pl-4 sticky bg-white z-10 border-r border-brand-border align-top">
+        <div class="flex items-start gap-2">
           ${dragHandle}
           ${posSelect}
-          <span class="font-semibold text-sm text-brand-black truncate" title="${_escapeHtml(item.keyword)}">${_escapeHtml(item.keyword)}</span>
+          <span class="font-semibold text-sm text-brand-black break-words min-w-0 flex-1" title="${_escapeHtml(item.keyword)}">${_escapeHtml(item.keyword)}</span>
           ${typeBadge}
         </div>
       </td>
