@@ -2175,6 +2175,13 @@ const GPAGO_SYNC_KEYS = [
   // GPAGO 자체 데이터
   'gpago_naver_api_v1','gpago_synonyms_v1','gpago_slots_v1','gpago_terms_recent','gpago_analysis_history'
 ];
+// 동기화 대상 판별 — 목록에 없어도 앱 접두사를 가진 키는 모두 자동 동기화(새 기능 키 누락 방지)
+function _gpagoSyncMatch(key) {
+  if (!key) return false;
+  if (/^sb-/.test(key)) return false;                 // Supabase 인증 토큰 제외
+  if (/^__/.test(key)) return false;                  // 내부 플래그/지문 제외
+  return /^(gpago_|kw_|src_|gplan_)/.test(key) || GPAGO_SYNC_KEYS.includes(key);
+}
 let _gpagoCloudReady = false;  // PULL 완료 전엔 PUSH 금지
 const _gpagoPushTimers = {};
 // PULL 완료 전에 사용자가 로컬에서 변경한 키들 — PULL 이 이 키들을 덮어쓰지 못하도록 보호
@@ -2259,7 +2266,7 @@ async function gpagoCloudPullAll() {
     let protectedCnt = 0;
     const pulledKeys = new Set();
     for (const row of (data || [])) {
-      if (!GPAGO_SYNC_KEYS.includes(row.key)) continue;
+      if (!_gpagoSyncMatch(row.key)) continue;
       if (row.value == null) continue;
       pulledKeys.add(row.key);
       await new Promise(r => setTimeout(r, 0)); // 키마다 메인 스레드 양보 — 새로고침 직후 멈춤 방지
@@ -2320,8 +2327,8 @@ async function gpagoCloudPullAll() {
     _gpagoCloudReady = true;
     try { Storage.prototype._origSetItem.call(localStorage, _GPAGO_FIRST_SYNC_FLAG, '1'); } catch(_) {}
     console.log('[cloud-sync] pulled', pulled, 'keys, changed', changed, 'protected', protectedCnt, 'firstSync', !firstSyncDone);
-    // 클라우드에 없지만 로컬에 있는 키 → 첫 PUSH
-    for (const key of GPAGO_SYNC_KEYS) {
+    // 클라우드에 없지만 로컬에 있는 키 → 첫 PUSH (접두사 매칭 전체)
+    for (const key of Object.keys(localStorage).filter(_gpagoSyncMatch)) {
       if (pulledKeys.has(key)) continue;
       const localRaw = localStorage.getItem(key);
       if (localRaw == null) continue;
@@ -2351,7 +2358,7 @@ async function gpagoCloudPullAll() {
 
 function _gpagoCloudPushKey(key) {
   if (!_gpagoCloudReady || !_supabase) return;
-  if (!GPAGO_SYNC_KEYS.includes(key)) return;
+  if (!_gpagoSyncMatch(key)) return;
   _gpagoPendingPushKeys.add(key);
   clearTimeout(_gpagoPushTimers[key]);
   _gpagoPushTimers[key] = setTimeout(async () => {
@@ -2405,7 +2412,7 @@ window.addEventListener('beforeunload', (e) => {
   Storage.prototype._origSetItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function (k, v) {
     Storage.prototype._origSetItem.apply(this, arguments);
-    if (this === localStorage && GPAGO_SYNC_KEYS.includes(k)) {
+    if (this === localStorage && _gpagoSyncMatch(k)) {
       // PULL 이 아직 안 끝났는데 사용자가 변경 → PULL 이 덮어쓰지 못하도록 기록
       if (!_gpagoCloudReady) _gpagoLocalChangesBeforePull.add(k);
       _gpagoCloudPushKey(k);
@@ -2414,7 +2421,7 @@ window.addEventListener('beforeunload', (e) => {
   Storage.prototype._origRemoveItem = Storage.prototype.removeItem;
   Storage.prototype.removeItem = function (k) {
     Storage.prototype._origRemoveItem.apply(this, arguments);
-    if (this === localStorage && GPAGO_SYNC_KEYS.includes(k)) {
+    if (this === localStorage && _gpagoSyncMatch(k)) {
       if (!_gpagoCloudReady) _gpagoLocalChangesBeforePull.add(k);
       _gpagoCloudPushKey(k);
     }
