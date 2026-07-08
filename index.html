@@ -13213,7 +13213,14 @@ function _prodsrcProcessFile(file) {
           totalSearchDiff: 0,
         });
       }
-      if (!newRows.length) { _prodsrcMsg('데이터 행이 없습니다.', 'error'); resolve('error'); return; }
+      // 검색량(총검색수) 199 이하 키워드 제외 — 저볼륨 잡음 키워드/오분류 폴더 방지
+      {
+        const _bVol = newRows.length;
+        newRows = newRows.filter(r => !(r.totalSearch != null && Number(r.totalSearch) < 200));
+        const _sVol = _bVol - newRows.length;
+        if (_sVol > 0) console.log('[prodsrc] 업로드 검색량<200 제외:', _sVol, '개');
+      }
+      if (!newRows.length) { _prodsrcMsg('업로드할 키워드가 없습니다 (검색량 200 미만 제외).', 'warn'); resolve('error'); return; }
 
       const existing = (_prodsrcState && _prodsrcState.rows) || [];
 
@@ -14769,6 +14776,21 @@ async function _prodsrcEnsureInit() {
         }
       } catch (e) { console.warn('[prodsrcLoad] async failed:', e); }
     }
+    // 최초 1회: 기존 데이터에서 검색량 199 이하 키워드 정리 (저볼륨 잡음 + 오분류 하위폴더 제거)
+    try {
+      if (!localStorage.getItem('gpago_prodsrc_lowvol_cleaned_v1')) {
+        localStorage.setItem('gpago_prodsrc_lowvol_cleaned_v1', '1');
+        const _rows = _prodsrcState.rows || [];
+        const _kept = _rows.filter(r => !(r.totalSearch != null && Number(r.totalSearch) < 200));
+        const _removed = _rows.length - _kept.length;
+        if (_removed > 0) {
+          _prodsrcState = { ...(_prodsrcState || {}), rows: _kept };
+          console.log('[prodsrc] 기존 검색량<200 정리:', _removed, '개 제거');
+          if (typeof _prodsrcSaveAsync === 'function') _prodsrcSaveAsync();
+          try { _prodsrcMsg(`🧹 검색량 200 미만 키워드 ${_removed.toLocaleString('ko-KR')}개를 정리했습니다.`, 'ok'); } catch(_) {}
+        }
+      }
+    } catch(_) {}
     window._prodsrcLoading = false;
     try { _prodsrcRender(); } catch(_) {}
   } catch (e) {
