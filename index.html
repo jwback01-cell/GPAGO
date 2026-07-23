@@ -12904,10 +12904,15 @@ function _prodsrcImportItemscoutSnapshot(snap) {
 
   // 행 별 effective folderName 결정 → 폴더별 그룹화
   const rowsByFolder = new Map();
+  let _lowVolSkipped = 0;
   for (const r of snap.rows) {
     const rawCat = String(r.category || '').trim();
     const keyword = String(r.keyword || '').trim();
     if (!keyword) continue;
+    // 검색량 200 미만/없음 제외 — 엑셀 업로드와 동일 규칙.
+    //  (저볼륨 잡음 키워드가 "3프로갤럭시림피오B" 같은 오분류 하위 폴더를 만드는 것 방지)
+    const _vol = num(r.searchCount);
+    if (_vol == null || _vol < 200) { _lowVolSkipped++; continue; }
 
     let folderName;
     if (rawCat.includes(' > ')) {
@@ -12948,8 +12953,9 @@ function _prodsrcImportItemscoutSnapshot(snap) {
     });
   }
 
+  if (_lowVolSkipped > 0) console.log('[prodsrc] 자동분석 검색량<200/빈칸 제외:', _lowVolSkipped, '개');
   if (!rowsByFolder.size) {
-    _prodsrcMsg('❌ 변환된 키워드 행이 없습니다.', 'error');
+    _prodsrcMsg('❌ 변환된 키워드 행이 없습니다 (검색량 200 미만 제외 후 0개).', 'error');
     return;
   }
 
@@ -14791,6 +14797,22 @@ async function _prodsrcEnsureInit() {
         if (_removed > 0) {
           _prodsrcState = { ...(_prodsrcState || {}), rows: _kept };
           console.log('[prodsrc] 기존 검색량<200 정리:', _removed, '개 제거');
+          if (typeof _prodsrcSaveAsync === 'function') _prodsrcSaveAsync();
+          try { _prodsrcMsg(`🧹 검색량 200 미만 키워드 ${_removed.toLocaleString('ko-KR')}개를 정리했습니다.`, 'ok'); } catch(_) {}
+        }
+      }
+    } catch(_) {}
+    // 최초 1회(v3): v1 이후 자동분석 경로로 들어온 검색량<200 키워드 재정리
+    //  (자동분석에 필터가 없던 시기의 잔존 잡음 — "3프로갤럭시림피오B" 등 오분류 하위폴더 제거)
+    try {
+      if (!localStorage.getItem('gpago_prodsrc_lowvol_cleaned_v3')) {
+        localStorage.setItem('gpago_prodsrc_lowvol_cleaned_v3', '1');
+        const _rows = _prodsrcState.rows || [];
+        const _kept = _rows.filter(r => !(r.totalSearch != null && Number(r.totalSearch) < 200));
+        const _removed = _rows.length - _kept.length;
+        if (_removed > 0) {
+          _prodsrcState = { ...(_prodsrcState || {}), rows: _kept };
+          console.log('[prodsrc] 검색량<200 재정리(v3):', _removed, '개 제거');
           if (typeof _prodsrcSaveAsync === 'function') _prodsrcSaveAsync();
           try { _prodsrcMsg(`🧹 검색량 200 미만 키워드 ${_removed.toLocaleString('ko-KR')}개를 정리했습니다.`, 'ok'); } catch(_) {}
         }
