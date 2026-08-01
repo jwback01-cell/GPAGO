@@ -1,14 +1,54 @@
-// Vercel 서버리스 함수 — 네이버 쇼핑 API CORS 프록시
-// 호출: GET /api/naver-shop?query=마스크&display=40&sort=sim
-// 헤더:  x-client-id : 네이버 Client ID
-//        x-client-secret : 네이버 Client Secret
-//        (또는 Vercel 환경변수 NAVER_SHOP_CLIENT_ID / NAVER_SHOP_CLIENT_SECRET 사용 가능)
+// Vercel 서버리스 함수 — 네이버 쇼핑 검색 프록시
+// 2026 이관: 개발자센터 Search API(openapi.naver.com/v1/search/shop.json)가 종료(SE05)되어
+//            NAVER API Hub(NCP)로 이관. 인증이 Client ID/Secret → NCP API Key 방식으로 바뀜.
+//
+// 우선순위:
+//   1) NCP API Hub — 환경변수 NAVER_API_HUB_KEY_ID / NAVER_API_HUB_KEY (또는 헤더 x-ncp-key-id / x-ncp-key)
+//   2) (레거시) 개발자센터 Client ID/Secret — 현재 SE05로 종료됨(폴백용으로만 유지)
+//
+// 호출: GET /api/naver-shop?query=마스크&display=100&start=1&sort=sim
+
+const HUB_BASE = 'https://naverapihub.apigw.ntruss.com';
+// API Hub 쇼핑검색 후보 경로 — 실제 동작하는 경로를 자동 탐색(첫 성공 사용)
+const HUB_SHOP_PATHS = [
+  '/openapi/v1/search/shop.json',
+  '/v1/search/shop.json',
+  '/openapi/v1/search/shop',
+  '/search/v1/shop.json',
+];
+
+async function tryHub(keyId, key, qs) {
+  const headers = { 'X-NCP-APIGW-API-KEY-ID': keyId, 'X-NCP-APIGW-API-KEY': key };
+  let last = { status: 0, detail: '' };
+  for (const path of HUB_SHOP_PATHS) {
+    const url = `${HUB_BASE}${path}?${qs}`;
+    try {
+      const r = await fetch(url, { headers });
+      const text = await r.text();
+      if (r.ok && text && (text.includes('"items"') || text.includes('"total"'))) {
+        return { ok: true, text, path };
+      }
+      last = { status: r.status, detail: text.slice(0, 300), path };
+    } catch (e) {
+      last = { status: -1, detail: String(e && e.message || e), path };
+    }
+  }
+  return { ok: false, ...last };
+}
+
+async function tryLegacy(clientId, clientSecret, qs) {
+  const url = `https://openapi.naver.com/v1/search/shop.json?${qs}`;
+  const r = await fetch(url, {
+    headers: { 'X-Naver-Client-Id': clientId, 'X-Naver-Client-Secret': clientSecret },
+  });
+  const text = await r.text();
+  return { ok: r.ok, status: r.status, text };
+}
 
 export default async function handler(req, res) {
-  // CORS 헤더 — 브라우저에서 직접 호출 가능
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-client-id, x-client-secret');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-client-id, x-client-secret, x-ncp-key-id, x-ncp-key');
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
   const q = req.query || {};
@@ -17,38 +57,56 @@ export default async function handler(req, res) {
   const display = Math.max(1, Math.min(100, parseInt(q.display, 10) || 40));
   const start = Math.max(1, Math.min(1000, parseInt(q.start, 10) || 1));
   const sort = ['sim', 'date', 'asc', 'dsc'].includes(q.sort) ? q.sort : 'sim';
+  const qs = `query=${encodeURIComponent(query)}&display=${display}&start=${start}&sort=${sort}`;
 
+  // NCP API Hub 키 (환경변수 우선, 없으면 헤더)
+  const ncpKeyId = process.env.NAVER_API_HUB_KEY_ID || req.headers['x-ncp-key-id'];
+  const ncpKey   = process.env.NAVER_API_HUB_KEY    || req.headers['x-ncp-key'];
+  // 레거시 개발자센터 키
   const clientId = req.headers['x-client-id'] || process.env.NAVER_SHOP_CLIENT_ID;
   const clientSecret = req.headers['x-client-secret'] || process.env.NAVER_SHOP_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    res.status(400).json({
-      error: '네이버 API Client ID/Secret 누락',
-      hint: '브라우저에서 헤더(x-client-id, x-client-secret) 로 전달하거나 Vercel 환경변수(NAVER_SHOP_CLIENT_ID, NAVER_SHOP_CLIENT_SECRET) 를 설정해 주세요',
-    });
-    return;
-  }
 
-  const url = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(query)}&display=${display}&start=${start}&sort=${sort}`;
   try {
-    const r = await fetch(url, {
-      headers: {
-        'X-Naver-Client-Id': clientId,
-        'X-Naver-Client-Secret': clientSecret,
-      },
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      res.status(r.status).json({ error: '네이버 API 오류', detail: text });
+    // 1) NCP API Hub 우선
+    if (ncpKeyId && ncpKey) {
+      const hub = await tryHub(ncpKeyId, ncpKey, qs);
+      if (hub.ok) {
+        res.setHeader('Cache-Control', 'public, max-age=60');
+        res.status(200).send(hub.text);
+        return;
+      }
+      // NCP 키는 있는데 모든 경로 실패 → 상세 반환(경로/권한 진단용)
+      res.status(hub.status && hub.status > 0 ? hub.status : 502).json({
+        error: 'NAVER API Hub 쇼핑검색 실패',
+        via: 'ncp',
+        triedPath: hub.path,
+        detail: hub.detail,
+        hint: 'API Hub에서 검색(쇼핑) API 구독 여부, API Key 권한, 경로를 확인하세요.',
+      });
       return;
     }
-    res.setHeader('Cache-Control', 'public, max-age=60'); // 1분 캐시
-    res.status(200).send(text);
+
+    // 2) 레거시 (현재 종료됨 — 폴백)
+    if (clientId && clientSecret) {
+      const leg = await tryLegacy(clientId, clientSecret, qs);
+      if (leg.ok) { res.setHeader('Cache-Control', 'public, max-age=60'); res.status(200).send(leg.text); return; }
+      res.status(leg.status).json({
+        error: '네이버 API 오류',
+        via: 'legacy',
+        detail: leg.text,
+        hint: 'SE05(존재하지 않는 검색 api)면 개발자센터 검색 API가 종료된 것 — NAVER API Hub(NCP) 키가 필요합니다.',
+      });
+      return;
+    }
+
+    res.status(400).json({
+      error: '네이버 API 키 없음',
+      hint: 'NAVER API Hub(NCP) 키를 Vercel 환경변수 NAVER_API_HUB_KEY_ID / NAVER_API_HUB_KEY 에 설정하세요.',
+    });
   } catch (err) {
     console.error('[naver-shop] 호출 실패:', err);
     res.status(500).json({ error: err.message || String(err) });
   }
 }
 
-export const config = {
-  api: { bodyParser: false },
-};
+export const config = { api: { bodyParser: false } };
