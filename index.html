@@ -6303,7 +6303,9 @@ async function _naverShopSearch(query, start, display, clientId, clientSecret) {
     lastErr = 'HTTP ' + r.status;
     if (r.status !== 429 && r.status !== 503 && r.status !== 504) {
       const err = await r.json().catch(() => ({}));
-      throw new Error(err.error || lastErr);   // 일시적 오류가 아니면 즉시 실패
+      const detail = err.detail ? (' — ' + String(err.detail).replace(/\s+/g, ' ').slice(0, 180)) : '';
+      console.warn('[naver-shop] 실패', r.status, 'query=', query, 'detail=', err.detail || err.error || '(없음)');
+      throw new Error((err.error || lastErr) + ' [' + r.status + ']' + detail);   // 네이버 상세 메시지 포함
     }
     // 429/503/504 → 다음 루프에서 재시도
   }
