@@ -59,12 +59,13 @@ export default async function handler(req, res) {
   const sort = ['sim', 'date', 'asc', 'dsc'].includes(q.sort) ? q.sort : 'sim';
   const qs = `query=${encodeURIComponent(query)}&display=${display}&start=${start}&sort=${sort}`;
 
-  // NCP API Hub 키 (환경변수 우선, 없으면 헤더)
-  const ncpKeyId = process.env.NAVER_API_HUB_KEY_ID || req.headers['x-ncp-key-id'];
-  const ncpKey   = process.env.NAVER_API_HUB_KEY    || req.headers['x-ncp-key'];
   // 레거시 개발자센터 키
   const clientId = req.headers['x-client-id'] || process.env.NAVER_SHOP_CLIENT_ID;
   const clientSecret = req.headers['x-client-secret'] || process.env.NAVER_SHOP_CLIENT_SECRET;
+  // NCP API Hub 키 — 환경변수 우선, 없으면 전용 헤더, 그래도 없으면 프론트가 보낸 x-client-id/secret 를 NCP 키로 사용
+  //  (프론트 '네이버 API 설정'의 Client ID=NCP KEY-ID, Client Secret=NCP KEY 로 입력하면 그대로 동작)
+  const ncpKeyId = process.env.NAVER_API_HUB_KEY_ID || req.headers['x-ncp-key-id'] || clientId;
+  const ncpKey   = process.env.NAVER_API_HUB_KEY    || req.headers['x-ncp-key']    || clientSecret;
 
   try {
     // 1) NCP API Hub 우선
