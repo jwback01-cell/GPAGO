@@ -19,7 +19,7 @@ const HUB_SHOP_PATHS = [
 
 async function tryHub(keyId, key, qs) {
   const headers = { 'X-NCP-APIGW-API-KEY-ID': keyId, 'X-NCP-APIGW-API-KEY': key };
-  let last = { status: 0, detail: '' };
+  const attempts = [];
   for (const path of HUB_SHOP_PATHS) {
     const url = `${HUB_BASE}${path}?${qs}`;
     try {
@@ -28,12 +28,19 @@ async function tryHub(keyId, key, qs) {
       if (r.ok && text && (text.includes('"items"') || text.includes('"total"'))) {
         return { ok: true, text, path };
       }
-      last = { status: r.status, detail: text.slice(0, 300), path };
+      attempts.push({ path, status: r.status, snippet: text.slice(0, 120) });
     } catch (e) {
-      last = { status: -1, detail: String(e && e.message || e), path };
+      attempts.push({ path, status: -1, snippet: String(e && e.message || e).slice(0, 120) });
     }
   }
-  return { ok: false, ...last };
+  // 진단: 검증된 뉴스 경로로도 테스트 → 키/구독 문제인지 경로 문제인지 구분
+  let newsProbe = null;
+  try {
+    const nr = await fetch(`${HUB_BASE}/search/v1/news?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=1`, { headers });
+    const nt = await nr.text();
+    newsProbe = { status: nr.status, ok: nr.ok, snippet: nt.slice(0, 120) };
+  } catch (e) { newsProbe = { status: -1, snippet: String(e && e.message || e).slice(0, 120) }; }
+  return { ok: false, attempts, newsProbe, status: (attempts[0] && attempts[0].status) || 502 };
 }
 
 async function tryLegacy(clientId, clientSecret, qs) {
@@ -76,13 +83,13 @@ export default async function handler(req, res) {
         res.status(200).send(hub.text);
         return;
       }
-      // NCP 키는 있는데 모든 경로 실패 → 상세 반환(경로/권한 진단용)
+      // NCP 키는 있는데 모든 경로 실패 → 진단 상세 반환
       res.status(hub.status && hub.status > 0 ? hub.status : 502).json({
         error: 'NAVER API Hub 쇼핑검색 실패',
         via: 'ncp',
-        triedPath: hub.path,
-        detail: hub.detail,
-        hint: 'API Hub에서 검색(쇼핑) API 구독 여부, API Key 권한, 경로를 확인하세요.',
+        attempts: hub.attempts,        // 각 쇼핑 경로별 status
+        newsProbe: hub.newsProbe,      // 검증된 뉴스 경로 결과 (200이면 키 정상 → 쇼핑 경로/구독 문제)
+        hint: 'newsProbe.status가 200이면 키는 정상 — 쇼핑검색 경로 또는 쇼핑 API 구독을 확인. 401/403이면 키/구독 문제.',
       });
       return;
     }
