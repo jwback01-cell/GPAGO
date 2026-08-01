@@ -7070,20 +7070,26 @@ function renderKwAutoStatus() {
   }
 }
 
-// 순위추적용 — 확장이 브라우저로 네이버 쇼핑 검색결과(순위 순서)를 받아 items 로 변환
-//  (네이버가 쇼핑 상품검색 Open API를 종료 → 확장 직접 fetch 로 대체. 실시간 순위추적과 동일 원리)
-async function _extFetchItems(keyword, rankType) {
-  const sets = (rankType === 'plus') ? ['checkout'] : null;   // plus=네이버페이 / 그 외=기본(전체)
-  const ext = await _tryExtensionDirectFetch(keyword, 30000, sets, 'tool');   // tool=백그라운드 조용히
-  if (!ext) return { items: null, err: 'no_extension' };
-  if (!ext.ok) return { items: null, err: ext.error || 'ext_fail' };
-  const tabs = ext.tabs || {};
-  let best = null, bestLen = 0;
+// 순위추적용 — 실시간 순위추적(rtrank)과 동일한 확장 트리거(REQUEST_TRIGGER, deep)로
+//  네이버 쇼핑 검색결과(순위순)를 받아 items 로 변환. (쇼핑 Open API 종료 대체)
+//  _captureNextExtensionPayload 로 payload 를 프로미스로 캡처(라우팅 가로챔).
+async function _extFetchItems(keyword) {
+  let cap;
+  try {
+    cap = await _captureNextExtensionPayload(30000, () => {
+      _extensionTriggerSource = null;   // multiCapture 가 라우팅을 가로채므로 소스 무의미
+      window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword, deep: 5 }, window.location.origin);
+    });
+  } catch (e) {
+    return { items: null, err: /타임아웃|timeout/i.test(String(e && e.message || e)) ? 'no_extension' : String((e && e.message) || e) };
+  }
+  const tabs = (cap && cap.tabs) || {};
+  let best = (cap && cap.data && Array.isArray(cap.data.products)) ? cap.data.products : [];
   for (const k of Object.keys(tabs)) {
     const arr = tabs[k] && tabs[k].products;
-    if (Array.isArray(arr) && arr.length > bestLen) { best = arr; bestLen = arr.length; }
+    if (Array.isArray(arr) && arr.length > best.length) best = arr;   // deep: 전체(400) > 네이버페이(80)
   }
-  if (!best || !best.length) return { items: [], err: null };
+  if (!best.length) return { items: [], err: 'no_products' };
   const items = best.map(p => ({
     productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
     title: p.productTitle || p.productName || p.title || '',
@@ -7124,18 +7130,18 @@ async function runKwAutoTrack(isAuto) {
     const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
 
     try {
+      // 확장으로 검색결과(순위순)를 키워드당 1회 받아옴 — rankTypes 는 같은 목록으로 순위 계산
+      const { items, err } = await _extFetchItems(keyword);
+      if (items == null) {
+        // 확장 미설치/미응답(타임아웃) → 전체 중단
+        const msg = err === 'no_extension' ? '확장프로그램 미설치/미응답' : ('확장 오류: ' + err);
+        console.error('[KW Auto] 중단 —', msg);
+        console.groupEnd();
+        if (!isAuto) alert('⚠ ' + msg + '\n\nGPAGO 확장프로그램을 설치하고(좌측 "확장 프로그램 INSTALL") 브라우저를 켠 상태에서 실행하세요.');
+        return { ok, skipped: list.length - ok, errors: [{ keyword, error: msg }], aborted: true };
+      }
       for (const rankType of rankTypes) {
         let foundRank = null;
-        // 확장으로 검색결과(순위순) 받아 매칭 — sets(plus=네이버페이/그외 전체) 별로 1회 fetch
-        const { items, err } = await _extFetchItems(keyword, rankType);
-        if (items == null) {
-          // 확장 미설치/미응답 → 전체 중단(모든 키워드가 같은 이유로 실패하므로)
-          const msg = err === 'no_extension' ? '확장프로그램 미설치/미응답' : ('확장 오류: ' + err);
-          console.error('[KW Auto] 중단 —', msg);
-          console.groupEnd();
-          if (!isAuto) alert('⚠ ' + msg + '\n\nGPAGO 확장프로그램을 설치하고(좌측 "확장 프로그램 INSTALL") 브라우저를 켠 상태에서 실행하세요.');
-          return { ok, skipped: list.length - ok, errors: [{ keyword, error: msg }], aborted: true };
-        }
         if (items.length) {
           const idx = items.findIndex(x => _matchItem(x, product.name, productIds));
           if (idx >= 0) foundRank = idx + 1;
@@ -7149,7 +7155,7 @@ async function runKwAutoTrack(isAuto) {
       }
       ok++;
       console.log(`[KW Auto] (${listIdx+1}/${list.length}) ✅ "${keyword}" 완료`);
-      await new Promise(rs => setTimeout(rs, 250));   // 네이버 rate limit 회피 — 키워드 간 딜레이
+      await new Promise(rs => setTimeout(rs, 1500));   // 네이버 418 차단 회피 — 키워드 간 딜레이(확장 브라우저 fetch)
     } catch (e) {
       const errMsg = e.message || String(e);
       console.warn(`[KW Auto] (${listIdx+1}/${list.length}) ❌ "${keyword}" 실패:`, errMsg);
