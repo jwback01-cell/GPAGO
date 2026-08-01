@@ -7113,7 +7113,7 @@ async function runKwAutoTrack(isAuto) {
   const history = _loadKwHistory();
   const now = new Date();
 
-  let ok = 0, skipped = 0;
+  let ok = 0, skipped = 0, consecEmpty = 0;
   // 진단 로그 — 사용자가 콘솔에서 어디까지 진행됐는지 확인 가능
   const errors = [];
   console.group(`[KW Auto] 자동 추적 시작 - ${list.length}개 키워드`);
@@ -7141,6 +7141,18 @@ async function runKwAutoTrack(isAuto) {
         console.groupEnd();
         if (!isAuto) alert('⚠ ' + msg + '\n\nGPAGO 확장프로그램을 설치하고(좌측 "확장 프로그램 INSTALL") 브라우저를 켠 상태에서 실행하세요.');
         return { ok, skipped: list.length - ok, errors: [{ keyword, error: msg }], aborted: true };
+      }
+      // 검색결과가 0개면 네이버 이용제한(418) 가능성 — 연속 3회면 잘못된 '권 밖' 기록 막고 중단
+      if (items.length === 0) {
+        consecEmpty++;
+        if (consecEmpty >= 3) {
+          console.error('[KW Auto] 중단 — 네이버 이용제한(418) 추정: 연속', consecEmpty, '개 빈 결과');
+          console.groupEnd();
+          if (!isAuto) alert('⚠ 네이버 쇼핑 접속이 일시 제한(418)되었습니다.\n\n열린 네이버 탭에서 쇼핑을 한 번 정상 검색하거나, 잠시(수 분~시간) 뒤 다시 시도하세요.\n짧은 시간에 키워드가 많으면 다시 막힐 수 있어 나눠서 실행을 권장합니다.\n\n(이미 처리된 ' + ok + '개는 저장됨)');
+          return { ok, skipped: list.length - ok, errors: [{ keyword, error: '네이버 이용제한(418)' }], aborted: true, blocked: true };
+        }
+      } else {
+        consecEmpty = 0;
       }
       for (const rankType of rankTypes) {
         let foundRank = null;
