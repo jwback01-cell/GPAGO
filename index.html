@@ -7070,6 +7070,29 @@ function renderKwAutoStatus() {
   }
 }
 
+// 순위추적용 — 확장이 브라우저로 네이버 쇼핑 검색결과(순위 순서)를 받아 items 로 변환
+//  (네이버가 쇼핑 상품검색 Open API를 종료 → 확장 직접 fetch 로 대체. 실시간 순위추적과 동일 원리)
+async function _extFetchItems(keyword, rankType) {
+  const sets = (rankType === 'plus') ? ['checkout'] : null;   // plus=네이버페이 / 그 외=기본(전체)
+  const ext = await _tryExtensionDirectFetch(keyword, 30000, sets, 'tool');   // tool=백그라운드 조용히
+  if (!ext) return { items: null, err: 'no_extension' };
+  if (!ext.ok) return { items: null, err: ext.error || 'ext_fail' };
+  const tabs = ext.tabs || {};
+  let best = null, bestLen = 0;
+  for (const k of Object.keys(tabs)) {
+    const arr = tabs[k] && tabs[k].products;
+    if (Array.isArray(arr) && arr.length > bestLen) { best = arr; bestLen = arr.length; }
+  }
+  if (!best || !best.length) return { items: [], err: null };
+  const items = best.map(p => ({
+    productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
+    title: p.productTitle || p.productName || p.title || '',
+    link: p.crUrl || p.adcrUrl || p.dlUrl || p.link || p.mallProductUrl || (p.id ? ('https://search.shopping.naver.com/catalog/' + p.id) : ''),
+    productUrl: p.mallProductUrl || p.link || '',
+  }));
+  return { items, err: null };
+}
+
 async function runKwAutoTrack(isAuto) {
   // 자동 추적은 등록된 모든 키워드를 대상으로 실행 (auto 플래그 무시)
   const list = _loadKwManage();
@@ -7077,11 +7100,7 @@ async function runKwAutoTrack(isAuto) {
     if (!isAuto) alert('등록된 키워드가 없습니다. 순위 조회 결과에서 "선택한 키워드 등록" 버튼으로 추가하세요.');
     return { ok: 0, skipped: 0 };
   }
-  const api = _loadNaverApi();
-  if (!api.clientId || !api.clientSecret) {
-    if (!isAuto) alert('네이버 API Client ID/Secret을 먼저 등록하세요.');
-    return { ok: 0, skipped: list.length };
-  }
+  // 확장 직접 fetch 로 동작(쇼핑 Open API 종료 대체) — API 키는 불필요. 확장 미설치면 첫 키워드에서 중단.
 
   const history = _loadKwHistory();
   const now = new Date();
@@ -7104,21 +7123,22 @@ async function runKwAutoTrack(isAuto) {
     const range = 200; // 자동 추적 조회 범위 — 상위 200위까지 (사용자 요청)
     const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
 
-    const apiCache = new Map();
     try {
       for (const rankType of rankTypes) {
         let foundRank = null;
-        let virtualRank = 0;
-        for (let start = 1; start <= range; start += 100) {
-          const need = Math.min(100, range - start + 1);
-          let resp = apiCache.get(start);
-          if (!resp) { resp = await _naverShopSearch(keyword, start, need, api.clientId, api.clientSecret); apiCache.set(start, resp); }
-          const items = resp.items || [];
-          const filtered = (rankType === 'plus') ? items.filter(_isPlusStoreItem) : items;
-          const idx = filtered.findIndex(x => _matchItem(x, product.name, productIds));
-          if (idx >= 0) { foundRank = (rankType === 'plus') ? (virtualRank + idx + 1) : (start + idx); break; }
-          if (rankType === 'plus') virtualRank += filtered.length;
-          if (items.length < need) break;
+        // 확장으로 검색결과(순위순) 받아 매칭 — sets(plus=네이버페이/그외 전체) 별로 1회 fetch
+        const { items, err } = await _extFetchItems(keyword, rankType);
+        if (items == null) {
+          // 확장 미설치/미응답 → 전체 중단(모든 키워드가 같은 이유로 실패하므로)
+          const msg = err === 'no_extension' ? '확장프로그램 미설치/미응답' : ('확장 오류: ' + err);
+          console.error('[KW Auto] 중단 —', msg);
+          console.groupEnd();
+          if (!isAuto) alert('⚠ ' + msg + '\n\nGPAGO 확장프로그램을 설치하고(좌측 "확장 프로그램 INSTALL") 브라우저를 켠 상태에서 실행하세요.');
+          return { ok, skipped: list.length - ok, errors: [{ keyword, error: msg }], aborted: true };
+        }
+        if (items.length) {
+          const idx = items.findIndex(x => _matchItem(x, product.name, productIds));
+          if (idx >= 0) foundRank = idx + 1;
         }
         const histKey = productKey + '||' + keyword + '||' + rankType;
         const hist = history[histKey] || { prev: null, best: null, worst: null };
