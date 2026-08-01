@@ -7078,6 +7078,8 @@ async function _extFetchItems(keyword) {
   try {
     cap = await _captureNextExtensionPayload(30000, () => {
       _extensionTriggerSource = null;   // multiCapture 가 라우팅을 가로채므로 소스 무의미
+      // 확장은 키워드를 kw-naver 입력란에서 읽음 → 트리거 전에 반드시 세팅 (rtrank 와 동일)
+      try { const nInput = document.getElementById('kw-naver'); if (nInput) nInput.value = keyword; } catch (_) {}
       window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword, deep: 5 }, window.location.origin);
     });
   } catch (e) {
