@@ -7070,26 +7070,22 @@ function renderKwAutoStatus() {
   }
 }
 
-// 순위추적용 — 실시간 순위추적(rtrank)과 동일한 확장 트리거(REQUEST_TRIGGER, deep)로
-//  네이버 쇼핑 검색결과(순위순)를 받아 items 로 변환. (쇼핑 Open API 종료 대체)
-//  _captureNextExtensionPayload 로 payload 를 프로미스로 캡처(라우팅 가로챔).
+// 순위추적용 — 확장 백그라운드 직접 fetch(DIRECT_FETCH, 팝업 없음, 로파고 방식).
+//  키워드 분석이 쓰는 그 방식과 동일. 보이는 탭을 안 열어 네이버 '이용 제한' 창을 피함.
 async function _extFetchItems(keyword) {
-  let cap;
-  try {
-    cap = await _captureNextExtensionPayload(30000, () => {
-      _extensionTriggerSource = null;   // multiCapture 가 라우팅을 가로채므로 소스 무의미
-      // 확장은 키워드를 kw-naver 입력란에서 읽음 → 트리거 전에 반드시 세팅 (rtrank 와 동일)
-      try { const nInput = document.getElementById('kw-naver'); if (nInput) nInput.value = keyword; } catch (_) {}
-      window.postMessage({ type: 'GPAGO_REQUEST_TRIGGER', source: 'gpago-page', keyword, deep: 5 }, window.location.origin);
-    });
-  } catch (e) {
-    return { items: null, err: /타임아웃|timeout/i.test(String(e && e.message || e)) ? 'no_extension' : String((e && e.message) || e) };
+  // 1) 조용한 백그라운드 fetch('tool') → 실패 시 2) 보이는 탭 보안해제('analysis') 로 재시도
+  let ext = await _tryExtensionDirectFetch(keyword, 20000, ['checkout'], 'tool');
+  if (!ext || (ext && !ext.ok && (ext.error === 'no_products' || !ext.tabs))) {
+    const ext2 = await _tryExtensionDirectFetch(keyword, 40000, ['checkout'], 'analysis');
+    if (ext2) ext = ext2;
   }
-  const tabs = (cap && cap.tabs) || {};
-  let best = (cap && cap.data && Array.isArray(cap.data.products)) ? cap.data.products : [];
+  if (!ext) return { items: null, err: 'no_extension' };            // 확장 미설치/미응답
+  if (!ext.ok) return { items: [], err: ext.error || 'ext_fail' };  // no_products(418 추정) → 빈 결과(연속 감지로 중단)
+  const tabs = ext.tabs || {};
+  let best = [];
   for (const k of Object.keys(tabs)) {
     const arr = tabs[k] && tabs[k].products;
-    if (Array.isArray(arr) && arr.length > best.length) best = arr;   // deep: 전체(400) > 네이버페이(80)
+    if (Array.isArray(arr) && arr.length > best.length) best = arr;
   }
   if (!best.length) return { items: [], err: 'no_products' };
   const items = best.map(p => ({
