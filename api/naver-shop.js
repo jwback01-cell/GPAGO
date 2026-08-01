@@ -9,12 +9,12 @@
 // 호출: GET /api/naver-shop?query=마스크&display=100&start=1&sort=sim
 
 const HUB_BASE = 'https://naverapihub.apigw.ntruss.com';
-// API Hub 쇼핑검색 후보 경로 — 실제 동작하는 경로를 자동 탐색(첫 성공 사용)
+// API Hub 쇼핑검색 경로 — 뉴스가 /search/v1/news 로 확인됨 → 쇼핑은 /search/v1/shop (확장자 없음)
 const HUB_SHOP_PATHS = [
-  '/openapi/v1/search/shop.json',
-  '/v1/search/shop.json',
-  '/openapi/v1/search/shop',
+  '/search/v1/shop',
   '/search/v1/shop.json',
+  '/v1/search/shop.json',
+  '/openapi/v1/search/shop.json',
 ];
 
 async function tryHub(keyId, key, qs) {
