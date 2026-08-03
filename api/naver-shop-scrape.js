@@ -149,7 +149,8 @@ function buildProxyUrl(target, withGeo) {
   }
   if (SCRAPINGBEE_API_KEY) {
     // 네이버엔 premium_proxy + country_code=kr 가 사실상 필수(무료체험 크레딧으로 테스트 가능).
-    const p = { api_key: SCRAPINGBEE_API_KEY, url: target, render_js: (process.env.SCRAPINGBEE_RENDER || 'false') };
+    // forward_headers=true → 요청에 'Spb-' 프리픽스로 보낸 헤더를 대상(네이버)으로 전달(Referer 위장용).
+    const p = { api_key: SCRAPINGBEE_API_KEY, url: target, render_js: (process.env.SCRAPINGBEE_RENDER || 'false'), forward_headers: 'true' };
     const usePrem = (process.env.SCRAPINGBEE_PREMIUM || 'true').toLowerCase() !== 'false';
     if (usePrem) p.premium_proxy = 'true';
     if (withGeo && geo && geo !== 'none') p.country_code = geo;
@@ -163,25 +164,28 @@ function buildProxyUrl(target, withGeo) {
 }
 function proxyConfigured() { return !!buildProxyUrl('https://x', true); }
 
-async function _fetchProxied(proxied) {
+async function _fetchProxied(proxied, fwd) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 45000);
   try {
-    const r = await fetch(proxied, { headers: { 'Accept': 'text/html,application/json,*/*', 'Accept-Language': 'ko-KR,ko;q=0.9' }, signal: ctrl.signal });
+    // 대상(네이버)으로 전달할 헤더: ScrapingBee 는 'Spb-' 프리픽스, ScraperAPI(keep_headers) 는 원본 그대로.
+    const headers = { 'Accept': 'text/html,application/json,*/*', 'Accept-Language': 'ko-KR,ko;q=0.9' };
+    if (fwd) for (const [k, v] of Object.entries(fwd)) { headers['Spb-' + k] = v; headers[k] = v; }
+    const r = await fetch(proxied, { headers, signal: ctrl.signal });
     const html = await r.text();
     return { ok: r.ok, status: r.status, html, len: html.length };
   } catch (e) { return { ok: false, status: 0, html: '', len: 0, error: String(e && e.message || e) }; }
   finally { clearTimeout(t); }
 }
 
-async function tryProxyFetch(target) {
+async function tryProxyFetch(target, fwd) {
   // 1) 지오타게팅(kr) 포함 시도 → 2) 무료플랜이 거부(4xx)하면 지오 없이 재시도
   let url = buildProxyUrl(target, true);
   if (!url) return { ok: false, status: 0, html: '', len: 0, error: 'no_proxy_key' };
-  let r = await _fetchProxied(url);
+  let r = await _fetchProxied(url, fwd);
   if (!r.ok && (r.status === 400 || r.status === 401 || r.status === 403)) {
     const noGeo = buildProxyUrl(target, false);
-    if (noGeo && noGeo !== url) { const r2 = await _fetchProxied(noGeo); r2._retriedNoGeo = true; if (r2.ok || r2.len > r.len) r = r2; }
+    if (noGeo && noGeo !== url) { const r2 = await _fetchProxied(noGeo, fwd); r2._retriedNoGeo = true; if (r2.ok || r2.len > r.len) r = r2; }
   }
   return r;
 }
@@ -232,14 +236,22 @@ export default async function handler(req, res) {
   // 2단계: 스크래핑 API 프록시 (주거용/우회 IP) — 키가 설정돼 있을 때만
   //   504(함수 타임아웃) 방지: 가벼운 내부 API(JSON) 1회 → 실패 시 데스크탑 SERP HTML 1회. (각 ≤22초)
   if (proxyConfigured()) {
-    const desktopUrl = `https://search.shopping.naver.com/search/all?${new URLSearchParams({ query: q, frm: 'NVSHATC' }).toString()}`;
-    // 프리미엄 프록시는 느리므로 SERP HTML 1회만 (45초). __NEXT_DATA__ 에 manuTag 포함.
+    const serpRef = `https://search.shopping.naver.com/search/all?${new URLSearchParams({ query: q, frm: 'NVSHATC' }).toString()}`;
+    // 요즘 데스크탑 SERP 는 상품을 클라이언트 JS 로 로드 → __NEXT_DATA__ 에 상품 없음.
+    // 그래서 네이버 내부 JSON API 를 먼저 호출(상품 배열 바로 옴). Referer 를 forward_headers 로 전달해야 통과.
+    const apiUrl = `https://search.shopping.naver.com/api/search/all?${new URLSearchParams({
+      sort: 'rel', pagingIndex: '1', pagingSize: '40', viewType: 'list',
+      productSet: 'total', query: q, frm: 'NVSHATC', origQuery: q, iq: '', eq: '', xq: '',
+    }).toString()}`;
+    const apiHeaders = { 'Referer': serpRef, 'User-Agent': UA_DESKTOP, 'Accept': 'application/json, text/plain, */*' };
+    // 1) 내부 JSON API (가볍고 파싱 쉬움) → 2) 실패 시 SERP HTML 폴백
     const proxyTargets = [
-      { label: 'serp', url: desktopUrl },
+      { label: 'api',  url: apiUrl,   fwd: apiHeaders },
+      { label: 'serp', url: serpRef,  fwd: { 'Referer': 'https://www.naver.com/', 'User-Agent': UA_DESKTOP } },
     ];
     for (const pt of proxyTargets) {
       try {
-        const r = await tryProxyFetch(pt.url);
+        const r = await tryProxyFetch(pt.url, pt.fwd);
         diagnostics.push({ via: 'proxy', label: pt.label, status: r.status, len: r.len, ok: r.ok, error: r.error });
         if (!r.ok || !r.html) continue;
         const parsed = parseProducts(r.html, q);
