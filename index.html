@@ -980,9 +980,9 @@
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   순위추적
                 </button>
-                <span class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-full bg-brand-green-light text-[#00C853]">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
-                  자동추적 ON
+                <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-full bg-brand-bg border border-brand-border text-brand-gray" title="페이지 진입·새로고침 시 자동으로 조회하지 않습니다. 위 '순위추적' 버튼을 눌러야 순위를 가져옵니다.">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  수동 조회 모드
                 </span>
               </div>
             </div>
@@ -7266,9 +7266,10 @@ async function runKwAutoTrackNow() {
 
 let _kwAutoTickTimer = null;
 function _scheduleKwAutoTick() {
-  if (_kwAutoTickTimer) clearInterval(_kwAutoTickTimer);
-  _kwAutoTickTimer = setInterval(_kwAutoTick, 60 * 1000); // 1분마다
-  setTimeout(_kwAutoTick, 500); // 즉시 1회
+  // 사용자 요청(2026-08-03): 페이지 로드·새로고침·'순위 변동 추이' 진입 시 자동 조회 금지.
+  //   순위 조회는 '순위추적'(상품별) / '지금 자동 추적 실행'(전체) 버튼을 눌렀을 때만 실행한다.
+  //   (기존의 즉시 1회 setTimeout + 매분 setInterval 자동 조회 제거 — 새로고침마다 재조회되던 불편 해소)
+  if (_kwAutoTickTimer) { clearInterval(_kwAutoTickTimer); _kwAutoTickTimer = null; }
 }
 
 async function _kwAutoTick() {
