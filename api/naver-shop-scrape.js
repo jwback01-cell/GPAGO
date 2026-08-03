@@ -134,6 +134,8 @@ function parseProducts(html, q) {
 //     SCRAPER_API_KEY      (scraperapi.com,  무료 1,000건/월)
 //     SCRAPINGBEE_API_KEY  (scrapingbee.com, 무료 1,000크레딧)
 //     SCRAPE_PROXY_URL     (직접 템플릿; "{url}" 자리에 인코딩된 대상 URL 치환)
+// ⚠ 임시 하드코딩 키(사용자 요청). 공개 저장소면 노출되니 가급적 Vercel 환경변수(SCRAPINGBEE_API_KEY)로 옮기고 키 재발급 권장.
+const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY || 'NO7UL1TR7ZN72KYBVIF2LEK7W8ZVYT1BG6CN1QNJ3ST6B1FV777B8NGURJYP0O9X94J3F8YP8UGUOC5P';
 function buildProxyUrl(target, withGeo) {
   const geo = process.env.SCRAPER_API_COUNTRY || 'kr';
   if (process.env.SCRAPER_API_KEY) {
@@ -145,9 +147,9 @@ function buildProxyUrl(target, withGeo) {
     else if (prem === 'true' || prem === 'premium') p.premium = 'true';
     return 'https://api.scraperapi.com/?' + new URLSearchParams(p).toString();
   }
-  if (process.env.SCRAPINGBEE_API_KEY) {
+  if (SCRAPINGBEE_API_KEY) {
     // 네이버엔 premium_proxy + country_code=kr 가 사실상 필수(무료체험 크레딧으로 테스트 가능).
-    const p = { api_key: process.env.SCRAPINGBEE_API_KEY, url: target, render_js: (process.env.SCRAPINGBEE_RENDER || 'false') };
+    const p = { api_key: SCRAPINGBEE_API_KEY, url: target, render_js: (process.env.SCRAPINGBEE_RENDER || 'false') };
     const usePrem = (process.env.SCRAPINGBEE_PREMIUM || 'true').toLowerCase() !== 'false';
     if (usePrem) p.premium_proxy = 'true';
     if (withGeo && geo && geo !== 'none') p.country_code = geo;
