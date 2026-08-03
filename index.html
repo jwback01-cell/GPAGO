@@ -7104,10 +7104,12 @@ async function _fetchRankItems(keyword) {
 // 순위추적용 — 확장 백그라운드 직접 fetch(DIRECT_FETCH, 팝업 없음, 로파고 방식).
 //  키워드 분석이 쓰는 그 방식과 동일. 보이는 탭을 안 열어 네이버 '이용 제한' 창을 피함.
 async function _extFetchItems(keyword) {
+  // 순위추적은 '전체(total)' 검색 순위 기준(기존 Open API sort=sim 과 동일 집합) — 네이버페이(checkout) 탭이 아님!
+  //  checkout 탭 80개엔 내 상품이 없어 '순위권 밖'으로 잘못 나오던 문제 수정.
   // 1) 조용한 백그라운드 fetch('tool') → 실패 시 2) 보이는 탭 보안해제('analysis') 로 재시도
-  let ext = await _tryExtensionDirectFetch(keyword, 20000, ['checkout'], 'tool');
+  let ext = await _tryExtensionDirectFetch(keyword, 20000, ['total'], 'tool');
   if (!ext || (ext && !ext.ok && (ext.error === 'no_products' || !ext.tabs))) {
-    const ext2 = await _tryExtensionDirectFetch(keyword, 40000, ['checkout'], 'analysis');
+    const ext2 = await _tryExtensionDirectFetch(keyword, 40000, ['total'], 'analysis');
     if (ext2) ext = ext2;
   }
   if (!ext) return { items: null, err: 'no_extension' };            // 확장 미설치/미응답
