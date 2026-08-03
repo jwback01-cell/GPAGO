@@ -252,7 +252,9 @@ export default async function handler(req, res) {
     for (const pt of proxyTargets) {
       try {
         const r = await tryProxyFetch(pt.url, pt.fwd);
-        diagnostics.push({ via: 'proxy', label: pt.label, status: r.status, len: r.len, ok: r.ok, error: r.error });
+        const d = { via: 'proxy', label: pt.label, status: r.status, len: r.len, ok: r.ok, error: r.error };
+        if (!r.ok) d.body = (r.html || '').slice(0, 160);  // ScrapingBee 오류 메시지(크레딧 소진/키 오류 등) 노출
+        diagnostics.push(d);
         if (!r.ok || !r.html) continue;
         const parsed = parseProducts(r.html, q);
         if (parsed) { respond(parsed, `proxy-${pt.label}`); return; }
