@@ -104,6 +104,14 @@ export default async function handler(req, res) {
   }
   if (!SB_KEY) { res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다' }); return; }
 
+  // 서버 크론은 브라우저(확장)를 쓸 수 없어 주거용 프록시가 있어야만 순위를 수집할 수 있음.
+  // 종료된 openapi.naver.com Open API 는 항상 실패 → 프록시 키가 없으면 실행 자체를 건너뜀
+  // (매일 거짓 '권 밖'(null) 기록이 series 에 쌓이는 것을 방지). 확장(무료) 방식은 브라우저에서 수동/자동 추적으로 처리.
+  if (!process.env.SCRAPINGBEE_API_KEY && !process.env.SCRAPER_API_KEY && !process.env.SCRAPE_PROXY_URL) {
+    res.status(200).json({ ok: true, skipped: 'no_proxy_key', note: '서버 크론은 유료 프록시(SCRAPINGBEE_API_KEY 등)가 필요합니다. 확장 방식은 브라우저에서 추적하세요.' });
+    return;
+  }
+
   const nowIso = new Date().toISOString();
   const kstDay = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // KST 날짜
 
