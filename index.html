@@ -8172,10 +8172,9 @@ async function runKwTrackForProduct(productKey) {
   if (!productKey) return;
   const list = _loadKwManage().filter(it => it.productKey === productKey);
   if (!list.length) { alert('이 상품에 등록된 키워드가 없습니다.\n"키워드 관리"로 먼저 추가하세요.'); return; }
-  const api = _loadNaverApi();
-  if (!api.clientId || !api.clientSecret) { alert('네이버 API Client ID/Secret을 먼저 등록하세요.\n"설정" 탭 → 네이버 API 설정'); return; }
   const product = _kwResolveProduct(productKey);
   if (!product) { alert('연결된 상품을 찾을 수 없습니다.'); return; }
+  // 종료된 쇼핑 Open API 대신 서버 스크랩(프록시/주거용 IP·판다랭크 방식) → 확장 폴백. API 키 불필요.
 
   const btn = document.getElementById('kw-detail-track-btn');
   const orig = btn ? btn.innerHTML : '';
@@ -8185,29 +8184,32 @@ async function runKwTrackForProduct(productKey) {
   const now = new Date();
   const productIds = _extractProductIds(product.url);
   const realKey = product.url || product.name;
-  let ok = 0, skipped = 0;
+  let ok = 0, skipped = 0, consecEmpty = 0, aborted = false;
   const errors = [];
 
   for (let i = 0; i < list.length; i++) {
     const it = list[i];
     const keyword = it.keyword;
-    const range = 200;
     const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
-    const apiCache = new Map();
     try {
+      // 순위 상품목록 — 서버 스크랩(프록시) 우선, 실패 시 확장 (키워드당 1회)
+      const { items, err } = await _fetchRankItems(keyword);
+      if (items == null) {
+        // 서버·확장 모두 소스 없음 → 전체 중단
+        aborted = true;
+        errors.push({ keyword, error: '데이터 소스 없음(' + (err || '') + ')' });
+        break;
+      }
+      // 검색결과 0개가 연속 3회면 네이버 이용제한(418) 추정 → 잘못된 '권 밖' 기록 막고 중단
+      if (items.length === 0) {
+        consecEmpty++;
+        if (consecEmpty >= 3) { aborted = true; errors.push({ keyword, error: '네이버 이용제한(418) 추정' }); break; }
+      } else { consecEmpty = 0; }
       for (const rankType of rankTypes) {
         let foundRank = null;
-        let virtualRank = 0;
-        for (let start = 1; start <= range; start += 100) {
-          const need = Math.min(100, range - start + 1);
-          let resp = apiCache.get(start);
-          if (!resp) { resp = await _naverShopSearch(keyword, start, need, api.clientId, api.clientSecret); apiCache.set(start, resp); }
-          const items = resp.items || [];
-          const filtered = (rankType === 'plus') ? items.filter(_isPlusStoreItem) : items;
-          const idx = filtered.findIndex(x => _matchItem(x, product.name, productIds));
-          if (idx >= 0) { foundRank = (rankType === 'plus') ? (virtualRank + idx + 1) : (start + idx); break; }
-          if (rankType === 'plus') virtualRank += filtered.length;
-          if (items.length < need) break;
+        if (items.length) {
+          const idx = items.findIndex(x => _matchItem(x, product.name, productIds));
+          if (idx >= 0) foundRank = idx + 1;
         }
         const histKey = realKey + '||' + keyword + '||' + rankType;
         const hist = history[histKey] || { prev: null, best: null, worst: null };
@@ -8217,6 +8219,7 @@ async function runKwTrackForProduct(productKey) {
         _appendKwSeries(histKey, now.toISOString(), foundRank);
       }
       ok++;
+      await new Promise(rs => setTimeout(rs, 1500));   // 네이버 418 회피 — 키워드 간 딜레이
     } catch (e) {
       const errMsg = e.message || String(e);
       errors.push({ keyword, error: errMsg });
@@ -8236,6 +8239,7 @@ async function runKwTrackForProduct(productKey) {
   _renderKwDetailTable();
   if (typeof renderKwTrend === 'function') renderKwTrend();
   let msg = `순위 추적 완료\n성공: ${ok}건 / 실패: ${skipped}건`;
+  if (aborted) msg += '\n\n⚠ 중단됨: 순위 데이터를 가져올 소스가 없거나 네이버가 일시 차단(418)했습니다.\n· (권장) Vercel 환경변수 SCRAPINGBEE_API_KEY / SCRAPER_API_KEY 설정 — 서버가 수집\n· 또는 GPAGO 확장 설치 후 브라우저를 켠 상태로 재시도';
   if (errors.length) {
     const byMsg = {};
     errors.forEach(e => { byMsg[e.error] = (byMsg[e.error] || 0) + 1; });
