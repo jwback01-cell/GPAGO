@@ -7070,6 +7070,36 @@ function renderKwAutoStatus() {
   }
 }
 
+// 순위추적용 — 서버 스크랩(프록시/주거용 IP, 판다랭크 방식: 브라우저 불필요).
+//  Vercel 환경변수 SCRAPER_API_KEY 또는 SCRAPINGBEE_API_KEY 설정 시 프록시로 우회.
+async function _serverScrapeItems(keyword) {
+  try {
+    const r = await fetch('/api/naver-shop-scrape?query=' + encodeURIComponent(keyword));
+    if (!r.ok) return { items: null, err: 'HTTP ' + r.status };
+    const d = await r.json();
+    const products = Array.isArray(d.products) ? d.products : [];
+    if (!products.length) return { items: [], err: 'no_products' };
+    const items = products.map(p => ({
+      productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
+      title: p.productTitle || p.productName || p.title || '',
+      link: p.crUrl || p.adcrUrl || p.dlUrl || p.link || p.mallProductUrl || (p.id ? ('https://search.shopping.naver.com/catalog/' + p.id) : ''),
+      productUrl: p.mallProductUrl || p.link || '',
+    }));
+    return { items, err: null };
+  } catch (e) { return { items: null, err: String((e && e.message) || e) }; }
+}
+
+// 순위 상품목록 통합 — 1) 서버 스크랩(프록시) → 2) 확장 폴백
+async function _fetchRankItems(keyword) {
+  const s = await _serverScrapeItems(keyword);
+  if (s.items && s.items.length) return { ...s, via: 'server' };
+  const e = await _extFetchItems(keyword);
+  if (e.items && e.items.length) return { ...e, via: 'ext' };
+  if (s.items != null) return { items: [], err: s.err || 'no_products', via: 'server' };  // 서버가 응답했으나 0건(권 밖/차단)
+  if (e.items != null) return { items: [], err: e.err || 'no_products', via: 'ext' };
+  return { items: null, err: e.err || s.err || 'no_source' };   // 서버·확장 모두 소스 없음
+}
+
 // 순위추적용 — 확장 백그라운드 직접 fetch(DIRECT_FETCH, 팝업 없음, 로파고 방식).
 //  키워드 분석이 쓰는 그 방식과 동일. 보이는 탭을 안 열어 네이버 '이용 제한' 창을 피함.
 async function _extFetchItems(keyword) {
@@ -7128,15 +7158,14 @@ async function runKwAutoTrack(isAuto) {
     const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
 
     try {
-      // 확장으로 검색결과(순위순)를 키워드당 1회 받아옴 — rankTypes 는 같은 목록으로 순위 계산
-      const { items, err } = await _extFetchItems(keyword);
+      // 순위 상품목록 — 서버 스크랩(프록시) 우선, 실패 시 확장 (키워드당 1회)
+      const { items, err, via } = await _fetchRankItems(keyword);
       if (items == null) {
-        // 확장 미설치/미응답(타임아웃) → 전체 중단
-        const msg = err === 'no_extension' ? '확장프로그램 미설치/미응답' : ('확장 오류: ' + err);
-        console.error('[KW Auto] 중단 —', msg);
+        // 서버·확장 모두 소스 없음 → 전체 중단
+        console.error('[KW Auto] 중단 — 데이터 소스 없음:', err);
         console.groupEnd();
-        if (!isAuto) alert('⚠ ' + msg + '\n\nGPAGO 확장프로그램을 설치하고(좌측 "확장 프로그램 INSTALL") 브라우저를 켠 상태에서 실행하세요.');
-        return { ok, skipped: list.length - ok, errors: [{ keyword, error: msg }], aborted: true };
+        if (!isAuto) alert('⚠ 순위 데이터를 가져올 소스가 없습니다.\n\n둘 중 하나를 설정하세요:\n1) (권장·판다랭크 방식) Vercel 환경변수에 프록시 키 설정 — SCRAPINGBEE_API_KEY 또는 SCRAPER_API_KEY (무료 티어). 브라우저 없이 서버가 수집합니다.\n2) GPAGO 확장프로그램 설치 후 브라우저를 켠 상태로 실행.');
+        return { ok, skipped: list.length - ok, errors: [{ keyword, error: err }], aborted: true };
       }
       // 검색결과가 0개면 네이버 이용제한(418) 가능성 — 연속 3회면 잘못된 '권 밖' 기록 막고 중단
       if (items.length === 0) {
