@@ -7089,15 +7089,16 @@ async function _serverScrapeItems(keyword) {
   } catch (e) { return { items: null, err: String((e && e.message) || e) }; }
 }
 
-// 순위 상품목록 통합 — 1) 서버 스크랩(프록시) → 2) 확장 폴백
+// 순위 상품목록 통합 — 1) 확장(무료·사용자 IP) → 2) 서버 스크랩(유료 프록시, 크레딧 있을 때)
+//  네이버는 데이터센터 IP 차단 → 확장이 사용자 브라우저 IP로 수집(비용 0). 프록시는 크레딧 소진 시 401.
 async function _fetchRankItems(keyword) {
-  const s = await _serverScrapeItems(keyword);
-  if (s.items && s.items.length) return { ...s, via: 'server' };
   const e = await _extFetchItems(keyword);
   if (e.items && e.items.length) return { ...e, via: 'ext' };
-  if (s.items != null) return { items: [], err: s.err || 'no_products', via: 'server' };  // 서버가 응답했으나 0건(권 밖/차단)
-  if (e.items != null) return { items: [], err: e.err || 'no_products', via: 'ext' };
-  return { items: null, err: e.err || s.err || 'no_source' };   // 서버·확장 모두 소스 없음
+  const s = await _serverScrapeItems(keyword);
+  if (s.items && s.items.length) return { ...s, via: 'server' };
+  if (e.items != null) return { items: [], err: e.err || 'no_products', via: 'ext' };      // 확장이 응답했으나 0건(권 밖/418)
+  if (s.items != null) return { items: [], err: s.err || 'no_products', via: 'server' };    // 서버가 응답했으나 0건
+  return { items: null, err: e.err || s.err || 'no_source' };   // 확장·서버 모두 소스 없음
 }
 
 // 순위추적용 — 확장 백그라운드 직접 fetch(DIRECT_FETCH, 팝업 없음, 로파고 방식).
