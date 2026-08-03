@@ -6361,8 +6361,10 @@ function _extractProductIds(url) {
 
 function _matchItem(item, productName, productIds) {
   // 1. URL/productId 정확 매칭 (가장 신뢰도 높음)
+  //  네이버 SERP 상품은 crUrl(리다이렉트)만 있어 원본ID가 안 보임 → 스마트스토어 원본ID(mallProductId)·네이버페이ID(npayProductId)도 함께 대조
   if (productIds && productIds.length) {
-    const link = (item.link || '') + ' ' + (item.productId || '') + ' ' + (item.productUrl || '');
+    const link = (item.link || '') + ' ' + (item.productId || '') + ' ' + (item.productUrl || '')
+               + ' ' + (item.mallProductId || '') + ' ' + (item.npayProductId || '');
     for (const pid of productIds) {
       if (link.includes(pid)) return true;
     }
@@ -7123,6 +7125,9 @@ async function _extFetchItems(keyword) {
   if (!best.length) return { items: [], err: 'no_products' };
   const items = best.map(p => ({
     productId: String(p.id || p.productId || p.nvMid || p.mid || ''),
+    mallProductId: String(p.mallProductId || ''),   // 스마트스토어 원본 상품ID (매칭 핵심)
+    npayProductId: String(p.npayProductId || ''),   // 네이버페이 상품ID
+    mallName: p.mallName || '',
     title: p.productTitle || p.productName || p.title || '',
     link: p.crUrl || p.adcrUrl || p.dlUrl || p.link || p.mallProductUrl || (p.id ? ('https://search.shopping.naver.com/catalog/' + p.id) : ''),
     productUrl: p.mallProductUrl || p.link || '',
