@@ -1733,7 +1733,7 @@ PBT키캡	1180
           </div>
           <div class="flex items-center gap-2">
             <input id="prodsrc-detail-search" type="text" placeholder="키워드 검색..." oninput="prodsrcRenderDetail()" class="px-3 py-1.5 bg-brand-bg rounded-full text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-brand-border w-[200px]">
-            <button onclick="prodsrcExportExcel()" title="현재 폴더 데이터를 엑셀로 다운로드" class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5">
+            <button onclick="prodsrcExportExcel()" title="현재 폴더를 최근 2개 날짜 값 비교로 엑셀 다운로드" class="px-3 py-1.5 rounded-full bg-brand-green text-white text-xs font-bold hover:opacity-90 flex items-center gap-1.5">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               엑셀 다운로드
             </button>
@@ -14437,10 +14437,11 @@ function prodsrcExportExcel() {
     return ar - br;
   });
   if (!rows.length) { alert('내보낼 데이터가 없습니다'); return; }
-  // 날짜 컬럼 수집
+  // 날짜 컬럼 수집 — 사용자 요청: 전체 기간이 아니라 '가장 최근 2개 날짜'만 비교
   const allDatesSet = new Set();
   rows.forEach(r => _prodsrcGetHistory(r).forEach(h => { if (h.date) allDatesSet.add(h.date); }));
-  const dateCols = [...allDatesSet].sort((a, b) => String(a).localeCompare(String(b)));
+  const _allDates = [...allDatesSet].sort((a, b) => String(a).localeCompare(String(b)));
+  const dateCols = _allDates.slice(-2);   // 마지막 두 날짜(예: 07-15, 08-10)만 → 그 사이 변동 1개 컬럼
   // 헤더 — 카테고리 컬럼 추가
   const header = ['순위', '키워드', '카테고리', ...dateCols];
   // 날짜별 변동폭 컬럼 (두 번째 날짜부터)
