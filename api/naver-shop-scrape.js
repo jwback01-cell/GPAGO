@@ -106,8 +106,61 @@ async function tryFetch(url, isMobile) {
   return { ok: r.ok, status: r.status, html, len: html.length };
 }
 
+// raw HTML 에서 상품 "객체"를 통째로 추출 (확장 background.js extractProducts 와 동일 로직)
+//   네이버 SERP 가 __NEXT_DATA__ 에 상품을 안 담는 경우에도 풀 필드(mallProductId·rank 등)를 확보.
+function extractProductObjects(html) {
+  const n = html.length;
+  const inStr = new Uint8Array(n);
+  let st = false, esc = false;
+  for (let i = 0; i < n; i++) {
+    const c = html.charCodeAt(i);
+    if (esc) { esc = false; inStr[i] = 1; continue; }
+    if (c === 92) { esc = true; if (st) inStr[i] = 1; continue; }
+    if (c === 34) { if (st) inStr[i] = 1; st = !st; continue; }
+    if (st) inStr[i] = 1;
+  }
+  const out = []; const seen = new Set();
+  const needle = '"productTitle"'; let from = 0;
+  while (true) {
+    const k = html.indexOf(needle, from); if (k < 0) break; from = k + needle.length;
+    if (inStr[k]) continue;
+    let p = k + needle.length; while (p < n && (html[p] === ' ' || html[p] === '\n' || html[p] === '\t' || html[p] === '\r')) p++;
+    if (html[p] !== ':') continue;
+    let depth = 0, start = -1;
+    for (let j = k; j >= 0; j--) { if (inStr[j]) continue; const ch = html[j]; if (ch === '}') depth++; else if (ch === '{') { if (depth === 0) { start = j; break; } depth--; } }
+    if (start < 0) continue;
+    let d2 = 0, end = -1;
+    for (let j = start; j < n; j++) { if (inStr[j]) continue; const ch = html[j]; if (ch === '{') d2++; else if (ch === '}') { d2--; if (d2 === 0) { end = j + 1; break; } } }
+    if (end < 0) continue;
+    const block = html.slice(start, end);
+    if (block.length > 300000) { if (end > from) from = end; continue; }
+    try {
+      const o = JSON.parse(block);
+      if (o && (o.productTitle || o.productName)) {
+        const id = String(o.id || o.nvMid || o.mallProductId || o.productId || o.productTitle);
+        if (!seen.has(id)) { seen.add(id); out.push(o); }
+      }
+    } catch (_) {}
+    if (end > from) from = end;
+  }
+  return out;
+}
+// 광고 제외(adId/adcrUrl/nvAdProductId 보유만) + 노출순위 정렬
+function dropAdsAndSort(list) {
+  const isAd = o => (o.adId && String(o.adId) !== '0') || o.adcrUrl || o.nvAdProductId;
+  const rk = o => { const v = o.rank ?? o.productRank ?? o.nvShowRank; const n = Number(v); return isNaN(n) ? 1e9 : n; };
+  return list.filter(o => !isAd(o)).map((o, i) => [o, i]).sort((a, b) => (rk(a[0]) - rk(b[0])) || (a[1] - b[1])).map(x => x[0]);
+}
+
 // HTML(또는 JSON 문자열)에서 products 추출 — 직접/프록시 공용
 function parseProducts(html, q) {
+  // 0) 상품 객체 통째 추출 — 가장 풍부한 필드(상품ID 매칭에 필요). 10개 이상이면 채택
+  try {
+    const objs = dropAdsAndSort(extractProductObjects(html));
+    if (objs.length >= 10) {
+      return { query: q, products: objs, total: objs.length, tabTotals: {}, terms: [], nluTerms: [], source: 'obj' };
+    }
+  } catch (_) {}
   const nextData = extractNextData(html);
   if (nextData) {
     const scope = findProducts(nextData.props, 0) || findProducts(nextData, 0);
