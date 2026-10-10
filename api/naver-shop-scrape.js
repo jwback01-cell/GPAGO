@@ -296,6 +296,44 @@ export default async function handler(req, res) {
     });
   };
 
+  // 순위추적용 다중 페이지 — Bright Data 가 설정돼 있고 pages>1 이면 SERP 를 여러 페이지 병렬 조회해 합침
+  //   GET /api/naver-shop-scrape?query=...&pages=5[&pagingSize=40]  → 상위 (pages×pagingSize)개
+  const pagesN = Math.max(1, Math.min(6, parseInt(req.query && req.query.pages) || 1));
+  if (pagesN > 1 && brightDataConfigured()) {
+    const size = Math.max(20, Math.min(80, parseInt(req.query && req.query.pagingSize) || 40));
+    const set = (req.query && req.query.productSet) ? String(req.query.productSet) : '';
+    const urlFor = pg => {
+      const sp = new URLSearchParams({ query: q, prevQuery: q, vertical: 'search', pagingIndex: String(pg), pagingSize: String(size), frm: 'NVSHATC' });
+      if (set && set !== 'total') sp.set('productSet', set);
+      return `https://search.shopping.naver.com/search/all?${sp.toString()}`;
+    };
+    const pageResults = await Promise.all(Array.from({ length: pagesN }, (_, i) => i + 1).map(async pg => {
+      const r = await tryBrightDataFetch(urlFor(pg));
+      const d = { via: 'proxy-multi', page: pg, status: r.status, len: r.len, ok: r.ok };
+      if (!r.ok || !r.html) { if (!r.ok) d.body = (r.html || '').slice(0, 120); return { pg, d, parsed: null }; }
+      const parsed = parseProducts(r.html, q);
+      if (!parsed) d.parsed = 'no products';
+      return { pg, d, parsed };
+    }));
+    const seenIds = new Set(); const merged = [];
+    for (const pr of pageResults.sort((x, y) => x.pg - y.pg)) {
+      diagnostics.push(pr.d);
+      if (!pr.parsed) continue;
+      for (const o of pr.parsed.products) {
+        const id = String(o.id || o.nvMid || o.mallProductId || o.productId || o.productTitle || '');
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        merged.push(o);
+      }
+    }
+    if (merged.length) {
+      const first = (pageResults.find(x => x.parsed) || {}).parsed || {};
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.status(200).json({ query: q, products: merged, total: merged.length, tabTotals: first.tabTotals || {}, terms: first.terms || [], nluTerms: first.nluTerms || [], source: 'obj-proxy-multi', pagesFetched: pageResults.filter(x => x.parsed).length, diagnostics });
+      return;
+    }
+  }
+
   // 1단계: 직접 fetch (데이터센터 IP — 네이버가 차단할 수 있음: 418 등)
   for (const a of attempts) {
     try {
