@@ -163,7 +163,28 @@ function buildProxyUrl(target, withGeo) {
   }
   return null;
 }
-function proxyConfigured() { return !!buildProxyUrl('https://x', true); }
+// Bright Data Web Unlocker (REST) — 성공한 요청에만 과금, 차단 우회(헤더/브라우저 지문)를 대신 처리.
+//   Vercel 환경변수: BRIGHTDATA_API_KEY (API 키), BRIGHTDATA_ZONE (Web Unlocker 영역 이름),
+//                   BRIGHTDATA_COUNTRY (기본 kr)
+const BRIGHTDATA_API_KEY = process.env.BRIGHTDATA_API_KEY || '';
+const BRIGHTDATA_ZONE = process.env.BRIGHTDATA_ZONE || '';
+function brightDataConfigured() { return !!(BRIGHTDATA_API_KEY && BRIGHTDATA_ZONE); }
+async function tryBrightDataFetch(target) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 45000);
+  try {
+    const r = await fetch('https://api.brightdata.com/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + BRIGHTDATA_API_KEY },
+      body: JSON.stringify({ zone: BRIGHTDATA_ZONE, url: target, format: 'raw', country: (process.env.BRIGHTDATA_COUNTRY || 'kr') }),
+      signal: ctrl.signal,
+    });
+    const html = await r.text();
+    return { ok: r.ok, status: r.status, html, len: html.length, _bd: true };
+  } catch (e) { return { ok: false, status: 0, html: '', len: 0, error: String(e && e.message || e), _bd: true }; }
+  finally { clearTimeout(t); }
+}
+function proxyConfigured() { return brightDataConfigured() || !!buildProxyUrl('https://x', true); }
 
 async function _fetchProxied(proxied, fwd) {
   const ctrl = new AbortController();
@@ -180,6 +201,8 @@ async function _fetchProxied(proxied, fwd) {
 }
 
 async function tryProxyFetch(target, fwd) {
+  // Bright Data 가 설정돼 있으면 우선 사용 (헤더는 Bright Data 가 알아서 처리)
+  if (brightDataConfigured()) return tryBrightDataFetch(target);
   // 1) 지오타게팅(kr) 포함 시도 → 2) 무료플랜이 거부(4xx)하면 지오 없이 재시도
   let url = buildProxyUrl(target, true);
   if (!url) return { ok: false, status: 0, html: '', len: 0, error: 'no_proxy_key' };
@@ -246,10 +269,16 @@ export default async function handler(req, res) {
     }).toString()}`;
     const apiHeaders = { 'Referer': serpRef, 'User-Agent': UA_DESKTOP, 'Accept': 'application/json, text/plain, */*' };
     // 1) 내부 JSON API (가볍고 파싱 쉬움) → 2) 실패 시 SERP HTML 폴백
-    const proxyTargets = [
-      { label: 'api',  url: apiUrl,   fwd: apiHeaders },
-      { label: 'serp', url: serpRef,  fwd: { 'Referer': 'https://www.naver.com/', 'User-Agent': UA_DESKTOP } },
-    ];
+    // Bright Data 는 임의 헤더(Referer)를 전달하지 못하므로 SERP 페이지(HTML) 먼저, 내부 API 는 폴백
+    const proxyTargets = brightDataConfigured()
+      ? [
+          { label: 'serp', url: serpRef, fwd: null },
+          { label: 'api',  url: apiUrl,  fwd: null },
+        ]
+      : [
+          { label: 'api',  url: apiUrl,   fwd: apiHeaders },
+          { label: 'serp', url: serpRef,  fwd: { 'Referer': 'https://www.naver.com/', 'User-Agent': UA_DESKTOP } },
+        ];
     for (const pt of proxyTargets) {
       try {
         const r = await tryProxyFetch(pt.url, pt.fwd);
