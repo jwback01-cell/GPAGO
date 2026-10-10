@@ -296,6 +296,10 @@ export default async function handler(req, res) {
   }
 
   // 전부 실패
+  if (brightDataConfigured()) {
+    // 진단용 — 키 값은 노출하지 않고 형태만 (길이/공백/curl 문구 포함 여부/영역 이름)
+    diagnostics.push({ via: 'bd-config', keyLen: BRIGHTDATA_API_KEY.length, keyHasSpace: /\s/.test(BRIGHTDATA_API_KEY), keyLooksLikeCurl: /curl|Bearer|https?:/i.test(BRIGHTDATA_API_KEY), zone: BRIGHTDATA_ZONE });
+  }
   res.status(502).json({
     error: '네이버 쇼핑 스크래핑 실패',
     proxyConfigured: proxyConfigured(),
