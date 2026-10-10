@@ -308,13 +308,17 @@ export default async function handler(req, res) {
       return `https://search.shopping.naver.com/search/all?${sp.toString()}`;
     };
     const pageResults = await Promise.all(Array.from({ length: pagesN }, (_, i) => i + 1).map(async pg => {
-      // 간헐적 실패(타임아웃/빈 응답)가 있어 페이지당 최대 3회 시도 (각 18초 제한 — 함수 60초 한도 내)
+            //  Web Unlocker 는 페이지당 20~40초 걸릴 수 있어(브라우저 렌더링 포함) 단일 시도에 52초 허용 — 모든 페이지를 병렬로 요청해 총 시간은 가장 느린 1건 기준.
+      const t0 = Date.now();
       let r = null, parsed = null, tries = 0;
-      for (; tries < 3; tries++) {
-        r = await tryBrightDataFetch(urlFor(pg), 18000);
+      for (; tries < 2; tries++) {
+        const left = 57000 - (Date.now() - t0);
+        if (left < 12000) break;
+        r = await tryBrightDataFetch(urlFor(pg), Math.min(52000, left));
         if (r.ok && r.html && r.html.length > 5000) { parsed = parseProducts(r.html, q); if (parsed) break; }
       }
-      const d = { via: 'proxy-multi', page: pg, status: r.status, len: r.len, ok: r.ok, tries: Math.min(tries + 1, 3) };
+      r = r || { status: 0, len: 0, ok: false };
+      const d = { via: 'proxy-multi', page: pg, status: r.status, len: r.len, ok: r.ok, tries: Math.min(tries + 1, 2), ms: Date.now() - t0 };
       if (r.error) d.error = r.error;
       if (!parsed) d.parsed = 'no products';
       return { pg, d, parsed };
