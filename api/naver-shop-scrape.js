@@ -378,7 +378,29 @@ export default async function handler(req, res) {
           { label: 'api',  url: apiUrl,   fwd: apiHeaders },
           { label: 'serp', url: serpRef,  fwd: { 'Referer': 'https://www.naver.com/', 'User-Agent': UA_DESKTOP } },
         ];
-    for (const pt of proxyTargets) {
+    // Bright Data: SERP 를 최대 2회(간헐적으로 상품이 빈 페이지가 내려옴) — 총 시간이 함수 한도(60초)를 넘지 않게 회당 27초 제한
+    if (brightDataConfigured()) {
+      const t0 = Date.now();
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const left = 56000 - (Date.now() - t0);
+        if (left < 10000) break;
+        const r = await tryBrightDataFetch(serpRef, Math.min(27000, left));
+        const d = { via: 'proxy', label: 'serp', attempt: attempt + 1, status: r.status, len: r.len, ok: r.ok, error: r.error, ms: Date.now() - t0 };
+        diagnostics.push(d);
+        if (!r.ok || !r.html) continue;
+        const parsed = parseProducts(r.html, q);
+        if (parsed) { respond(parsed, 'proxy-serp'); return; }
+        d.parsed = 'no products';
+        // 진단: 상품 없는 200 응답이 어떤 페이지인지 확인용(제목/앞부분 텍스트)
+        try {
+          const tm = r.html.match(/<title[^>]*>([^<]*)<\/title>/i);
+          d.title = tm ? tm[1].slice(0, 80) : '';
+          d.snip = r.html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+          d.hasNext = r.html.includes('__NEXT_DATA__'); d.hasTitleKey = r.html.includes('productTitle');
+        } catch (_) {}
+      }
+    }
+    for (const pt of (brightDataConfigured() ? [] : proxyTargets)) {
       try {
         const r = await tryProxyFetch(pt.url, pt.fwd);
         const d = { via: 'proxy', label: pt.label, status: r.status, len: r.len, ok: r.ok, error: r.error };
