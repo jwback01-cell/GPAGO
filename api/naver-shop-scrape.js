@@ -222,9 +222,9 @@ function buildProxyUrl(target, withGeo) {
 const BRIGHTDATA_API_KEY = process.env.BRIGHTDATA_API_KEY || '';
 const BRIGHTDATA_ZONE = process.env.BRIGHTDATA_ZONE || '';
 function brightDataConfigured() { return !!(BRIGHTDATA_API_KEY && BRIGHTDATA_ZONE); }
-async function tryBrightDataFetch(target) {
+async function tryBrightDataFetch(target, timeoutMs) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 45000);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs || 45000);
   try {
     const r = await fetch('https://api.brightdata.com/request', {
       method: 'POST',
@@ -308,10 +308,14 @@ export default async function handler(req, res) {
       return `https://search.shopping.naver.com/search/all?${sp.toString()}`;
     };
     const pageResults = await Promise.all(Array.from({ length: pagesN }, (_, i) => i + 1).map(async pg => {
-      const r = await tryBrightDataFetch(urlFor(pg));
-      const d = { via: 'proxy-multi', page: pg, status: r.status, len: r.len, ok: r.ok };
-      if (!r.ok || !r.html) { if (!r.ok) d.body = (r.html || '').slice(0, 120); return { pg, d, parsed: null }; }
-      const parsed = parseProducts(r.html, q);
+      // 간헐적 실패(타임아웃/빈 응답)가 있어 페이지당 최대 3회 시도 (각 18초 제한 — 함수 60초 한도 내)
+      let r = null, parsed = null, tries = 0;
+      for (; tries < 3; tries++) {
+        r = await tryBrightDataFetch(urlFor(pg), 18000);
+        if (r.ok && r.html && r.html.length > 5000) { parsed = parseProducts(r.html, q); if (parsed) break; }
+      }
+      const d = { via: 'proxy-multi', page: pg, status: r.status, len: r.len, ok: r.ok, tries: Math.min(tries + 1, 3) };
+      if (r.error) d.error = r.error;
       if (!parsed) d.parsed = 'no products';
       return { pg, d, parsed };
     }));
