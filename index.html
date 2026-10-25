@@ -3000,14 +3000,14 @@ window.addEventListener('message', (e) => {
   const fn = window._directFetchResolvers[d.reqId];
   if (fn) { delete window._directFetchResolvers[d.reqId]; fn(d); }
 });
-function _tryExtensionDirectFetch(keyword, timeoutMs, sets, mode) {
+function _tryExtensionDirectFetch(keyword, timeoutMs, sets, mode, extra) {
   return new Promise((resolve) => {
     const reqId = 'df_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     let done = false;
     const finish = (v) => { if (done) return; done = true; delete window._directFetchResolvers[reqId]; resolve(v); };
     window._directFetchResolvers[reqId] = (d) => finish(d);
     // mode: 'tool'(조용히 열린탭만) | 'analysis'(보이는 탭으로 보안해제) — 도구/분석 완전 분리
-    try { window.postMessage({ type: 'GPAGO_DIRECT_FETCH', source: 'gpago-page', keyword, reqId, sets: Array.isArray(sets) ? sets : null, mode: mode || 'analysis' }, window.location.origin); }
+    try { window.postMessage({ type: 'GPAGO_DIRECT_FETCH', source: 'gpago-page', keyword, reqId, sets: Array.isArray(sets) ? sets : null, mode: mode || 'analysis', ids: (extra && Array.isArray(extra.ids)) ? extra.ids : null, maxRank: (extra && extra.max) || null }, window.location.origin); }
     catch (_) { finish(null); return; }
     setTimeout(() => finish(null), timeoutMs || 8000);
   });
@@ -7131,7 +7131,7 @@ async function _extFetchItems(keyword) {
   //  ※ 'analysis'(보이는 새 탭을 여는 보안해제 방식) 재시도는 제거 — 키워드가 많으면(수백 개) 탭을 계속 열어 네이버 '접속 제한'을 유발함.
   //    확장이 실패하면 호출부(_fetchRankItems)가 서버 조회로 넘어간다.
   // v1.8.22: 새 검색 화면(/ns/search, 무한 스크롤) 대응 — mode 'rank' = 열린 탭에서 자동 스크롤해 400위까지(광고 제외) 수집. 스크롤에 수십 초 걸려 타임아웃 75초.
-  let ext = await _tryExtensionDirectFetch(keyword, 80000, ['total'], 'rank');
+  let ext = await _tryExtensionDirectFetch(keyword, 80000, ['total'], 'rank', window._kwRankTarget || null);
   if (!ext) return { items: null, err: 'no_extension' };            // 확장 미설치/미응답
   if (!ext.ok) return { items: [], err: ext.error || 'ext_fail' };  // no_products(418 추정) → 빈 결과(연속 감지로 중단)
   const tabs = ext.tabs || {};
@@ -7185,6 +7185,7 @@ async function runKwAutoTrack(isAuto) {
 
     try {
       // 순위 상품목록 — 서버 스크랩(프록시) 우선, 실패 시 확장 (키워드당 1회)
+      window._kwRankTarget = { ids: productIds, max: range };   // 확장 스크롤: 내 상품을 찾으면 조기 중단, 범위 제한
       const { items, err, via } = await _fetchRankItems(keyword);
       if (items == null) {
         // 서버·확장 모두 소스 없음 → 전체 중단
@@ -7220,7 +7221,7 @@ async function runKwAutoTrack(isAuto) {
       }
       ok++;
       console.log(`[KW Auto] (${listIdx+1}/${list.length}) ✅ "${keyword}" 완료`);
-      await new Promise(rs => setTimeout(rs, 5000 + Math.floor(Math.random() * 4000)));   // 네이버 접속제한 회피 — 키워드 간 5~9초 랜덤 대기(기존 1.5초는 너무 빨라 차단됨)
+      await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // 네이버 접속제한 회피 — 키워드 간 5~9초 랜덤 대기(기존 1.5초는 너무 빨라 차단됨)
     } catch (e) {
       const errMsg = e.message || String(e);
       console.warn(`[KW Auto] (${listIdx+1}/${list.length}) ❌ "${keyword}" 실패:`, errMsg);
@@ -8220,6 +8221,7 @@ async function runKwTrackForProduct(productKey) {
     const rankTypes = Array.isArray(it.rankTypes) && it.rankTypes.length ? it.rankTypes : ['price'];
     try {
       // 순위 상품목록 — 서버 스크랩(프록시) 우선, 실패 시 확장 (키워드당 1회)
+      window._kwRankTarget = { ids: productIds, max: 200 };
       const { items, err } = await _fetchRankItems(keyword);
       if (items == null) {
         // 서버·확장 모두 소스 없음 → 전체 중단
@@ -8246,7 +8248,7 @@ async function runKwTrackForProduct(productKey) {
         _appendKwSeries(histKey, now.toISOString(), foundRank);
       }
       ok++;
-      await new Promise(rs => setTimeout(rs, 1500));   // 네이버 418 회피 — 키워드 간 딜레이
+      await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // keyword gap 15-30s (scroll collection)
     } catch (e) {
       const errMsg = e.message || String(e);
       errors.push({ keyword, error: errMsg });
