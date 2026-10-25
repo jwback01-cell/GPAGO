@@ -7096,7 +7096,36 @@ async function _serverScrapeItems(keyword) {
 
 // 순위 상품목록 통합 — 1) 확장(무료·사용자 IP) → 2) 서버 스크랩(유료 프록시, 크레딧 있을 때)
 //  네이버는 데이터센터 IP 차단 → 확장이 사용자 브라우저 IP로 수집(비용 0). 프록시는 크레딧 소진 시 401.
+// 키워드 단위 결과 공유 — 같은 키워드를 쓰는 여러 상품이 있으면 네이버 조회(스크롤)는 한 번만 하고 결과 목록을 재사용.
+//  재사용 조건: (a) 저장된 목록에 이번 상품 ID가 있거나, (b) 목록이 조회 범위(max)만큼 길어 '권 밖'을 판정할 수 있을 때.
+//  (확장은 내 상품을 찾으면 스크롤을 조기 중단하므로 목록이 부분일 수 있어 위 조건을 둔다.)
+window._kwItemsCache = window._kwItemsCache || {};
+const _KW_ITEMS_CACHE_TTL = 30 * 60 * 1000;  // 30분
 async function _fetchRankItems(keyword) {
+  window._kwLastFetchCached = false;
+  const tgt = window._kwRankTarget || {};
+  const ids = Array.isArray(tgt.ids) ? tgt.ids.map(String) : [];
+  const max = tgt.max || 200;
+  const ck = String(keyword || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const hit = window._kwItemsCache[ck];
+  if (hit && (Date.now() - hit.ts) < _KW_ITEMS_CACHE_TTL && Array.isArray(hit.items) && hit.items.length) {
+    const blob = it => [it.link, it.productId, it.productUrl, it.mallProductId, it.npayProductId].join(' ');
+    const has = ids.length && hit.items.some(it => { const b = blob(it); return ids.some(id => b.indexOf(id) !== -1); });
+    if (has || hit.items.length >= max) {
+      window._kwLastFetchCached = true;
+      console.log('[KW rank] 키워드 결과 재사용(네이버 재조회 없음): "' + keyword + '" (' + hit.items.length + '개)');
+      return { items: hit.items, err: null, via: hit.via || 'ext', cached: true };
+    }
+  }
+  const r = await _fetchRankItemsRaw(keyword);
+  try {
+    if (r && Array.isArray(r.items) && r.items.length && (!hit || r.items.length >= (hit.items || []).length || (Date.now() - hit.ts) >= _KW_ITEMS_CACHE_TTL)) {
+      window._kwItemsCache[ck] = { ts: Date.now(), items: r.items, via: r.via };
+    }
+  } catch (_) {}
+  return r;
+}
+async function _fetchRankItemsRaw(keyword) {
   // 확장(빠름·사용자 IP)과 서버 스크랩(Bright Data, ~25초)을 '경쟁'시킨다 — 먼저 상품을 돌려주는 쪽 채택.
   //  · 확장이 80초 안에 성공하면 서버는 아예 호출하지 않음(비용 0)
   //  · 확장(스크롤 수집은 20~60초)이 응답 없음(미설치/탭 없음/이용제한)이면 80초 뒤 서버 조회가 병행 시작 → 확장이 60초 실패를 기다리지 않음
@@ -7221,7 +7250,7 @@ async function runKwAutoTrack(isAuto) {
       }
       ok++;
       console.log(`[KW Auto] (${listIdx+1}/${list.length}) ✅ "${keyword}" 완료`);
-      await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // 네이버 접속제한 회피 — 키워드 간 5~9초 랜덤 대기(기존 1.5초는 너무 빨라 차단됨)
+      if (!window._kwLastFetchCached) await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // 네이버 접속제한 회피 — 키워드 간 5~9초 랜덤 대기(기존 1.5초는 너무 빨라 차단됨)
     } catch (e) {
       const errMsg = e.message || String(e);
       console.warn(`[KW Auto] (${listIdx+1}/${list.length}) ❌ "${keyword}" 실패:`, errMsg);
@@ -8248,7 +8277,7 @@ async function runKwTrackForProduct(productKey) {
         _appendKwSeries(histKey, now.toISOString(), foundRank);
       }
       ok++;
-      await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // keyword gap 15-30s (scroll collection)
+      if (!window._kwLastFetchCached) await new Promise(rs => setTimeout(rs, 15000 + Math.floor(Math.random() * 15000)));   // keyword gap 15-30s (scroll collection)
     } catch (e) {
       const errMsg = e.message || String(e);
       errors.push({ keyword, error: errMsg });
