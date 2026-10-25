@@ -7130,7 +7130,7 @@ async function _extFetchItems(keyword) {
   // 1) 조용한 백그라운드 fetch('tool') → 실패 시 2) 보이는 탭 보안해제('analysis') 로 재시도
   //  ※ 'analysis'(보이는 새 탭을 여는 보안해제 방식) 재시도는 제거 — 키워드가 많으면(수백 개) 탭을 계속 열어 네이버 '접속 제한'을 유발함.
   //    확장이 실패하면 호출부(_fetchRankItems)가 서버 조회로 넘어간다.
-  // v1.8.22: 새 검색 화면(/ns/search, 무한 스크롤) 대응 — mode 'rank' = 열린 탭에서 자동 스크롤해 400위까지(광고 제외) 수집. 스크롤에 수십 초 걸려 타임아웃 75초.
+  // v1.8.22: 새 검색 화면(/ns/search, 무한 스크롤) 대응 — mode 'rank' = 열린 탭에서 자동 스크롤해 200위까지(광고 제외) 수집. 스크롤에 수십 초 걸려 타임아웃 75초.
   let ext = await _tryExtensionDirectFetch(keyword, 80000, ['total'], 'rank', window._kwRankTarget || null);
   if (!ext) return { items: null, err: 'no_extension' };            // 확장 미설치/미응답
   if (!ext.ok) return { items: [], err: ext.error || 'ext_fail' };  // no_products(418 추정) → 빈 결과(연속 감지로 중단)
