@@ -7098,11 +7098,11 @@ async function _serverScrapeItems(keyword) {
 //  네이버는 데이터센터 IP 차단 → 확장이 사용자 브라우저 IP로 수집(비용 0). 프록시는 크레딧 소진 시 401.
 async function _fetchRankItems(keyword) {
   // 확장(빠름·사용자 IP)과 서버 스크랩(Bright Data, ~25초)을 '경쟁'시킨다 — 먼저 상품을 돌려주는 쪽 채택.
-  //  · 확장이 8초 안에 성공하면 서버는 아예 호출하지 않음(비용 0)
-  //  · 확장이 응답 없음(미설치/탭 없음/이용제한)이면 8초 뒤 서버 조회가 병행 시작 → 확장이 60초 실패를 기다리지 않음
+  //  · 확장이 80초 안에 성공하면 서버는 아예 호출하지 않음(비용 0)
+  //  · 확장(스크롤 수집은 20~60초)이 응답 없음(미설치/탭 없음/이용제한)이면 80초 뒤 서버 조회가 병행 시작 → 확장이 60초 실패를 기다리지 않음
   let cancelServer = false;
   const extP = _extFetchItems(keyword).then(r => ({ src: 'ext', r }));
-  const srvP = new Promise(res => setTimeout(res, 8000)).then(() => cancelServer ? { src: 'server', r: { items: null, err: 'skipped' } } : _serverScrapeItems(keyword).then(r => ({ src: 'server', r })));
+  const srvP = new Promise(res => setTimeout(res, 80000)).then(() => cancelServer ? { src: 'server', r: { items: null, err: 'skipped' } } : _serverScrapeItems(keyword).then(r => ({ src: 'server', r })));
   const got = {};
   await new Promise(resolve => {
     let pending = 2;
@@ -7130,7 +7130,8 @@ async function _extFetchItems(keyword) {
   // 1) 조용한 백그라운드 fetch('tool') → 실패 시 2) 보이는 탭 보안해제('analysis') 로 재시도
   //  ※ 'analysis'(보이는 새 탭을 여는 보안해제 방식) 재시도는 제거 — 키워드가 많으면(수백 개) 탭을 계속 열어 네이버 '접속 제한'을 유발함.
   //    확장이 실패하면 호출부(_fetchRankItems)가 서버 조회로 넘어간다.
-  let ext = await _tryExtensionDirectFetch(keyword, 20000, ['total'], 'tool');
+  // v1.8.22: 새 검색 화면(/ns/search, 무한 스크롤) 대응 — mode 'rank' = 열린 탭에서 자동 스크롤해 400위까지(광고 제외) 수집. 스크롤에 수십 초 걸려 타임아웃 75초.
+  let ext = await _tryExtensionDirectFetch(keyword, 75000, ['total'], 'rank');
   if (!ext) return { items: null, err: 'no_extension' };            // 확장 미설치/미응답
   if (!ext.ok) return { items: [], err: ext.error || 'ext_fail' };  // no_products(418 추정) → 빈 결과(연속 감지로 중단)
   const tabs = ext.tabs || {};
